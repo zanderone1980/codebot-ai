@@ -31,9 +31,9 @@ export function loadConfig(): SavedConfig {
 /** Save config to ~/.codebot/config.json */
 export function saveConfig(config: SavedConfig): void {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  // Never persist API keys to disk — use env vars
   const safe = { ...config };
-  delete safe.apiKey;
+  // Persist API key if user entered it during setup (convenience over env vars)
+  // The key is stored in the user's home directory with default permissions
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(safe, null, 2) + '\n');
 }
 
@@ -90,6 +90,22 @@ function detectApiKeys(): Array<{ provider: string; envVar: string; set: boolean
   }));
 }
 
+/** Cloud provider display info */
+const CLOUD_PROVIDERS: Array<{
+  provider: string;
+  name: string;
+  defaultModel: string;
+  description: string;
+}> = [
+  { provider: 'openai', name: 'OpenAI', defaultModel: 'gpt-4o', description: 'GPT-4o, GPT-4.1, o3/o4' },
+  { provider: 'anthropic', name: 'Anthropic', defaultModel: 'claude-sonnet-4-6', description: 'Claude Opus/Sonnet/Haiku' },
+  { provider: 'gemini', name: 'Google Gemini', defaultModel: 'gemini-2.5-flash', description: 'Gemini 2.5 Pro/Flash' },
+  { provider: 'deepseek', name: 'DeepSeek', defaultModel: 'deepseek-chat', description: 'DeepSeek Chat/Reasoner' },
+  { provider: 'groq', name: 'Groq', defaultModel: 'llama-3.3-70b-versatile', description: 'Fast Llama/Mixtral inference' },
+  { provider: 'mistral', name: 'Mistral', defaultModel: 'mistral-large-latest', description: 'Mistral Large, Codestral' },
+  { provider: 'xai', name: 'xAI', defaultModel: 'grok-3', description: 'Grok-3' },
+];
+
 const C = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
@@ -140,53 +156,72 @@ export async function runSetup(): Promise<SavedConfig> {
     }
   }
 
-  const missingKeys = apiKeys.filter(k => !k.set);
-  if (missingKeys.length > 0 && localServers.length === 0) {
-    console.log(fmt('\n  No API keys found. Set one to use cloud models:', 'yellow'));
-    for (const key of missingKeys) {
-      console.log(fmt(`    export ${key.envVar}="your-key-here"`, 'dim'));
-    }
-  }
-
-  // Step 3: Choose provider
+  // Step 3: Choose provider — show ALL options (local + cloud)
   console.log(fmt('\nChoose your setup:', 'bold'));
 
-  const options: Array<{ label: string; provider: string; model: string; baseUrl: string }> = [];
+  const options: Array<{
+    label: string;
+    provider: string;
+    model: string;
+    baseUrl: string;
+    needsKey: boolean;
+    envVar?: string;
+  }> = [];
   let idx = 1;
 
   // Local options first
   for (const server of localServers) {
     const defaultModel = server.models[0] || 'qwen2.5-coder:32b';
-    options.push({ label: `${server.name} (local, free)`, provider: 'openai', model: defaultModel, baseUrl: server.url });
+    options.push({
+      label: `${server.name} (local, free)`,
+      provider: 'openai',
+      model: defaultModel,
+      baseUrl: server.url,
+      needsKey: false,
+    });
     console.log(`  ${fmt(`${idx}`, 'cyan')} ${server.name} — ${defaultModel} ${fmt('(local, free, private)', 'green')}`);
     idx++;
   }
 
-  // Cloud options
-  for (const key of availableKeys) {
-    const models = Object.entries(MODEL_REGISTRY)
-      .filter(([, info]) => info.provider === key.provider)
-      .map(([name]) => name);
-    const defaultModel = models[0] || key.provider;
-    const defaults = PROVIDER_DEFAULTS[key.provider];
-    options.push({ label: key.provider, provider: key.provider, model: defaultModel, baseUrl: defaults.baseUrl });
-    console.log(`  ${fmt(`${idx}`, 'cyan')} ${key.provider} — ${defaultModel} ${fmt('(cloud)', 'dim')}`);
-    idx++;
-  }
+  // Cloud options — ALWAYS show all providers
+  for (const cloud of CLOUD_PROVIDERS) {
+    const keyInfo = apiKeys.find(k => k.provider === cloud.provider);
+    const hasKey = keyInfo?.set || false;
+    const defaults = PROVIDER_DEFAULTS[cloud.provider];
+    const keyStatus = hasKey ? fmt('✓ key set', 'green') : fmt('enter key during setup', 'yellow');
 
-  if (options.length === 0) {
-    console.log(fmt('\n  No providers available. Either:', 'yellow'));
-    console.log(fmt('    1. Install Ollama: https://ollama.ai', 'dim'));
-    console.log(fmt('    2. Set an API key: export ANTHROPIC_API_KEY="..."', 'dim'));
-    rl.close();
-    return {};
+    options.push({
+      label: cloud.name,
+      provider: cloud.provider,
+      model: cloud.defaultModel,
+      baseUrl: defaults.baseUrl,
+      needsKey: !hasKey,
+      envVar: defaults.envKey,
+    });
+
+    console.log(`  ${fmt(`${idx}`, 'cyan')} ${cloud.name} — ${cloud.description} ${fmt(`(${keyStatus})`, 'dim')}`);
+    idx++;
   }
 
   const choice = await ask(rl, fmt(`\nSelect [1-${options.length}]: `, 'cyan'));
   const selected = options[parseInt(choice, 10) - 1] || options[0];
 
-  // Step 4: Show available models for chosen provider
-  // For local servers, use the actual installed models instead of the hardcoded registry
+  // Step 4: If cloud provider needs API key, prompt for it
+  let apiKey = '';
+  if (selected.needsKey && selected.envVar) {
+    console.log(fmt(`\n  ${selected.label} requires an API key.`, 'yellow'));
+    console.log(fmt(`  Get one at: ${getKeyUrl(selected.provider)}`, 'dim'));
+    apiKey = await ask(rl, fmt(`\n  Enter your ${selected.label} API key: `, 'cyan'));
+    if (!apiKey) {
+      console.log(fmt(`\n  No key entered. You can set it later:`, 'yellow'));
+      console.log(fmt(`    export ${selected.envVar}="your-key-here"`, 'dim'));
+    }
+  } else if (selected.envVar) {
+    // Use existing env var
+    apiKey = process.env[selected.envVar] || '';
+  }
+
+  // Step 5: Show available models for chosen provider
   const matchedServer = localServers.find(s => s.url === selected.baseUrl);
   const providerModels = matchedServer && matchedServer.models.length > 0
     ? matchedServer.models
@@ -213,7 +248,7 @@ export async function runSetup(): Promise<SavedConfig> {
     }
   }
 
-  // Step 5: Auto mode?
+  // Step 6: Auto mode?
   const autoChoice = await ask(rl, fmt('\nEnable autonomous mode? (skip permission prompts) [y/N]: ', 'cyan'));
   const autoApprove = autoChoice.toLowerCase().startsWith('y');
 
@@ -227,15 +262,37 @@ export async function runSetup(): Promise<SavedConfig> {
     autoApprove,
   };
 
+  // Save API key if user entered one
+  if (apiKey) {
+    config.apiKey = apiKey;
+  }
+
   saveConfig(config);
 
   console.log(fmt('\n✓ Config saved to ~/.codebot/config.json', 'green'));
   console.log(fmt(`  Model: ${config.model}`, 'dim'));
   console.log(fmt(`  Provider: ${config.provider}`, 'dim'));
+  if (apiKey) {
+    console.log(fmt(`  API Key: ${'*'.repeat(Math.min(apiKey.length, 20))}`, 'dim'));
+  }
   if (autoApprove) {
     console.log(fmt(`  Mode: AUTONOMOUS`, 'yellow'));
   }
   console.log(fmt(`\nRun ${fmt('codebot', 'bold')} to start. Run ${fmt('codebot --setup', 'bold')} to reconfigure.\n`, 'dim'));
 
   return config;
+}
+
+/** Get the URL where users can get API keys for each provider */
+function getKeyUrl(provider: string): string {
+  switch (provider) {
+    case 'openai': return 'https://platform.openai.com/api-keys';
+    case 'anthropic': return 'https://console.anthropic.com/settings/keys';
+    case 'gemini': return 'https://aistudio.google.com/app/apikey';
+    case 'deepseek': return 'https://platform.deepseek.com/api_keys';
+    case 'groq': return 'https://console.groq.com/keys';
+    case 'mistral': return 'https://console.mistral.ai/api-keys';
+    case 'xai': return 'https://console.x.ai/';
+    default: return 'Check provider documentation';
+  }
 }

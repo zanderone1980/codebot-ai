@@ -23,6 +23,14 @@ export class OpenAIProvider implements LLMProvider {
       body.tools = tools;
     }
 
+    // Ollama/local provider optimizations: set context window and keep model loaded
+    const isLocal = this.config.baseUrl.includes('localhost') || this.config.baseUrl.includes('127.0.0.1');
+    if (isLocal) {
+      const modelInfo = getModelInfo(this.config.model);
+      body.options = { num_ctx: modelInfo.contextWindow };
+      body.keep_alive = '30m';
+    }
+
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };

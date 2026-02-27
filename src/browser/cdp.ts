@@ -18,6 +18,7 @@ export class CDPClient {
   private socket: net.Socket | null = null;
   private messageId = 0;
   private pending = new Map<number, { resolve: (v: CDPResponse) => void; reject: (e: Error) => void }>();
+  private eventWaiters: Array<{ method: string; resolve: (params: Record<string, unknown>) => void; reject: (err: Error) => void }> = [];
   private buffer = Buffer.alloc(0);
   private connected = false;
 
@@ -121,6 +122,24 @@ export class CDPClient {
     return this.connected;
   }
 
+  /** Wait for a specific CDP event (e.g. Page.loadEventFired) with timeout */
+  async waitForEvent(method: string, timeout = 15000): Promise<Record<string, unknown>> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.eventWaiters = this.eventWaiters.filter(w => w.resolve !== resolve);
+        resolve({}); // Resolve with empty on timeout instead of rejecting — page may still be usable
+      }, timeout);
+
+      const wrappedResolve = (params: Record<string, unknown>) => {
+        clearTimeout(timer);
+        this.eventWaiters = this.eventWaiters.filter(w => w.resolve !== wrappedResolve);
+        resolve(params);
+      };
+
+      this.eventWaiters.push({ method, resolve: wrappedResolve, reject });
+    });
+  }
+
   /** Send a WebSocket text frame (masked, as required by client) */
   private sendFrame(data: string) {
     if (!this.socket) return;
@@ -199,7 +218,15 @@ export class CDPClient {
             this.pending.delete(msg.id);
             handler.resolve(msg);
           }
-          // Events (no id) are ignored for now
+          // Dispatch events to waiters
+          if (msg.method) {
+            for (const waiter of this.eventWaiters) {
+              if (waiter.method === msg.method) {
+                waiter.resolve(msg.params || {});
+                break;
+              }
+            }
+          }
         } catch {
           // Malformed JSON, skip
         }

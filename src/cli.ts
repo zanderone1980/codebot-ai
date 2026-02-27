@@ -309,6 +309,7 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
     }
     case '/auto':
       config.autoApprove = !config.autoApprove;
+      agent.setAutoApprove(config.autoApprove);
       console.log(c(`Autonomous mode: ${config.autoApprove ? 'ON' : 'OFF'}`, config.autoApprove ? 'yellow' : 'green'));
       break;
     case '/sessions': {
@@ -390,7 +391,10 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     }
   }
 
-  // Fallback: try generic env vars
+  // Fallback: try saved config API key, then generic env vars
+  if (!config.apiKey && saved.apiKey) {
+    config.apiKey = saved.apiKey;
+  }
   if (!config.apiKey) {
     config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || '';
   }

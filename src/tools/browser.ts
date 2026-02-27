@@ -1,15 +1,37 @@
 import { Tool } from '../types';
 import { CDPClient, getDebuggerUrl, getTargets } from '../browser/cdp';
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 
 // Shared browser instance across tool calls
 let client: CDPClient | null = null;
 let debugPort = 9222;
+const CHROME_DATA_DIR = path.join(os.homedir(), '.codebot', 'chrome-profile');
+
+/** Kill any Chrome using our debug port or data dir */
+function killExistingChrome(): void {
+  const { execSync } = require('child_process');
+  try {
+    if (process.platform === 'win32') {
+      execSync(`for /f "tokens=5" %a in ('netstat -aon ^| findstr :${debugPort}') do taskkill /F /PID %a`, { stdio: 'ignore' });
+    } else {
+      // Kill any process listening on our debug port
+      execSync(`lsof -ti:${debugPort} | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
+      // Also kill any Chrome using our data dir
+      execSync(`pkill -f "${CHROME_DATA_DIR}" 2>/dev/null || true`, { stdio: 'ignore' });
+    }
+  } catch {
+    // ignore — nothing to kill
+  }
+  // Give OS time to release the port
+}
 
 async function ensureConnected(): Promise<CDPClient> {
   if (client?.isConnected()) return client;
 
-  // Try connecting to existing Chrome
+  // Try connecting to existing Chrome with debug port
   try {
     const wsUrl = await getDebuggerUrl(debugPort);
     client = new CDPClient();
@@ -30,7 +52,9 @@ async function ensureConnected(): Promise<CDPClient> {
     await client.send('Runtime.enable');
     return client;
   } catch {
-    // Chrome not running with debugging — try to launch it
+    // Can't connect — kill stale processes and launch fresh
+    killExistingChrome();
+    await new Promise(r => setTimeout(r, 500));
   }
 
   // Launch Chrome with debugging
@@ -59,16 +83,51 @@ async function ensureConnected(): Promise<CDPClient> {
       ];
 
   let launched = false;
-  for (const chromePath of chromePaths) {
-    try {
-      execSync(
-        `"${chromePath}" --remote-debugging-port=${debugPort} --no-first-run --no-default-browser-check about:blank &`,
-        { stdio: 'ignore', timeout: 5000 }
-      );
-      launched = true;
-      break;
-    } catch {
-      continue;
+
+  // Create isolated Chrome profile dir so it doesn't conflict with user's running Chrome
+  fs.mkdirSync(CHROME_DATA_DIR, { recursive: true });
+
+  const chromeArgs = [
+    `--remote-debugging-port=${debugPort}`,
+    `--user-data-dir=${CHROME_DATA_DIR}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    'about:blank',
+  ];
+
+  // On macOS, launch directly (not via 'open -a' which reuses existing instance)
+  if (process.platform === 'darwin') {
+    const macPaths = [
+      '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+      '/Applications/Chromium.app/Contents/MacOS/Chromium',
+      '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ];
+    for (const chromePath of macPaths) {
+      try {
+        if (fs.existsSync(chromePath)) {
+          const child = spawn(chromePath, chromeArgs, { stdio: 'ignore', detached: true });
+          child.unref();
+          launched = true;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  if (!launched) {
+    for (const chromePath of chromePaths) {
+      try {
+        const child = spawn(chromePath, chromeArgs, { stdio: 'ignore', detached: true });
+        child.unref();
+        launched = true;
+        break;
+      } catch {
+        continue;
+      }
     }
   }
 
@@ -167,19 +226,34 @@ export class BrowserTool implements Tool {
       url = 'https://' + url;
     }
 
+    // Set up load event listener BEFORE navigating
+    const loadPromise = cdp.waitForEvent('Page.loadEventFired', 15000);
+
     await cdp.send('Page.navigate', { url });
 
-    // Wait for page load
-    await new Promise(r => setTimeout(r, 2000));
+    // Wait for actual page load event (up to 15s)
+    await loadPromise;
 
-    // Get page title
+    // Extra delay for SPA hydration (React, Next.js, etc.)
+    await new Promise(r => setTimeout(r, 1500));
+
+    // Get final URL (after redirects) and page title
     const result = await cdp.send('Runtime.evaluate', {
-      expression: 'document.title',
+      expression: 'JSON.stringify({ title: document.title, url: window.location.href })',
       returnByValue: true,
     });
-    const title = (result.result as Record<string, unknown>)?.value || 'untitled';
+    const val = (result.result as Record<string, unknown>)?.value as string;
+    let title = 'untitled';
+    let finalUrl = url;
+    try {
+      const parsed = JSON.parse(val);
+      title = parsed.title || 'untitled';
+      finalUrl = parsed.url || url;
+    } catch {
+      // fallback
+    }
 
-    return `Navigated to: ${url}\nTitle: ${title}`;
+    return `Navigated to: ${finalUrl}\nTitle: ${title}`;
   }
 
   private async getContent(): Promise<string> {
