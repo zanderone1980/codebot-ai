@@ -59,6 +59,10 @@ export class OpenAIProvider implements LLMProvider {
     let buffer = '';
     const toolCalls: Map<number, { id: string; name: string; arguments: string }> = new Map();
 
+    // Track <think>...</think> blocks (used by qwen3, deepseek, etc.)
+    let insideThink = false;
+    let contentBuffer = '';
+
     try {
       while (true) {
         const { done, value } = await reader.read();
@@ -73,6 +77,11 @@ export class OpenAIProvider implements LLMProvider {
           if (!trimmed || !trimmed.startsWith('data: ')) continue;
 
           if (trimmed === 'data: [DONE]') {
+            // Flush any remaining content buffer
+            if (contentBuffer && !insideThink) {
+              yield { type: 'text', text: contentBuffer };
+              contentBuffer = '';
+            }
             for (const [, tc] of toolCalls) {
               yield {
                 type: 'tool_call_end',
@@ -93,7 +102,45 @@ export class OpenAIProvider implements LLMProvider {
             if (!delta) continue;
 
             if (delta.content) {
-              yield { type: 'text', text: delta.content };
+              contentBuffer += delta.content;
+
+              // Process buffer for <think>...</think> tags
+              let changed = true;
+              while (changed) {
+                changed = false;
+                if (insideThink) {
+                  const end = contentBuffer.indexOf('</think>');
+                  if (end !== -1) {
+                    // End of think block — discard thinking content, continue
+                    contentBuffer = contentBuffer.slice(end + 8);
+                    insideThink = false;
+                    changed = true;
+                  }
+                  // else: still inside think, wait for more data
+                } else {
+                  const start = contentBuffer.indexOf('<think>');
+                  if (start !== -1) {
+                    // Found <think> — output everything before it, enter think mode
+                    const before = contentBuffer.slice(0, start);
+                    if (before) yield { type: 'text', text: before };
+                    contentBuffer = contentBuffer.slice(start + 7);
+                    insideThink = true;
+                    changed = true;
+                  } else {
+                    // No think tag — check if buffer ends with a partial "<think" prefix
+                    let holdBack = 0;
+                    for (let len = Math.min(6, contentBuffer.length); len >= 1; len--) {
+                      if ('<think>'.startsWith(contentBuffer.slice(-len))) {
+                        holdBack = len;
+                        break;
+                      }
+                    }
+                    const safe = contentBuffer.slice(0, contentBuffer.length - holdBack);
+                    contentBuffer = contentBuffer.slice(contentBuffer.length - holdBack);
+                    if (safe) yield { type: 'text', text: safe };
+                  }
+                }
+              }
             }
 
             if (delta.tool_calls) {

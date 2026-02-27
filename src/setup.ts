@@ -186,16 +186,17 @@ export async function runSetup(): Promise<SavedConfig> {
   const selected = options[parseInt(choice, 10) - 1] || options[0];
 
   // Step 4: Show available models for chosen provider
-  const providerModels = Object.entries(MODEL_REGISTRY)
-    .filter(([, info]) => {
-      if (selected.provider === 'openai' && !info.provider) return true; // local models
-      return info.provider === selected.provider;
-    })
-    .map(([name]) => name);
+  // For local servers, use the actual installed models instead of the hardcoded registry
+  const matchedServer = localServers.find(s => s.url === selected.baseUrl);
+  const providerModels = matchedServer && matchedServer.models.length > 0
+    ? matchedServer.models
+    : Object.entries(MODEL_REGISTRY)
+        .filter(([, info]) => info.provider === selected.provider)
+        .map(([name]) => name);
 
   if (providerModels.length > 1) {
-    console.log(fmt(`\nAvailable models for ${selected.label}:`, 'bold'));
-    providerModels.slice(0, 10).forEach((m, i) => {
+    console.log(fmt(`\nAvailable models${matchedServer ? ` on ${matchedServer.name}` : ''}:`, 'bold'));
+    providerModels.slice(0, 15).forEach((m, i) => {
       const marker = m === selected.model ? fmt(' (default)', 'green') : '';
       console.log(`  ${fmt(`${i + 1}`, 'cyan')} ${m}${marker}`);
     });
@@ -206,7 +207,7 @@ export async function runSetup(): Promise<SavedConfig> {
       if (providerModels[modelIdx]) {
         selected.model = providerModels[modelIdx];
       } else if (modelChoice.length > 2) {
-        // Treat as model name
+        // Treat as model name typed directly
         selected.model = modelChoice;
       }
     }
