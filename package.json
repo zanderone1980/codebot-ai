@@ -11,7 +11,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
-    "test": "node --test dist/**/*.test.js",
+    "test": "node --test dist/*.test.js dist/**/*.test.js",
     "lint": "tsc --noEmit",
     "prepublishOnly": "npm run build"
   },

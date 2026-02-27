@@ -6,6 +6,7 @@ import { detectProvider, PROVIDER_DEFAULTS } from './providers/registry';
 import { AgentEvent, Config, LLMProvider, Message } from './types';
 import { SessionManager } from './history';
 import { loadConfig, isFirstRun, runSetup } from './setup';
+import { banner, randomGreeting, compactBanner } from './banner';
 
 const VERSION = '1.0.0';
 
@@ -68,17 +69,12 @@ export async function main() {
 
   const session = new SessionManager(config.model, resumeId);
 
-  console.log(c(`\n⚡ CodeBot AI v${VERSION}`, 'bold'));
-  console.log(c(`   Model: ${config.model}`, 'dim'));
-  console.log(c(`   Provider: ${config.provider} @ ${config.baseUrl}`, 'dim'));
-  console.log(c(`   Session: ${session.getId().substring(0, 8)}...`, 'dim'));
-  if (config.autoApprove) {
-    console.log(c(`   Mode: AUTONOMOUS (all tools auto-approved)`, 'yellow'));
-  }
+  const sessionShort = session.getId().substring(0, 8);
+  console.log(banner(VERSION, config.model, `${config.provider} @ ${config.baseUrl}`, `${sessionShort}...`, !!config.autoApprove));
   if (resumeId) {
     console.log(c(`   Resuming session...`, 'green'));
   }
-  console.log(c(`   Type /help for commands, Ctrl+C to exit\n`, 'dim'));
+  console.log(c(`   ${randomGreeting()}\n`, 'dim'));
 
   const agent = new Agent({
     provider,

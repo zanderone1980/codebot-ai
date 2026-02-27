@@ -34,12 +34,29 @@ async function ensureConnected(): Promise<CDPClient> {
   }
 
   // Launch Chrome with debugging
-  const chromePaths = [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    'google-chrome',
-    'chromium',
-  ];
+  const chromePaths = process.platform === 'win32'
+    ? [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+      ]
+    : process.platform === 'linux'
+    ? [
+        'google-chrome',
+        'google-chrome-stable',
+        'chromium',
+        'chromium-browser',
+        '/usr/bin/google-chrome',
+        '/usr/bin/chromium',
+        '/snap/bin/chromium',
+      ]
+    : [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+        'google-chrome',
+        'chromium',
+      ];
 
   let launched = false;
   for (const chromePath of chromePaths) {
