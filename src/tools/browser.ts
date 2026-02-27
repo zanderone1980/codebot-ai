@@ -175,7 +175,7 @@ async function ensureConnected(): Promise<CDPClient> {
 
 export class BrowserTool implements Tool {
   name = 'browser';
-  description = 'Control a web browser. Navigate to URLs, read page content, click elements, type text, run JavaScript, take screenshots. Use for web browsing, social media, testing, and automation.';
+  description = 'Control a web browser. Navigate to URLs, read page content, click elements, type text, scroll, press keys, find elements by text, hover, manage tabs, run JavaScript, and take screenshots. Use for web browsing, social media, email, research, testing, and automation.';
   permission: Tool['permission'] = 'prompt';
   parameters = {
     type: 'object',
@@ -183,12 +183,21 @@ export class BrowserTool implements Tool {
       action: {
         type: 'string',
         description: 'Action to perform',
-        enum: ['navigate', 'content', 'screenshot', 'click', 'type', 'evaluate', 'tabs', 'close'],
+        enum: [
+          'navigate', 'content', 'screenshot', 'click', 'type', 'evaluate',
+          'tabs', 'close', 'scroll', 'wait', 'press_key', 'hover',
+          'find_by_text', 'switch_tab', 'new_tab',
+        ],
       },
-      url: { type: 'string', description: 'URL to navigate to (for navigate action)' },
-      selector: { type: 'string', description: 'CSS selector for element (for click/type)' },
-      text: { type: 'string', description: 'Text to type (for type action)' },
+      url: { type: 'string', description: 'URL to navigate to (for navigate/new_tab)' },
+      selector: { type: 'string', description: 'CSS selector for element (for click/type/scroll/hover)' },
+      text: { type: 'string', description: 'Text to type (type) or text to search for (find_by_text)' },
       expression: { type: 'string', description: 'JavaScript to evaluate (for evaluate action)' },
+      direction: { type: 'string', description: 'Scroll direction: up, down, left, right (for scroll)', enum: ['up', 'down', 'left', 'right'] },
+      amount: { type: 'number', description: 'Scroll pixels (default 400) or wait ms (default 1000)' },
+      key: { type: 'string', description: 'Key to press: Enter, Escape, Tab, ArrowDown, etc. (for press_key)' },
+      tag: { type: 'string', description: 'HTML tag to filter: button, a, div, etc. (for find_by_text)' },
+      index: { type: 'number', description: 'Tab index 1-based (for switch_tab)' },
     },
     required: ['action'],
   };
@@ -214,8 +223,22 @@ export class BrowserTool implements Tool {
           return await this.listTabs();
         case 'close':
           return this.closeBrowser();
+        case 'scroll':
+          return await this.scroll(args.selector as string | undefined, args.direction as string || 'down', args.amount as number || 400);
+        case 'wait':
+          return await this.wait(args.amount as number || 1000);
+        case 'press_key':
+          return await this.pressKey(args.key as string, args.selector as string | undefined);
+        case 'hover':
+          return await this.hover(args.selector as string);
+        case 'find_by_text':
+          return await this.findByText(args.text as string, args.tag as string | undefined);
+        case 'switch_tab':
+          return await this.switchTab(args.index as number | undefined, args.url as string | undefined);
+        case 'new_tab':
+          return await this.newTab(args.url as string | undefined);
         default:
-          return `Unknown action: ${action}. Use: navigate, content, screenshot, click, type, evaluate, tabs, close`;
+          return `Unknown action: ${action}. Available: navigate, content, screenshot, click, type, evaluate, tabs, close, scroll, wait, press_key, hover, find_by_text, switch_tab, new_tab`;
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -317,9 +340,6 @@ export class BrowserTool implements Tool {
     if (!data) return 'Failed to capture screenshot';
 
     // Save to temp file
-    const fs = require('fs');
-    const path = require('path');
-    const os = require('os');
     const filePath = path.join(os.tmpdir(), `codebot-screenshot-${Date.now()}.png`);
     fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
 
@@ -335,6 +355,7 @@ export class BrowserTool implements Tool {
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
           if (!el) return 'Element not found: ' + ${JSON.stringify(selector)};
+          el.scrollIntoView({ block: 'center' });
           el.click();
           return 'Clicked: ' + (el.tagName || '') + ' ' + (el.textContent || '').substring(0, 50).trim();
         })()
@@ -350,12 +371,15 @@ export class BrowserTool implements Tool {
     if (!text) return 'Error: text is required';
     const cdp = await ensureConnected();
 
-    // Focus the element
+    // Focus the element and clear it
     await cdp.send('Runtime.evaluate', {
       expression: `
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
-          if (el) { el.focus(); el.value = ''; }
+          if (el) {
+            el.focus();
+            if ('value' in el) el.value = '';
+          }
         })()
       `,
     });
@@ -375,16 +399,30 @@ export class BrowserTool implements Tool {
       });
     }
 
-    // Also set value directly as fallback
+    // React-compatible value setter — works with Twitter/X, Gmail, and any React/Vue app
     await cdp.send('Runtime.evaluate', {
       expression: `
         (function() {
           const el = document.querySelector(${JSON.stringify(selector)});
-          if (el) {
+          if (!el) return;
+
+          // Try native setter from prototype (bypasses React's synthetic event system)
+          const textareaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+          const inputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          const setter = textareaSetter || inputSetter;
+
+          if (setter && 'value' in el) {
+            setter.call(el, ${JSON.stringify(text)});
+          } else if ('value' in el) {
             el.value = ${JSON.stringify(text)};
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
+          } else if (el.isContentEditable || el.getAttribute('contenteditable') !== null) {
+            // ContentEditable elements (used by Twitter/X compose box)
+            el.textContent = ${JSON.stringify(text)};
           }
+
+          // Fire events that React/Vue/Angular listen to
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, data: ${JSON.stringify(text)}, inputType: 'insertText' }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
         })()
       `,
     });
@@ -437,5 +475,241 @@ export class BrowserTool implements Tool {
       client = null;
     }
     return 'Browser connection closed.';
+  }
+
+  // ─── New Actions ─────────────────────────────────────────────
+
+  private async scroll(selector: string | undefined, direction: string, amount: number): Promise<string> {
+    const cdp = await ensureConnected();
+
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (function() {
+          const target = ${selector ? `document.querySelector(${JSON.stringify(selector)})` : 'window'};
+          if (!target && ${JSON.stringify(selector)}) return 'Element not found: ' + ${JSON.stringify(selector)};
+          const x = '${direction}' === 'right' ? ${amount} : '${direction}' === 'left' ? -${amount} : 0;
+          const y = '${direction}' === 'down' ? ${amount} : '${direction}' === 'up' ? -${amount} : 0;
+          (target.scrollBy || window.scrollBy).call(target, { left: x, top: y, behavior: 'smooth' });
+          return 'Scrolled ${direction} by ${amount}px' + (${JSON.stringify(selector)} ? ' on ' + ${JSON.stringify(selector)} : '');
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    return (result.result as Record<string, unknown>)?.value as string || `Scrolled ${direction}`;
+  }
+
+  private async wait(ms: number): Promise<string> {
+    const clamped = Math.min(Math.max(ms, 100), 10000);
+    await new Promise(r => setTimeout(r, clamped));
+    return `Waited ${clamped}ms`;
+  }
+
+  private async pressKey(key: string, selector?: string): Promise<string> {
+    if (!key) return 'Error: key is required (e.g., Enter, Escape, Tab, ArrowDown)';
+    const cdp = await ensureConnected();
+
+    // Focus element first if selector provided
+    if (selector) {
+      await cdp.send('Runtime.evaluate', {
+        expression: `
+          (function() {
+            const el = document.querySelector(${JSON.stringify(selector)});
+            if (el) el.focus();
+          })()
+        `,
+      });
+    }
+
+    // Map key names to their proper key codes
+    const keyMap: Record<string, { key: string; code: string; keyCode: number }> = {
+      'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
+      'Escape': { key: 'Escape', code: 'Escape', keyCode: 27 },
+      'Tab': { key: 'Tab', code: 'Tab', keyCode: 9 },
+      'Backspace': { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+      'Delete': { key: 'Delete', code: 'Delete', keyCode: 46 },
+      'ArrowUp': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+      'ArrowDown': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+      'ArrowLeft': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+      'ArrowRight': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+      'Space': { key: ' ', code: 'Space', keyCode: 32 },
+    };
+
+    const mapped = keyMap[key] || { key, code: `Key${key}`, keyCode: 0 };
+
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyDown',
+      key: mapped.key,
+      code: mapped.code,
+      windowsVirtualKeyCode: mapped.keyCode,
+      nativeVirtualKeyCode: mapped.keyCode,
+    });
+    await cdp.send('Input.dispatchKeyEvent', {
+      type: 'keyUp',
+      key: mapped.key,
+      code: mapped.code,
+      windowsVirtualKeyCode: mapped.keyCode,
+      nativeVirtualKeyCode: mapped.keyCode,
+    });
+
+    return `Pressed key: ${key}${selector ? ` on ${selector}` : ''}`;
+  }
+
+  private async hover(selector: string): Promise<string> {
+    if (!selector) return 'Error: selector is required';
+    const cdp = await ensureConnected();
+
+    // Get element position
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (function() {
+          const el = document.querySelector(${JSON.stringify(selector)});
+          if (!el) return JSON.stringify({ error: 'Element not found: ' + ${JSON.stringify(selector)} });
+          el.scrollIntoView({ block: 'center' });
+          const rect = el.getBoundingClientRect();
+          return JSON.stringify({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2, tag: el.tagName, text: (el.textContent || '').substring(0, 50).trim() });
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    const val = (result.result as Record<string, unknown>)?.value as string;
+    if (!val) return 'Error: could not get element position';
+
+    const info = JSON.parse(val);
+    if (info.error) return info.error;
+
+    // Move mouse to element center
+    await cdp.send('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: Math.round(info.x),
+      y: Math.round(info.y),
+    });
+
+    return `Hovered over: ${info.tag} "${info.text}"`;
+  }
+
+  private async findByText(text: string, tag?: string): Promise<string> {
+    if (!text) return 'Error: text is required';
+    const cdp = await ensureConnected();
+
+    const result = await cdp.send('Runtime.evaluate', {
+      expression: `
+        (function() {
+          const searchText = ${JSON.stringify(text)}.toLowerCase();
+          const tagFilter = ${JSON.stringify(tag || '')}.toLowerCase();
+          const elements = document.querySelectorAll(tagFilter || '*');
+          const matches = [];
+
+          for (const el of elements) {
+            // Skip invisible elements
+            if (el.offsetParent === null && el.tagName !== 'BODY') continue;
+
+            const elText = (el.textContent || '').trim();
+            if (elText.toLowerCase().includes(searchText) && elText.length < 500) {
+              // Generate a reliable selector
+              let selector = '';
+              if (el.id) {
+                selector = '#' + el.id;
+              } else if (el.getAttribute('data-testid')) {
+                selector = '[data-testid="' + el.getAttribute('data-testid') + '"]';
+              } else if (el.getAttribute('aria-label')) {
+                selector = '[aria-label="' + el.getAttribute('aria-label') + '"]';
+              } else if (el.getAttribute('role')) {
+                selector = el.tagName.toLowerCase() + '[role="' + el.getAttribute('role') + '"]';
+              } else {
+                // Use tag + class combo
+                const classes = Array.from(el.classList).slice(0, 2).join('.');
+                selector = el.tagName.toLowerCase() + (classes ? '.' + classes : '');
+              }
+
+              matches.push({
+                tag: el.tagName.toLowerCase(),
+                text: elText.substring(0, 80),
+                selector: selector,
+                type: el.getAttribute('type') || '',
+                role: el.getAttribute('role') || '',
+              });
+
+              if (matches.length >= 5) break;
+            }
+          }
+
+          if (matches.length === 0) return 'No elements found containing: ' + ${JSON.stringify(text)};
+          return JSON.stringify(matches);
+        })()
+      `,
+      returnByValue: true,
+    });
+
+    const val = (result.result as Record<string, unknown>)?.value as string;
+    if (!val || !val.startsWith('[')) return val || 'No elements found';
+
+    const matches = JSON.parse(val);
+    return `Found ${matches.length} element(s) matching "${text}":\n` +
+      matches.map((m: Record<string, string>, i: number) =>
+        `  ${i + 1}. <${m.tag}> "${m.text}"\n     selector: ${m.selector}${m.role ? `  role: ${m.role}` : ''}`
+      ).join('\n');
+  }
+
+  private async switchTab(index?: number, urlContains?: string): Promise<string> {
+    const targets = await getTargets(debugPort);
+    const pages = targets.filter(t => t.url && !t.url.startsWith('devtools://'));
+
+    if (pages.length === 0) return 'No tabs available.';
+
+    let target;
+    if (index !== undefined) {
+      target = pages[index - 1];
+      if (!target) return `Tab ${index} not found. ${pages.length} tabs available.`;
+    } else if (urlContains) {
+      target = pages.find(t => t.url.includes(urlContains));
+      if (!target) return `No tab found matching URL "${urlContains}".`;
+    } else {
+      return 'Error: provide index (1-based) or url to match.';
+    }
+
+    // Close current connection and connect to new target
+    if (client) {
+      client.close();
+      client = null;
+    }
+
+    client = new CDPClient();
+    await client.connect(target.webSocketDebuggerUrl);
+    await client.send('Page.enable');
+    await client.send('Runtime.enable');
+
+    return `Switched to tab: ${target.title || '(no title)'}\n  ${target.url}`;
+  }
+
+  private async newTab(url?: string): Promise<string> {
+    const cdp = await ensureConnected();
+    const targetUrl = url || 'about:blank';
+
+    // Auto-add protocol
+    let navUrl = targetUrl;
+    if (url && !url.startsWith('http://') && !url.startsWith('https://') && url !== 'about:blank') {
+      navUrl = 'https://' + url;
+    }
+
+    const result = await cdp.send('Target.createTarget', { url: navUrl });
+    const targetId = (result as Record<string, unknown>).targetId as string;
+
+    if (!targetId) return 'Failed to create new tab.';
+
+    // Switch to the new tab
+    const targets = await getTargets(debugPort);
+    const newTarget = targets.find(t => t.id === targetId);
+
+    if (newTarget?.webSocketDebuggerUrl) {
+      client?.close();
+      client = new CDPClient();
+      await client.connect(newTarget.webSocketDebuggerUrl);
+      await client.send('Page.enable');
+      await client.send('Runtime.enable');
+    }
+
+    return `Opened new tab: ${navUrl}`;
   }
 }

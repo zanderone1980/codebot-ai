@@ -8,8 +8,9 @@ import { SessionManager } from './history';
 import { loadConfig, isFirstRun, runSetup } from './setup';
 import { banner, randomGreeting, compactBanner } from './banner';
 import { EditFileTool } from './tools';
+import { Scheduler } from './scheduler';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 // Session-wide token tracking
 let sessionTokens = { input: 0, output: 0, total: 0 };
@@ -112,8 +113,15 @@ export async function main() {
     return;
   }
 
+  // Start the routine scheduler in the background
+  const scheduler = new Scheduler(agent, (text) => process.stdout.write(text));
+  scheduler.start();
+
   // Interactive REPL
   await repl(agent, config, session);
+
+  // Cleanup scheduler on exit
+  scheduler.stop();
 }
 
 function createProvider(config: Config): LLMProvider {
@@ -276,6 +284,7 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /clear     Clear conversation history
   /compact   Force context compaction
   /auto      Toggle autonomous mode
+  /routines  List scheduled routines
   /undo      Undo last file edit (/undo [path])
   /usage     Show token usage for this session
   /config    Show current config
@@ -337,6 +346,12 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
       console.log(`  Input:  ${sessionTokens.input.toLocaleString()} tokens`);
       console.log(`  Output: ${sessionTokens.output.toLocaleString()} tokens`);
       console.log(`  Total:  ${(sessionTokens.input + sessionTokens.output).toLocaleString()} tokens`);
+      break;
+    }
+    case '/routines': {
+      const { RoutineTool } = require('./tools/routine');
+      const rt = new RoutineTool();
+      rt.execute({ action: 'list' }).then((out: string) => console.log('\n' + out));
       break;
     }
     case '/config':

@@ -8,8 +8,10 @@ import { GrepTool } from './grep';
 import { ThinkTool } from './think';
 import { MemoryTool } from './memory';
 import { WebFetchTool } from './web-fetch';
+import { WebSearchTool } from './web-search';
 import { BrowserTool } from './browser';
 import { BatchEditTool } from './batch-edit';
+import { RoutineTool } from './routine';
 
 export { EditFileTool } from './edit';
 
@@ -27,7 +29,9 @@ export class ToolRegistry {
     this.register(new ThinkTool());
     this.register(new MemoryTool(projectRoot));
     this.register(new WebFetchTool());
+    this.register(new WebSearchTool());
     this.register(new BrowserTool());
+    this.register(new RoutineTool());
   }
 
   register(tool: Tool) {
