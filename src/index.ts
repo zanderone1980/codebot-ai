@@ -1,0 +1,12 @@
+export { Agent } from './agent';
+export { OpenAIProvider } from './providers/openai';
+export { AnthropicProvider } from './providers/anthropic';
+export { ToolRegistry } from './tools';
+export { ContextManager } from './context/manager';
+export { buildRepoMap } from './context/repo-map';
+export { SessionManager } from './history';
+export { MemoryManager } from './memory';
+export { parseToolCalls } from './parser';
+export { MODEL_REGISTRY, PROVIDER_DEFAULTS, getModelInfo, detectProvider } from './providers/registry';
+export type { ModelInfo } from './providers/registry';
+export * from './types';

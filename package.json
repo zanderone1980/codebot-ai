@@ -1,0 +1,46 @@
+{
+  "name": "codebot-ai",
+  "version": "1.0.0",
+  "description": "Local-first AI coding assistant. Zero dependencies. Works with Ollama, LM Studio, vLLM, Claude, GPT, Gemini, and more.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "codebot": "./bin/codebot"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "node --test dist/**/*.test.js",
+    "lint": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "ai",
+    "coding-assistant",
+    "ollama",
+    "local-llm",
+    "agent",
+    "cli",
+    "code-generation",
+    "claude",
+    "gpt",
+    "gemini",
+    "autonomous",
+    "agentic"
+  ],
+  "author": "Ascendral Software Development & Innovation",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^20.0.0"
+  }
+}
