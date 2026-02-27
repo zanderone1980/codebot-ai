@@ -7,8 +7,12 @@ import { AgentEvent, Config, LLMProvider, Message } from './types';
 import { SessionManager } from './history';
 import { loadConfig, isFirstRun, runSetup } from './setup';
 import { banner, randomGreeting, compactBanner } from './banner';
+import { EditFileTool } from './tools';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+
+// Session-wide token tracking
+let sessionTokens = { input: 0, output: 0, total: 0 };
 
 const C = {
   reset: '\x1b[0m',
@@ -220,6 +224,9 @@ function renderEvent(event: AgentEvent) {
       break;
     case 'usage':
       if (event.usage) {
+        if (event.usage.inputTokens) sessionTokens.input += event.usage.inputTokens;
+        if (event.usage.outputTokens) sessionTokens.output += event.usage.outputTokens;
+        if (event.usage.totalTokens) sessionTokens.total += event.usage.totalTokens;
         const parts: string[] = [];
         if (event.usage.inputTokens) parts.push(`in: ${event.usage.inputTokens}`);
         if (event.usage.outputTokens) parts.push(`out: ${event.usage.outputTokens}`);
@@ -269,6 +276,8 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /clear     Clear conversation history
   /compact   Force context compaction
   /auto      Toggle autonomous mode
+  /undo      Undo last file edit (/undo [path])
+  /usage     Show token usage for this session
   /config    Show current config
   /quit      Exit`);
       break;
@@ -314,6 +323,19 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
         }
         console.log(c(`\nResume with: codebot --resume <id>`, 'dim'));
       }
+      break;
+    }
+    case '/undo': {
+      const undoPath = rest.length > 0 ? rest.join(' ') : undefined;
+      const undoResult = EditFileTool.undo(undoPath);
+      console.log(c(undoResult, undoResult.includes('Restored') ? 'green' : 'yellow'));
+      break;
+    }
+    case '/usage': {
+      console.log(c('\nToken Usage (this session):', 'bold'));
+      console.log(`  Input:  ${sessionTokens.input.toLocaleString()} tokens`);
+      console.log(`  Output: ${sessionTokens.output.toLocaleString()} tokens`);
+      console.log(`  Total:  ${(sessionTokens.input + sessionTokens.output).toLocaleString()} tokens`);
       break;
     }
     case '/config':

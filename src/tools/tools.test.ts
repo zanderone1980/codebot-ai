@@ -6,15 +6,15 @@ import * as os from 'os';
 import { ToolRegistry } from './index';
 
 describe('ToolRegistry', () => {
-  it('registers all 10 tools', () => {
+  it('registers all 11 tools', () => {
     const registry = new ToolRegistry();
     const tools = registry.all();
-    assert.strictEqual(tools.length, 10);
+    assert.strictEqual(tools.length, 11);
   });
 
   it('can get tools by name', () => {
     const registry = new ToolRegistry();
-    const names = ['read_file', 'write_file', 'edit_file', 'execute', 'glob', 'grep', 'think', 'memory', 'web_fetch', 'browser'];
+    const names = ['read_file', 'write_file', 'edit_file', 'batch_edit', 'execute', 'glob', 'grep', 'think', 'memory', 'web_fetch', 'browser'];
     for (const name of names) {
       assert.ok(registry.get(name), `Tool "${name}" not found`);
     }
@@ -28,7 +28,7 @@ describe('ToolRegistry', () => {
   it('generates valid tool schemas', () => {
     const registry = new ToolRegistry();
     const schemas = registry.getSchemas();
-    assert.strictEqual(schemas.length, 10);
+    assert.strictEqual(schemas.length, 11);
     for (const schema of schemas) {
       assert.strictEqual(schema.type, 'function');
       assert.ok(schema.function.name, 'schema missing name');
@@ -40,7 +40,7 @@ describe('ToolRegistry', () => {
   it('all tools have correct permission levels', () => {
     const registry = new ToolRegistry();
     const auto = ['read_file', 'glob', 'grep', 'think', 'memory'];
-    const prompt = ['write_file', 'edit_file', 'web_fetch', 'browser'];
+    const prompt = ['write_file', 'edit_file', 'batch_edit', 'web_fetch', 'browser'];
     const alwaysAsk = ['execute'];
 
     for (const name of auto) {

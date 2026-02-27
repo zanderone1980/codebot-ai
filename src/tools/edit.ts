@@ -1,10 +1,15 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { Tool } from '../types';
+
+// Undo snapshot directory
+const UNDO_DIR = path.join(os.homedir(), '.codebot', 'undo');
+const MAX_UNDO = 50;
 
 export class EditFileTool implements Tool {
   name = 'edit_file';
-  description = 'Edit a file by replacing an exact string match with new content. The old_string must appear exactly once in the file.';
+  description = 'Edit a file by replacing an exact string match with new content. The old_string must appear exactly once in the file. Shows a diff preview and creates an undo snapshot.';
   permission: Tool['permission'] = 'prompt';
   parameters = {
     type: 'object',
@@ -44,9 +49,131 @@ export class EditFileTool implements Tool {
       throw new Error(`String found ${count} times in ${filePath}. Provide more surrounding context to make it unique.`);
     }
 
+    // Save undo snapshot
+    this.saveSnapshot(filePath, content);
+
     const updated = content.replace(oldStr, newStr);
     fs.writeFileSync(filePath, updated, 'utf-8');
 
-    return `Edited ${filePath} (1 replacement)`;
+    // Generate diff preview
+    const diff = this.generateDiff(oldStr, newStr, content, filePath);
+    return diff;
+  }
+
+  private generateDiff(oldStr: string, newStr: string, content: string, filePath: string): string {
+    const lines = content.split('\n');
+    const matchIdx = content.indexOf(oldStr);
+    const linesBefore = content.substring(0, matchIdx).split('\n');
+    const startLine = linesBefore.length;
+
+    const oldLines = oldStr.split('\n');
+    const newLines = newStr.split('\n');
+
+    let diff = `Edited ${filePath}\n`;
+
+    // Show context (2 lines before)
+    const contextStart = Math.max(0, startLine - 3);
+    for (let i = contextStart; i < startLine - 1; i++) {
+      diff += `  ${i + 1} │ ${lines[i]}\n`;
+    }
+
+    // Show removed lines
+    for (const line of oldLines) {
+      diff += `  - │ ${line}\n`;
+    }
+
+    // Show added lines
+    for (const line of newLines) {
+      diff += `  + │ ${line}\n`;
+    }
+
+    // Show context (2 lines after)
+    const endLine = startLine - 1 + oldLines.length;
+    for (let i = endLine; i < Math.min(lines.length, endLine + 2); i++) {
+      diff += `  ${i + 1} │ ${lines[i]}\n`;
+    }
+
+    return diff.trimEnd();
+  }
+
+  /** Save a snapshot for undo */
+  private saveSnapshot(filePath: string, content: string) {
+    try {
+      fs.mkdirSync(UNDO_DIR, { recursive: true });
+
+      const manifest = this.loadManifest();
+      const entry = {
+        file: filePath,
+        timestamp: Date.now(),
+        snapshotFile: `${Date.now()}-${path.basename(filePath)}`,
+      };
+
+      // Write snapshot content
+      fs.writeFileSync(path.join(UNDO_DIR, entry.snapshotFile), content);
+
+      manifest.push(entry);
+
+      // Prune old snapshots
+      while (manifest.length > MAX_UNDO) {
+        const old = manifest.shift()!;
+        try { fs.unlinkSync(path.join(UNDO_DIR, old.snapshotFile)); } catch { /* ok */ }
+      }
+
+      fs.writeFileSync(path.join(UNDO_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    } catch {
+      // Best-effort, don't fail the edit
+    }
+  }
+
+  private loadManifest(): Array<{ file: string; timestamp: number; snapshotFile: string }> {
+    try {
+      const raw = fs.readFileSync(path.join(UNDO_DIR, 'manifest.json'), 'utf-8');
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Undo the last edit to a file. Returns result message. */
+  static undo(filePath?: string): string {
+    try {
+      const manifestPath = path.join(UNDO_DIR, 'manifest.json');
+      if (!fs.existsSync(manifestPath)) return 'No undo history available.';
+
+      const manifest: Array<{ file: string; timestamp: number; snapshotFile: string }> =
+        JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+
+      if (manifest.length === 0) return 'No undo history available.';
+
+      // Find the entry to undo
+      let entry;
+      if (filePath) {
+        const resolved = path.resolve(filePath);
+        for (let i = manifest.length - 1; i >= 0; i--) {
+          if (manifest[i].file === resolved) {
+            entry = manifest.splice(i, 1)[0];
+            break;
+          }
+        }
+        if (!entry) return `No undo history for ${filePath}`;
+      } else {
+        entry = manifest.pop()!;
+      }
+
+      // Restore the snapshot
+      const snapshotPath = path.join(UNDO_DIR, entry.snapshotFile);
+      if (!fs.existsSync(snapshotPath)) return 'Snapshot file missing.';
+
+      const content = fs.readFileSync(snapshotPath, 'utf-8');
+      fs.writeFileSync(entry.file, content, 'utf-8');
+
+      // Cleanup
+      try { fs.unlinkSync(snapshotPath); } catch { /* ok */ }
+      fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+      return `Restored ${entry.file} to state before last edit.`;
+    } catch (err) {
+      return `Undo failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
   }
 }

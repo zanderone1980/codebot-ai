@@ -9,6 +9,9 @@ import { ThinkTool } from './think';
 import { MemoryTool } from './memory';
 import { WebFetchTool } from './web-fetch';
 import { BrowserTool } from './browser';
+import { BatchEditTool } from './batch-edit';
+
+export { EditFileTool } from './edit';
 
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
@@ -17,6 +20,7 @@ export class ToolRegistry {
     this.register(new ReadFileTool());
     this.register(new WriteFileTool());
     this.register(new EditFileTool());
+    this.register(new BatchEditTool());
     this.register(new ExecuteTool());
     this.register(new GlobTool());
     this.register(new GrepTool());

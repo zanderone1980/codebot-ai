@@ -7,6 +7,8 @@ export { buildRepoMap } from './context/repo-map';
 export { SessionManager } from './history';
 export { MemoryManager } from './memory';
 export { parseToolCalls } from './parser';
+export { loadPlugins } from './plugins';
+export { loadMCPTools } from './mcp';
 export { MODEL_REGISTRY, PROVIDER_DEFAULTS, getModelInfo, detectProvider } from './providers/registry';
 export type { ModelInfo } from './providers/registry';
 export * from './types';

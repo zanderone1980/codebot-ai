@@ -115,6 +115,8 @@ codebot --resume <session-id>   # Resume specific session
 /models    List all supported models
 /sessions  List saved sessions
 /auto      Toggle autonomous mode
+/undo      Undo last file edit (/undo [path])
+/usage     Show token usage for this session
 /clear     Clear conversation
 /compact   Force context compaction
 /config    Show configuration
@@ -123,13 +125,14 @@ codebot --resume <session-id>   # Resume specific session
 
 ## Tools
 
-CodeBot has 10 built-in tools:
+CodeBot has 11 built-in tools:
 
 | Tool | Description | Permission |
 |------|-------------|-----------|
 | `read_file` | Read files with line numbers | auto |
-| `write_file` | Create or overwrite files | prompt |
-| `edit_file` | Find-and-replace edits | prompt |
+| `write_file` | Create or overwrite files (with undo snapshots) | prompt |
+| `edit_file` | Find-and-replace edits with diff preview + undo | prompt |
+| `batch_edit` | Multi-file atomic find-and-replace | prompt |
 | `execute` | Run shell commands | always-ask |
 | `glob` | Find files by pattern | auto |
 | `grep` | Search file contents with regex | auto |
@@ -168,6 +171,40 @@ CodeBot has persistent memory that survives across sessions:
 - Memory is automatically injected into the system prompt
 - The agent can read/write its own memory using the `memory` tool
 
+### Plugins
+
+Extend CodeBot with custom tools. Drop `.js` files in `.codebot/plugins/` (project) or `~/.codebot/plugins/` (global):
+
+```javascript
+// .codebot/plugins/my-tool.js
+module.exports = {
+  name: 'my_tool',
+  description: 'Does something useful',
+  permission: 'prompt',
+  parameters: { type: 'object', properties: { input: { type: 'string' } }, required: ['input'] },
+  execute: async (args) => { return `Result: ${args.input}`; }
+};
+```
+
+### MCP Servers
+
+Connect external tool servers via [Model Context Protocol](https://modelcontextprotocol.io). Create `.codebot/mcp.json`:
+
+```json
+{
+  "servers": [
+    {
+      "name": "my-server",
+      "command": "npx",
+      "args": ["-y", "@my/mcp-server"],
+      "env": {}
+    }
+  ]
+}
+```
+
+MCP tools appear automatically with the `mcp_<server>_<tool>` prefix.
+
 ## Supported Models
 
 ### Local (Ollama / LM Studio / vLLM)
@@ -204,8 +241,11 @@ src/
     registry.ts         Model registry, provider detection
   browser/
     cdp.ts              Chrome DevTools Protocol client (zero-dep WebSocket)
+  plugins.ts            Plugin loader (.codebot/plugins/)
+  mcp.ts                MCP (Model Context Protocol) client
   tools/
     read.ts, write.ts, edit.ts, execute.ts
+    batch-edit.ts       Multi-file atomic editing
     glob.ts, grep.ts, think.ts
     memory.ts, web-fetch.ts, browser.ts
 ```

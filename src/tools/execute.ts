@@ -2,14 +2,42 @@ import { execSync } from 'child_process';
 import { Tool } from '../types';
 
 const BLOCKED_PATTERNS = [
+  // Destructive filesystem operations
   /rm\s+-rf\s+\//,
   /rm\s+-rf\s+~/,
   /rm\s+-rf\s+\*/,
+  /rm\s+-rf\s+\.\s/,
+  /rm\s+(-[a-z]*f[a-z]*\s+)?--no-preserve-root/,
+  // Disk/partition destruction
   /mkfs\./,
   /dd\s+if=.*of=\/dev\//,
+  /wipefs/,
+  /fdisk\s+\/dev\//,
+  /parted\s+\/dev\//,
+  // Fork bomb
   /:\(\)\s*\{[^}]*:\|:.*\}/,
+  // Permission escalation
   /chmod\s+-R\s+777\s+\//,
+  /chmod\s+777\s+\//,
+  /chown\s+-R\s+.*\s+\//,
+  // Windows destructive
   /format\s+c:/i,
+  /del\s+\/[sfq]\s+c:\\/i,
+  /rd\s+\/s\s+\/q\s+c:\\/i,
+  // Curl to shell pipes (common attack vector)
+  /curl\s+.*\|\s*(ba)?sh/,
+  /wget\s+.*\|\s*(ba)?sh/,
+  // History/log destruction
+  />\s*\/dev\/sda/,
+  /history\s+-c.*&&.*rm/,
+  // Shutdown/reboot
+  /shutdown\s+(-h\s+)?now/,
+  /reboot\b/,
+  /init\s+[06]/,
+  // Kernel module manipulation
+  /insmod\b/,
+  /rmmod\b/,
+  /modprobe\s+-r/,
 ];
 
 export class ExecuteTool implements Tool {

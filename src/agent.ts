@@ -1,11 +1,12 @@
 import * as readline from 'readline';
-import { Message, ToolCall, AgentEvent, LLMProvider, ToolSchema } from './types';
+import { Message, ToolCall, AgentEvent, LLMProvider, ToolSchema, Tool } from './types';
 import { ToolRegistry } from './tools';
 import { parseToolCalls } from './parser';
 import { ContextManager } from './context/manager';
 import { buildRepoMap } from './context/repo-map';
 import { MemoryManager } from './memory';
 import { getModelInfo } from './providers/registry';
+import { loadPlugins } from './plugins';
 
 export class Agent {
   private provider: LLMProvider;
@@ -34,6 +35,14 @@ export class Agent {
     this.autoApprove = opts.autoApprove || false;
     this.askPermission = opts.askPermission || defaultAskPermission;
     this.onMessage = opts.onMessage;
+
+    // Load plugins
+    try {
+      const plugins = loadPlugins(process.cwd());
+      for (const plugin of plugins) {
+        this.tools.register(plugin);
+      }
+    } catch { /* plugins unavailable */ }
 
     const supportsTools = getModelInfo(opts.model).supportsToolCalling;
     this.messages.push({

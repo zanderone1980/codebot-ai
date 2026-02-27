@@ -1,11 +1,11 @@
 {
   "name": "codebot-ai",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Local-first AI coding assistant. Zero dependencies. Works with Ollama, LM Studio, vLLM, Claude, GPT, Gemini, and more.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "codebot": "./bin/codebot"
+    "codebot": "bin/codebot"
   },
   "scripts": {
     "build": "tsc",
