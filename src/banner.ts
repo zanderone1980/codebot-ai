@@ -2,16 +2,13 @@
  * CodeBot AI mascot and CLI banner.
  *
  * Mascot name: Codi
- * Personality: A cyberpunk AI that lives in your terminal.
- *              Sharp, confident, ready to ship code at light speed.
- *              Codi doesn't need the cloud — runs local, thinks global.
+ * Three designs: Pixel Bot, Monitor Bot, Visor Helmet
  */
 
 const C = {
   reset: '\x1b[0m',
   bold: '\x1b[1m',
   dim: '\x1b[2m',
-  italic: '\x1b[3m',
   red: '\x1b[31m',
   green: '\x1b[32m',
   yellow: '\x1b[33m',
@@ -27,99 +24,99 @@ const C = {
 };
 
 // ─────────────────────────────────────────────────────
-// DESIGN 1: "Neon Visor" — Cyberpunk robot with glowing visor
-// The signature look. Sleek, powerful, unmistakable.
+// DESIGN 1: "Pixel Bot" — Half-block pixel art robot head
+// Retro-modern pixel aesthetic. The signature look.
 // ─────────────────────────────────────────────────────
 export const MASCOT_1 = `
-          ╱▔▔╲
-     ╔═══╡░░░░╞═══╗
-     ║ ┌──────────┐║
-     ║ │ ◈  ▓▓  ◈ │║
-     ║ └──────────┘║
-     ║   ╱ ════ ╲  ║
-     ╚═══╧══════╧══╝
+              ██
+       ▄▄████████████▄▄
+       █              █
+       █  ▄██▄  ▄██▄  █
+       █  ▀██▀  ▀██▀  █
+       █              █
+       █   ▀██████▀   █
+       ▀▀████████████▀▀
 `;
 
 export const BANNER_1 = (version: string, model: string, provider: string, session: string, autonomous: boolean): string => {
   const lines = [
     '',
-    `${C.dim}          ╱▔▔╲${C.reset}`,
-    `${C.cyan}     ╔═══╡${C.brightCyan}░░░░${C.cyan}╞═══╗${C.reset}`,
-    `${C.cyan}     ║${C.white} ┌──────────┐${C.cyan}║${C.reset}   ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
-    `${C.cyan}     ║${C.white} │ ${C.brightGreen}◈${C.white}  ${C.brightYellow}▓▓${C.white}  ${C.brightGreen}◈${C.white} │${C.cyan}║${C.reset}   ${C.dim}Think local. Code global.${C.reset}`,
-    `${C.cyan}     ║${C.white} └──────────┘${C.cyan}║${C.reset}`,
-    `${C.cyan}     ║${C.dim}   ╱ ${C.brightCyan}════${C.dim} ╲  ${C.cyan}║${C.reset}   ${C.dim}Model:    ${C.white}${model}${C.reset}`,
-    `${C.cyan}     ╚═══╧══════╧══╝${C.reset}   ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
-    `${C.dim}                        Session:  ${C.white}${session}${C.reset}`,
-    `${C.dim}                        ${autonomous ? `${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : ''}${C.reset}`,
+    `${C.brightGreen}              ██${C.reset}`,
+    `${C.cyan}       ▄▄████████████▄▄${C.reset}`,
+    `${C.cyan}       █${C.reset}              ${C.cyan}█${C.reset}   ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
+    `${C.cyan}       █  ${C.brightGreen}▄██▄${C.reset}  ${C.brightGreen}▄██▄${C.reset}  ${C.cyan}█${C.reset}   ${C.dim}Think local. Code global.${C.reset}`,
+    `${C.cyan}       █  ${C.brightGreen}▀██▀${C.reset}  ${C.brightGreen}▀██▀${C.reset}  ${C.cyan}█${C.reset}`,
+    `${C.cyan}       █${C.reset}              ${C.cyan}█${C.reset}   ${C.dim}Model:    ${C.white}${model}${C.reset}`,
+    `${C.cyan}       █   ${C.brightCyan}▀██████▀${C.reset}   ${C.cyan}█${C.reset}   ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
+    `${C.cyan}       ▀▀████████████▀▀${C.reset}   ${C.dim}Session:  ${C.white}${session}${C.reset}`,
+    autonomous ? `                           ${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : '',
     '',
   ];
   return lines.join('\n');
 };
 
 // ─────────────────────────────────────────────────────
-// DESIGN 2: "Signal Bot" — Broadcasting antenna, expressive eyes
-// Character-driven. Friendly but techy. The comms officer.
+// DESIGN 2: "Monitor Bot" — Screen face with side panels
+// Clean technical look. Like a friendly terminal display.
 // ─────────────────────────────────────────────────────
 export const MASCOT_2 = `
-        ╭┄┄)))))
-     ┌──┴────────┐
-     │  ◉      ◉  │
-     │  ╰──┬┬──╯  │
-     │    ┌┘└┐    │
-     └──┬─┤▓▓├─┬──┘
-        └─┴──┴─┘
+    ╔╗ ╔════════════════╗ ╔╗
+    ║║ ║                ║ ║║
+    ║║ ║   ●        ●   ║ ║║
+    ║║ ║                ║ ║║
+    ║║ ║    └──────┘    ║ ║║
+    ║║ ║                ║ ║║
+    ╚╝ ╚════════════════╝ ╚╝
 `;
 
 export const BANNER_2 = (version: string, model: string, provider: string, session: string, autonomous: boolean): string => {
   const lines = [
     '',
-    `${C.dim}        ╭┄┄${C.brightYellow})))${C.brightGreen})${C.brightCyan})${C.reset}`,
-    `${C.cyan}     ┌──┴────────┐${C.reset}`,
-    `${C.cyan}     │  ${C.brightGreen}◉${C.cyan}      ${C.brightGreen}◉${C.cyan}  │${C.reset}   ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
-    `${C.cyan}     │  ${C.dim}╰──┬┬──╯${C.cyan}  │${C.reset}   ${C.dim}Think local. Code global.${C.reset}`,
-    `${C.cyan}     │    ${C.dim}┌┘└┐${C.cyan}    │${C.reset}`,
-    `${C.cyan}     └──┬─┤${C.brightYellow}▓▓${C.cyan}├─┬──┘${C.reset}   ${C.dim}Model:    ${C.white}${model}${C.reset}`,
-    `${C.cyan}        └─┴──┴─┘${C.reset}      ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
-    `${C.dim}                        Session:  ${C.white}${session}${C.reset}`,
-    `${C.dim}                        ${autonomous ? `${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : ''}${C.reset}`,
+    `${C.dim}    ╔╗${C.reset} ${C.cyan}╔════════════════╗${C.reset} ${C.dim}╔╗${C.reset}`,
+    `${C.dim}    ║║${C.reset} ${C.cyan}║${C.reset}                ${C.cyan}║${C.reset} ${C.dim}║║${C.reset}`,
+    `${C.dim}    ║║${C.reset} ${C.cyan}║${C.reset}   ${C.brightGreen}●${C.reset}        ${C.brightGreen}●${C.reset}   ${C.cyan}║${C.reset} ${C.dim}║║${C.reset}   ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
+    `${C.dim}    ║║${C.reset} ${C.cyan}║${C.reset}                ${C.cyan}║${C.reset} ${C.dim}║║${C.reset}   ${C.dim}Think local. Code global.${C.reset}`,
+    `${C.dim}    ║║${C.reset} ${C.cyan}║${C.reset}    ${C.brightCyan}└──────┘${C.reset}    ${C.cyan}║${C.reset} ${C.dim}║║${C.reset}`,
+    `${C.dim}    ║║${C.reset} ${C.cyan}║${C.reset}                ${C.cyan}║${C.reset} ${C.dim}║║${C.reset}   ${C.dim}Model:    ${C.white}${model}${C.reset}`,
+    `${C.dim}    ╚╝${C.reset} ${C.cyan}╚════════════════╝${C.reset} ${C.dim}╚╝${C.reset}   ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
+    `                                ${C.dim}Session:  ${C.white}${session}${C.reset}`,
+    autonomous ? `                                ${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : '',
     '',
   ];
   return lines.join('\n');
 };
 
 // ─────────────────────────────────────────────────────
-// DESIGN 3: "Holo Core" — Floating holographic AI core
-// Abstract, futuristic. A projection from the machine.
+// DESIGN 3: "Visor Helmet" — Daft Punk style with glowing visor
+// Sleek, aggressive, cyberpunk. Diamond silhouette.
 // ─────────────────────────────────────────────────────
 export const MASCOT_3 = `
-      ╭━━━━━━━━━━━╮
-     ╱  ◇      ◇   ╲
-    │  ░░░░████░░░░  │
-     ╲   ╰══════╯   ╱
-      ╰━━━━┯━━┯━━━━╯
-           ┃  ┃
-      ━━━━━┻━━┻━━━━━
+         ▄████████▄
+        █▀        ▀█
+       █ ░░██████░░ █
+       █ ░░░░░░░░░░ █
+        █▄        ▄█
+         ▀████████▀
 `;
 
 export const BANNER_3 = (version: string, model: string, provider: string, session: string, autonomous: boolean): string => {
   const lines = [
     '',
-    `${C.brightCyan}      ╭━━━━━━━━━━━╮${C.reset}`,
-    `${C.cyan}     ╱  ${C.brightMagenta}◇${C.cyan}      ${C.brightMagenta}◇${C.cyan}   ╲${C.reset}   ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
-    `${C.cyan}    │  ${C.brightCyan}░░░░${C.brightWhite}████${C.brightCyan}░░░░${C.cyan}  │${C.reset}   ${C.dim}Think local. Code global.${C.reset}`,
-    `${C.cyan}     ╲   ${C.dim}╰══════╯${C.cyan}   ╱${C.reset}`,
-    `${C.brightCyan}      ╰━━━━${C.dim}┯━━┯${C.brightCyan}━━━━╯${C.reset}   ${C.dim}Model:    ${C.white}${model}${C.reset}`,
-    `${C.dim}           ┃  ┃${C.reset}          ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
-    `${C.brightCyan}      ━━━━━${C.dim}┻━━┻${C.brightCyan}━━━━━${C.reset}   ${C.dim}Session:  ${C.white}${session}${C.reset}`,
-    `${C.dim}                        ${autonomous ? `${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : ''}${C.reset}`,
+    `${C.cyan}         ▄████████▄${C.reset}`,
+    `${C.cyan}        █▀${C.reset}        ${C.cyan}▀█${C.reset}       ${C.bold}${C.brightCyan}CodeBot AI${C.reset} ${C.dim}v${version}${C.reset}`,
+    `${C.cyan}       █ ${C.brightCyan}░░${C.brightGreen}██████${C.brightCyan}░░${C.cyan} █${C.reset}      ${C.dim}Think local. Code global.${C.reset}`,
+    `${C.cyan}       █ ${C.dim}░░░░░░░░░░${C.cyan} █${C.reset}`,
+    `${C.cyan}        █▄${C.reset}        ${C.cyan}▄█${C.reset}       ${C.dim}Model:    ${C.white}${model}${C.reset}`,
+    `${C.cyan}         ▀████████▀${C.reset}        ${C.dim}Provider: ${C.white}${provider}${C.reset}`,
+    `                            ${C.dim}Session:  ${C.white}${session}${C.reset}`,
+    autonomous ? `                            ${C.brightYellow}${C.bold}⚡ AUTONOMOUS${C.reset}` : '',
     '',
   ];
   return lines.join('\n');
 };
 
 // ─────────────────────────────────────────────────────
-// Default banner (Design 1 — Neon Visor, the signature look)
+// Default banner (Design 1 — Pixel Bot)
 // ─────────────────────────────────────────────────────
 export const banner = BANNER_1;
 

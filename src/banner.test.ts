@@ -24,10 +24,10 @@ describe('Banner', () => {
     assert.ok(b3.length > 0, 'Banner 3 should have content');
   });
 
-  it('mascot ASCII art is defined', () => {
-    assert.ok(MASCOT_1.includes('◈'), 'Mascot 1 should have visor eyes');
-    assert.ok(MASCOT_2.includes('◉'), 'Mascot 2 should have signal eyes');
-    assert.ok(MASCOT_3.includes('◇'), 'Mascot 3 should have holo diamonds');
+  it('mascot ASCII art has distinctive features', () => {
+    assert.ok(MASCOT_1.includes('▄██▄'), 'Pixel Bot should have block eyes');
+    assert.ok(MASCOT_2.includes('●'), 'Monitor Bot should have dot eyes');
+    assert.ok(MASCOT_3.includes('░░'), 'Visor Helmet should have visor glass');
   });
 
   it('randomGreeting returns a string', () => {
