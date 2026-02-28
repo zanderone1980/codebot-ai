@@ -73,6 +73,7 @@ export interface AgentEvent {
   toolResult?: { name: string; result: string; is_error?: boolean };
   error?: string;
   usage?: UsageStats;
+  risk?: { score: number; level: string };
 }
 
 export interface Config {

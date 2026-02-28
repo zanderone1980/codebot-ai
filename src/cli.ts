@@ -15,8 +15,10 @@ import { AuditLogger } from './audit';
 import { generateDefaultPolicyFile } from './policy';
 import { getSandboxInfo } from './sandbox';
 import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSessions } from './replay';
+import { RiskScorer } from './risk';
+import { exportSarif, sarifToString } from './sarif';
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 
 const C = {
   reset: '\x1b[0m',
@@ -207,6 +209,20 @@ export async function main() {
     return;
   }
 
+  // --export-audit sarif: Export audit log as SARIF 2.1.0
+  if (args['export-audit'] === 'sarif' || args['export-audit'] === true) {
+    const logger = new AuditLogger();
+    const sessionId = typeof args['session'] === 'string' ? args['session'] as string : undefined;
+    const entries = sessionId ? logger.query({ sessionId }) : logger.query();
+    if (entries.length === 0) {
+      console.error(c('No audit entries found.', 'yellow'));
+      process.exit(1);
+    }
+    const sarif = exportSarif(entries, { version: VERSION, sessionId });
+    process.stdout.write(sarifToString(sarif) + '\n');
+    return;
+  }
+
   // First run: auto-launch setup if nothing is configured
   if (isFirstRun() && process.stdin.isTTY && !args.message) {
     console.log(c('Welcome! No configuration found — launching setup...', 'cyan'));
@@ -289,7 +305,7 @@ export async function main() {
   scheduler.stop();
 }
 
-/** Print session summary with tokens, cost, tool calls, files modified */
+/** Print session summary with tokens, cost, tool calls, files modified, metrics */
 function printSessionSummary(agent: Agent) {
   const tracker = agent.getTokenTracker();
   tracker.saveUsage();
@@ -306,6 +322,30 @@ function printSessionSummary(agent: Agent) {
   console.log(`  Requests:  ${summary.requestCount}`);
   console.log(`  Tools:     ${summary.toolCalls} calls`);
   console.log(`  Files:     ${summary.filesModified} modified`);
+
+  // v1.9.0: Per-tool breakdown from MetricsCollector
+  const metrics = agent.getMetrics();
+  const snap = metrics.snapshot();
+  const toolCounters = snap.counters.filter(c => c.name === 'tool_calls_total');
+  if (toolCounters.length > 0) {
+    console.log(c('  Per-tool:', 'dim'));
+    for (const tc of toolCounters.sort((a, b) => b.value - a.value)) {
+      const hist = snap.histograms.find(h => h.name === 'tool_latency_seconds' && h.labels.tool === tc.labels.tool);
+      const avg = hist && hist.count > 0 ? (hist.sum / hist.count * 1000).toFixed(0) : '?';
+      console.log(c(`    ${tc.labels.tool}: ${tc.value} calls (avg ${avg}ms)`, 'dim'));
+    }
+  }
+
+  // Risk summary
+  const riskScorer = agent.getRiskScorer();
+  const riskAvg = riskScorer.getSessionAverage();
+  if (riskScorer.getHistory().length > 0) {
+    console.log(`  Risk:      avg ${riskAvg}/100`);
+  }
+
+  // Save metrics
+  metrics.save();
+  metrics.exportOtel();
 }
 
 function createProvider(config: Config): LLMProvider {
@@ -396,10 +436,16 @@ function renderEvent(event: AgentEvent, agent?: Agent) {
         process.stdout.write('\n');
         isThinking = false;
       }
-      console.log(
-        c(`\n⚡ ${event.toolCall?.name}`, 'yellow') +
-          c(`(${formatArgs(event.toolCall?.args)})`, 'dim')
-      );
+      {
+        const riskStr = event.risk
+          ? ' ' + RiskScorer.formatIndicator({ score: event.risk.score, level: event.risk.level as 'green' | 'yellow' | 'orange' | 'red', factors: [] })
+          : '';
+        console.log(
+          c(`\n⚡ ${event.toolCall?.name}`, 'yellow') +
+            c(`(${formatArgs(event.toolCall?.args)})`, 'dim') +
+            riskStr
+        );
+      }
       break;
     case 'tool_result':
       if (event.toolResult?.is_error) {
@@ -470,6 +516,8 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /undo      Undo last file edit (/undo [path])
   /usage     Show token usage & cost for this session
   /cost      Show running cost
+  /metrics   Show session metrics (counters + histograms)
+  /risk      Show risk assessment summary
   /policy    Show current security policy
   /audit     Verify audit chain for this session
   /config    Show current config
@@ -541,6 +589,25 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
     case '/cost': {
       const tracker = agent.getTokenTracker();
       console.log(c(`  ${tracker.formatStatusLine()}`, 'dim'));
+      break;
+    }
+    case '/metrics': {
+      const metricsOutput = agent.getMetrics().formatSummary();
+      console.log('\n' + metricsOutput);
+      break;
+    }
+    case '/risk': {
+      const riskHistory = agent.getRiskScorer().getHistory();
+      if (riskHistory.length === 0) {
+        console.log(c('No risk assessments yet.', 'dim'));
+      } else {
+        const avg = agent.getRiskScorer().getSessionAverage();
+        console.log(c(`\nRisk Summary: ${riskHistory.length} assessments, avg ${avg}/100`, 'bold'));
+        const last5 = riskHistory.slice(-5);
+        for (const a of last5) {
+          console.log(`  ${RiskScorer.formatIndicator(a)}`);
+        }
+      }
       break;
     }
     case '/policy': {
@@ -708,6 +775,16 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       }
       continue;
     }
+    if (arg === '--export-audit') {
+      const next = argv[i + 1];
+      if (next && !next.startsWith('--')) {
+        result['export-audit'] = next;
+        i++;
+      } else {
+        result['export-audit'] = true;
+      }
+      continue;
+    }
     if (arg === '--replay') {
       const next = argv[i + 1];
       if (next && !next.startsWith('--')) {
@@ -778,6 +855,7 @@ ${c('Options:', 'bold')}
 ${c('Security & Policy:', 'bold')}
   --init-policy        Generate default .codebot/policy.json
   --verify-audit [id]  Verify audit log hash chain integrity
+  --export-audit sarif Export audit log as SARIF 2.1.0 JSON
   --sandbox-info       Show Docker sandbox status
 
 ${c('Debugging & Replay:', 'bold')}
@@ -803,6 +881,7 @@ ${c('Examples:', 'bold')}
   codebot --autonomous "refactor src/"     Full auto, no prompts
   codebot --init-policy                    Create security policy
   codebot --verify-audit                   Check audit integrity
+  codebot --export-audit sarif > r.sarif   Export SARIF report
 
 ${c('Interactive Commands:', 'bold')}
   /help      Show commands
@@ -814,6 +893,8 @@ ${c('Interactive Commands:', 'bold')}
   /compact   Force context compaction
   /usage     Show token usage & cost
   /cost      Show running cost
+  /metrics   Show session metrics
+  /risk      Show risk assessment summary
   /policy    Show security policy
   /audit     Verify session audit chain
   /config    Show configuration

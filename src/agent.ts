@@ -13,6 +13,8 @@ import { RateLimiter } from './rate-limiter';
 import { AuditLogger } from './audit';
 import { PolicyEnforcer, loadPolicy } from './policy';
 import { TokenTracker } from './telemetry';
+import { MetricsCollector } from './metrics';
+import { RiskScorer } from './risk';
 
 /** Lightweight schema validation — returns error string or null if valid */
 function validateToolArgs(args: Record<string, unknown>, schema: Record<string, unknown>): string | null {
@@ -76,6 +78,8 @@ export class Agent {
   private auditLogger: AuditLogger;
   private policyEnforcer: PolicyEnforcer;
   private tokenTracker: TokenTracker;
+  private metricsCollector: MetricsCollector;
+  private riskScorer: RiskScorer;
   private branchCreated: boolean = false;
   private askPermission: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
   private onMessage?: (message: Message) => void;
@@ -109,6 +113,8 @@ export class Agent {
 
     // Token & cost tracking
     this.tokenTracker = new TokenTracker(opts.model, opts.providerName || 'unknown');
+    this.metricsCollector = new MetricsCollector();
+    this.riskScorer = new RiskScorer();
     const costLimit = this.policyEnforcer.getCostLimitUsd();
     if (costLimit > 0) this.tokenTracker.setCostLimit(costLimit);
 
@@ -192,6 +198,9 @@ export class Agent {
                   event.usage.inputTokens || 0,
                   event.usage.outputTokens || 0,
                 );
+                this.metricsCollector.increment('llm_requests_total');
+                this.metricsCollector.increment('llm_tokens_total', { direction: 'input' }, event.usage.inputTokens || 0);
+                this.metricsCollector.increment('llm_tokens_total', { direction: 'output' }, event.usage.outputTokens || 0);
               }
               yield { type: 'usage', usage: event.usage };
               break;
@@ -300,11 +309,19 @@ export class Agent {
           continue;
         }
 
-        yield { type: 'tool_call', toolCall: { name: toolName, args } };
-
-        // Permission check: policy override > tool default
+        // Compute risk score before execution
         const policyPermission = this.policyEnforcer.getToolPermission(toolName);
         const effectivePermission = policyPermission || tool.permission;
+        const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
+        yield { type: 'tool_call', toolCall: { name: toolName, args }, risk: { score: riskAssessment.score, level: riskAssessment.level } };
+
+        // Log risk breakdown for high-risk calls
+        if (riskAssessment.score > 50) {
+          const breakdown = riskAssessment.factors.map(f => `${f.name}=${f.rawScore}`).join(', ');
+          this.auditLogger.log({ tool: toolName, action: 'execute', args, result: `risk:${riskAssessment.score}`, reason: breakdown });
+        }
+
+        // Permission check: policy override > tool default
         const needsPermission =
           effectivePermission === 'always-ask' ||
           (effectivePermission === 'prompt' && !this.autoApprove);
@@ -315,6 +332,7 @@ export class Agent {
           if (!approved) {
             denied = true;
             this.auditLogger.log({ tool: toolName, action: 'deny', args, reason: 'User denied permission' });
+            this.metricsCollector.increment('permission_denials_total', { tool: toolName });
           }
         }
 
@@ -349,9 +367,10 @@ export class Agent {
         }
       }
 
-      // Helper to execute a single tool with cache + rate limiting
+      // Helper to execute a single tool with cache + rate limiting + metrics
       const executeTool = async (prep: PreparedCall): Promise<ToolOutput> => {
         const toolName = prep.tc.function.name;
+        const toolStartTime = Date.now();
 
         // Auto-branch on first write/edit when always_branch is enabled (v1.8.0)
         if (toolName === 'write_file' || toolName === 'edit_file' || toolName === 'batch_edit') {
@@ -365,6 +384,7 @@ export class Agent {
         const capBlock = this.checkToolCapabilities(toolName, prep.args);
         if (capBlock) {
           this.auditLogger.log({ tool: toolName, action: 'capability_block', args: prep.args, reason: capBlock });
+          this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'capability' });
           return { content: `Error: ${capBlock}`, is_error: true };
         }
 
@@ -373,8 +393,10 @@ export class Agent {
           const cacheKey = ToolCache.key(toolName, prep.args);
           const cached = this.cache.get(cacheKey);
           if (cached !== null) {
+            this.metricsCollector.increment('cache_hits_total', { tool: toolName });
             return { content: cached };
           }
+          this.metricsCollector.increment('cache_misses_total', { tool: toolName });
         }
 
         // Rate limit
@@ -383,6 +405,11 @@ export class Agent {
         try {
           const output = await prep.tool.execute(prep.args);
 
+          // Record tool latency
+          const latencyMs = Date.now() - toolStartTime;
+          this.metricsCollector.observe('tool_latency_seconds', latencyMs / 1000, { tool: toolName });
+          this.metricsCollector.increment('tool_calls_total', { tool: toolName });
+
           // Audit log: successful execution
           this.auditLogger.log({ tool: toolName, action: 'execute', args: prep.args, result: 'success' });
 
@@ -390,6 +417,12 @@ export class Agent {
           this.tokenTracker.recordToolCall();
           if ((toolName === 'write_file' || toolName === 'edit_file' || toolName === 'batch_edit') && prep.args.path) {
             this.tokenTracker.recordFileModified(prep.args.path as string);
+            this.metricsCollector.increment('files_written_total', { tool: toolName });
+          }
+
+          // Track commands executed
+          if (toolName === 'execute') {
+            this.metricsCollector.increment('commands_executed_total');
           }
 
           // Store in cache for cacheable tools
@@ -407,11 +440,16 @@ export class Agent {
           // Audit log: check if tool returned a security block
           if (output.startsWith('Error: Blocked:') || output.startsWith('Error: CWD')) {
             this.auditLogger.log({ tool: toolName, action: 'security_block', args: prep.args, reason: output });
+            this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'security' });
           }
 
           return { content: output };
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
+          // Record latency even on error
+          const latencyMs = Date.now() - toolStartTime;
+          this.metricsCollector.observe('tool_latency_seconds', latencyMs / 1000, { tool: toolName });
+          this.metricsCollector.increment('errors_total', { tool: toolName });
           // Audit log: error
           this.auditLogger.log({ tool: toolName, action: 'error', args: prep.args, result: 'error', reason: errMsg });
           return { content: `Error: ${errMsg}`, is_error: true };
@@ -492,6 +530,16 @@ export class Agent {
   /** Get the audit logger for verification */
   getAuditLogger(): AuditLogger {
     return this.auditLogger;
+  }
+
+  /** Get the metrics collector for session metrics */
+  getMetrics(): MetricsCollector {
+    return this.metricsCollector;
+  }
+
+  /** Get the risk scorer for risk assessment history */
+  getRiskScorer(): RiskScorer {
+    return this.riskScorer;
   }
 
   /**

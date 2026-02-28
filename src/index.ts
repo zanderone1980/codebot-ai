@@ -17,4 +17,10 @@ export { deriveSessionKey, signMessage, verifyMessage, verifyMessages } from './
 export type { IntegrityResult } from './integrity';
 export { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSessions } from './replay';
 export type { SessionReplayData, ReplayDivergence } from './replay';
+export { MetricsCollector } from './metrics';
+export type { MetricsSnapshot, CounterValue, HistogramValue } from './metrics';
+export { RiskScorer } from './risk';
+export type { RiskAssessment, RiskFactor } from './risk';
+export { exportSarif, sarifToString } from './sarif';
+export type { SarifLog, SarifResult, SarifRule } from './sarif';
 export * from './types';
