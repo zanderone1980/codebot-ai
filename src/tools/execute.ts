@@ -1,6 +1,8 @@
 import { execSync } from 'child_process';
 import { Tool } from '../types';
 import { isCwdSafe } from '../security';
+import { sandboxExec, isDockerAvailable } from '../sandbox';
+import { loadPolicy } from '../policy';
 
 const BLOCKED_PATTERNS = [
   // Destructive filesystem operations
@@ -116,25 +118,54 @@ export class ExecuteTool implements Tool {
       return `Error: ${cwdSafety.reason}`;
     }
 
-    // Security: filter sensitive env vars
+    const timeout = (args.timeout as number) || 30000;
+
+    // ── v1.7.0: Sandbox routing ──
+    const policy = loadPolicy(projectRoot);
+    const sandboxMode = policy.execution?.sandbox || 'auto';
+    const useSandbox =
+      sandboxMode === 'docker' ||
+      (sandboxMode === 'auto' && isDockerAvailable());
+
+    if (useSandbox) {
+      const result = sandboxExec(cmd, projectRoot, {
+        network: policy.execution?.network !== false,
+        memoryMb: policy.execution?.max_memory_mb || 512,
+        timeoutMs: timeout,
+      });
+
+      if (result.sandboxed) {
+        const output = result.stdout || result.stderr || '(no output)';
+        const tag = '[sandboxed]';
+        if (result.exitCode !== 0) {
+          return `${tag} Exit code ${result.exitCode}\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`;
+        }
+        return `${tag} ${output}`;
+      }
+      // Fallthrough: sandboxExec returned sandboxed=false (Docker wasn't available after all)
+    }
+
+    // ── Host execution (existing path) ──
     const safeEnv = { ...process.env };
     for (const key of FILTERED_ENV_VARS) {
       delete safeEnv[key];
     }
 
+    const tag = useSandbox ? '[host-fallback]' : '[host]';
+
     try {
       const output = execSync(cmd, {
         cwd,
-        timeout: (args.timeout as number) || 30000,
+        timeout,
         maxBuffer: 1024 * 1024,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
         env: safeEnv,
       });
-      return output || '(no output)';
+      return `${tag} ${output || '(no output)'}`;
     } catch (err: unknown) {
       const e = err as { status?: number; stdout?: string; stderr?: string };
-      return `Exit code ${e.status || 1}\nSTDOUT:\n${e.stdout || ''}\nSTDERR:\n${e.stderr || ''}`;
+      return `${tag} Exit code ${e.status || 1}\nSTDOUT:\n${e.stdout || ''}\nSTDERR:\n${e.stderr || ''}`;
     }
   }
 }

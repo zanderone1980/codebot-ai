@@ -34,7 +34,7 @@ describe('AuditLogger', () => {
     }
   });
 
-  it('includes all required fields', () => {
+  it('includes all required fields including hash chain', () => {
     const dir = makeTempDir();
     try {
       const logger = new AuditLogger(dir);
@@ -46,9 +46,13 @@ describe('AuditLogger', () => {
 
       assert.ok(entry.timestamp, 'Should have timestamp');
       assert.ok(entry.sessionId, 'Should have sessionId');
+      assert.strictEqual(entry.sequence, 1, 'First entry should be sequence 1');
       assert.strictEqual(entry.tool, 'write_file');
       assert.strictEqual(entry.action, 'execute');
       assert.ok(entry.args, 'Should have args');
+      assert.strictEqual(entry.prevHash, 'genesis', 'First entry should reference genesis');
+      assert.ok(entry.hash, 'Should have hash');
+      assert.strictEqual(entry.hash.length, 64, 'Hash should be SHA-256 hex');
     } finally {
       cleanup(dir);
     }
@@ -74,9 +78,7 @@ describe('AuditLogger', () => {
   });
 
   it('survives write errors without throwing', () => {
-    // Use a read-only directory path that doesn't exist
     const logger = new AuditLogger('/nonexistent/audit/path');
-    // This should NOT throw
     assert.doesNotThrow(() => {
       logger.log({ tool: 'test', action: 'execute', args: {} });
     });
@@ -108,6 +110,97 @@ describe('AuditLogger', () => {
       const blocks = logger.query({ action: 'security_block' });
       assert.strictEqual(blocks.length, 1);
       assert.strictEqual(blocks[0].tool, 'write_file');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('builds a valid hash chain', () => {
+    const dir = makeTempDir();
+    try {
+      const logger = new AuditLogger(dir);
+      logger.log({ tool: 'read_file', action: 'execute', args: { path: '/a.ts' } });
+      logger.log({ tool: 'write_file', action: 'execute', args: { path: '/b.ts' } });
+      logger.log({ tool: 'execute', action: 'execute', args: { command: 'npm test' } });
+
+      const entries = logger.query();
+      assert.strictEqual(entries.length, 3);
+
+      // Verify chain
+      const result = AuditLogger.verify(entries);
+      assert.strictEqual(result.valid, true, `Chain should be valid: ${result.reason}`);
+      assert.strictEqual(result.entriesChecked, 3);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('detects tampered entries', () => {
+    const dir = makeTempDir();
+    try {
+      const logger = new AuditLogger(dir);
+      logger.log({ tool: 'read_file', action: 'execute', args: { path: '/a.ts' } });
+      logger.log({ tool: 'write_file', action: 'execute', args: { path: '/b.ts' } });
+
+      // Tamper with entries
+      const entries = logger.query();
+      entries[1].tool = 'TAMPERED'; // Modify the tool name
+
+      const result = AuditLogger.verify(entries);
+      assert.strictEqual(result.valid, false, 'Should detect tampering');
+      assert.ok(result.reason?.includes('Hash mismatch') || result.reason?.includes('Chain break'),
+        `Should explain failure: ${result.reason}`);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('detects chain breaks (deleted entries)', () => {
+    const dir = makeTempDir();
+    try {
+      const logger = new AuditLogger(dir);
+      logger.log({ tool: 'read_file', action: 'execute', args: { path: '/a.ts' } });
+      logger.log({ tool: 'write_file', action: 'execute', args: { path: '/b.ts' } });
+      logger.log({ tool: 'execute', action: 'execute', args: { command: 'ls' } });
+
+      const entries = logger.query();
+      // Remove middle entry (simulate deletion)
+      const tampered = [entries[0], entries[2]];
+
+      const result = AuditLogger.verify(tampered);
+      assert.strictEqual(result.valid, false, 'Should detect missing entry');
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('verifySession returns valid for current session', () => {
+    const dir = makeTempDir();
+    try {
+      const logger = new AuditLogger(dir);
+      logger.log({ tool: 'read_file', action: 'execute', args: {} });
+      logger.log({ tool: 'write_file', action: 'execute', args: {} });
+
+      const result = logger.verifySession();
+      assert.strictEqual(result.valid, true);
+      assert.strictEqual(result.entriesChecked, 2);
+    } finally {
+      cleanup(dir);
+    }
+  });
+
+  it('increments sequence numbers correctly', () => {
+    const dir = makeTempDir();
+    try {
+      const logger = new AuditLogger(dir);
+      logger.log({ tool: 'a', action: 'execute', args: {} });
+      logger.log({ tool: 'b', action: 'execute', args: {} });
+      logger.log({ tool: 'c', action: 'execute', args: {} });
+
+      const entries = logger.query();
+      assert.strictEqual(entries[0].sequence, 1);
+      assert.strictEqual(entries[1].sequence, 2);
+      assert.strictEqual(entries[2].sequence, 3);
     } finally {
       cleanup(dir);
     }

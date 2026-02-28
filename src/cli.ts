@@ -1,4 +1,6 @@
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Agent } from './agent';
 import { OpenAIProvider } from './providers/openai';
 import { AnthropicProvider } from './providers/anthropic';
@@ -9,11 +11,11 @@ import { loadConfig, isFirstRun, runSetup } from './setup';
 import { banner, randomGreeting, compactBanner } from './banner';
 import { EditFileTool } from './tools';
 import { Scheduler } from './scheduler';
+import { AuditLogger } from './audit';
+import { generateDefaultPolicyFile } from './policy';
+import { getSandboxInfo } from './sandbox';
 
-const VERSION = '1.6.0';
-
-// Session-wide token tracking
-let sessionTokens = { input: 0, output: 0, total: 0 };
+const VERSION = '1.7.0';
 
 const C = {
   reset: '\x1b[0m',
@@ -62,12 +64,87 @@ export async function main() {
     return;
   }
 
+  // ── v1.7.0: New standalone commands ──
+
+  // --init-policy: Generate default policy file
+  if (args['init-policy']) {
+    const policyPath = path.join(process.cwd(), '.codebot', 'policy.json');
+    const policyDir = path.dirname(policyPath);
+    if (!fs.existsSync(policyDir)) fs.mkdirSync(policyDir, { recursive: true });
+    if (fs.existsSync(policyPath)) {
+      console.log(c(`Policy file already exists at ${policyPath}`, 'yellow'));
+      console.log(c('Delete it first if you want to regenerate.', 'dim'));
+    } else {
+      fs.writeFileSync(policyPath, generateDefaultPolicyFile(), 'utf-8');
+      console.log(c(`Created default policy at ${policyPath}`, 'green'));
+    }
+    return;
+  }
+
+  // --verify-audit: Verify audit chain integrity
+  if (args['verify-audit']) {
+    const logger = new AuditLogger();
+    const sessionId = typeof args['verify-audit'] === 'string' ? args['verify-audit'] as string : undefined;
+    if (sessionId) {
+      const entries = logger.query({ sessionId });
+      if (entries.length === 0) {
+        console.log(c(`No audit entries found for session ${sessionId}`, 'yellow'));
+        return;
+      }
+      const result = AuditLogger.verify(entries);
+      if (result.valid) {
+        console.log(c(`Audit chain valid (${result.entriesChecked} entries checked)`, 'green'));
+      } else {
+        console.log(c(`Audit chain INVALID at sequence ${result.firstInvalidAt}`, 'red'));
+        console.log(c(`Reason: ${result.reason}`, 'red'));
+      }
+    } else {
+      // Verify all entries from today's log
+      const entries = logger.query();
+      if (entries.length === 0) {
+        console.log(c('No audit entries found.', 'yellow'));
+        return;
+      }
+      // Group by session and verify each
+      const sessions = new Map<string, typeof entries>();
+      for (const e of entries) {
+        if (!sessions.has(e.sessionId)) sessions.set(e.sessionId, []);
+        sessions.get(e.sessionId)!.push(e);
+      }
+      let allValid = true;
+      for (const [sid, sessionEntries] of sessions) {
+        const result = AuditLogger.verify(sessionEntries);
+        const shortId = sid.substring(0, 12);
+        if (result.valid) {
+          console.log(c(`  ${shortId}  ${result.entriesChecked} entries  valid`, 'green'));
+        } else {
+          console.log(c(`  ${shortId}  INVALID at seq ${result.firstInvalidAt}: ${result.reason}`, 'red'));
+          allValid = false;
+        }
+      }
+      console.log(allValid
+        ? c(`\nAll ${sessions.size} session chains verified.`, 'green')
+        : c(`\nSome chains are invalid — possible tampering detected.`, 'red'));
+    }
+    return;
+  }
+
+  // --sandbox-info: Show sandbox status
+  if (args['sandbox-info']) {
+    const info = getSandboxInfo();
+    console.log(c('Sandbox Status:', 'bold'));
+    console.log(`  Docker: ${info.available ? c('available', 'green') : c('not available', 'yellow')}`);
+    console.log(`  Image:  ${info.image}`);
+    console.log(`  CPU:    ${info.defaults.cpus} cores max`);
+    console.log(`  Memory: ${info.defaults.memoryMb}MB max`);
+    console.log(`  Network: ${info.defaults.network ? 'enabled' : 'disabled'} by default`);
+    return;
+  }
+
   // First run: auto-launch setup if nothing is configured
   if (isFirstRun() && process.stdin.isTTY && !args.message) {
     console.log(c('Welcome! No configuration found — launching setup...', 'cyan'));
     await runSetup();
-    // If setup saved a config, continue to main flow
-    // Otherwise exit
     if (isFirstRun()) return;
   }
 
@@ -97,6 +174,7 @@ export async function main() {
   const agent = new Agent({
     provider,
     model: config.model,
+    providerName: config.provider,
     maxIterations: config.maxIterations,
     autoApprove: config.autoApprove,
     onMessage: (msg: Message) => session.save(msg),
@@ -114,6 +192,7 @@ export async function main() {
   // Non-interactive: single message from CLI args
   if (typeof args.message === 'string') {
     await runOnce(agent, args.message);
+    printSessionSummary(agent);
     return;
   }
 
@@ -122,6 +201,7 @@ export async function main() {
     const input = await readStdin();
     if (input.trim()) {
       await runOnce(agent, input.trim());
+      printSessionSummary(agent);
     }
     return;
   }
@@ -137,6 +217,25 @@ export async function main() {
   scheduler.stop();
 }
 
+/** Print session summary with tokens, cost, tool calls, files modified */
+function printSessionSummary(agent: Agent) {
+  const tracker = agent.getTokenTracker();
+  tracker.saveUsage();
+  const summary = tracker.getSummary();
+
+  const duration = (new Date(summary.endTime).getTime() - new Date(summary.startTime).getTime()) / 1000;
+  const mins = Math.floor(duration / 60);
+  const secs = Math.floor(duration % 60);
+
+  console.log(c('\n── Session Summary ──', 'dim'));
+  console.log(`  Duration:  ${mins}m ${secs}s`);
+  console.log(`  Model:     ${summary.model} via ${summary.provider}`);
+  console.log(`  Tokens:    ${summary.totalInputTokens.toLocaleString()} in / ${summary.totalOutputTokens.toLocaleString()} out (${tracker.formatCost()})`);
+  console.log(`  Requests:  ${summary.requestCount}`);
+  console.log(`  Tools:     ${summary.toolCalls} calls`);
+  console.log(`  Files:     ${summary.filesModified} modified`);
+}
+
 function createProvider(config: Config): LLMProvider {
   if (config.provider === 'anthropic') {
     return new AnthropicProvider({
@@ -146,7 +245,6 @@ function createProvider(config: Config): LLMProvider {
     });
   }
 
-  // All other providers use OpenAI-compatible format
   return new OpenAIProvider({
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
@@ -178,7 +276,7 @@ async function repl(agent: Agent, config: Config, session?: SessionManager) {
 
     try {
       for await (const event of agent.run(input)) {
-        renderEvent(event);
+        renderEvent(event, agent);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -190,6 +288,7 @@ async function repl(agent: Agent, config: Config, session?: SessionManager) {
   });
 
   rl.on('close', () => {
+    printSessionSummary(agent);
     console.log(c('\nBye!', 'dim'));
     process.exit(0);
   });
@@ -197,14 +296,14 @@ async function repl(agent: Agent, config: Config, session?: SessionManager) {
 
 async function runOnce(agent: Agent, message: string) {
   for await (const event of agent.run(message)) {
-    renderEvent(event);
+    renderEvent(event, agent);
   }
   console.log();
 }
 
 let isThinking = false;
 
-function renderEvent(event: AgentEvent) {
+function renderEvent(event: AgentEvent, agent?: Agent) {
   switch (event.type) {
     case 'thinking':
       if (!isThinking) {
@@ -244,15 +343,13 @@ function renderEvent(event: AgentEvent) {
       }
       break;
     case 'usage':
-      if (event.usage) {
-        if (event.usage.inputTokens) sessionTokens.input += event.usage.inputTokens;
-        if (event.usage.outputTokens) sessionTokens.output += event.usage.outputTokens;
-        if (event.usage.totalTokens) sessionTokens.total += event.usage.totalTokens;
+      if (event.usage && agent) {
+        const tracker = agent.getTokenTracker();
         const parts: string[] = [];
         if (event.usage.inputTokens) parts.push(`in: ${event.usage.inputTokens}`);
         if (event.usage.outputTokens) parts.push(`out: ${event.usage.outputTokens}`);
         if (parts.length > 0) {
-          console.log(c(`  [${parts.join(', ')} tokens]`, 'dim'));
+          console.log(c(`  [${parts.join(', ')} tokens | ${tracker.formatCost()}]`, 'dim'));
         }
       }
       break;
@@ -299,7 +396,10 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /auto      Toggle autonomous mode
   /routines  List scheduled routines
   /undo      Undo last file edit (/undo [path])
-  /usage     Show token usage for this session
+  /usage     Show token usage & cost for this session
+  /cost      Show running cost
+  /policy    Show current security policy
+  /audit     Verify audit chain for this session
   /config    Show current config
   /quit      Exit`);
       break;
@@ -355,10 +455,39 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
       break;
     }
     case '/usage': {
-      console.log(c('\nToken Usage (this session):', 'bold'));
-      console.log(`  Input:  ${sessionTokens.input.toLocaleString()} tokens`);
-      console.log(`  Output: ${sessionTokens.output.toLocaleString()} tokens`);
-      console.log(`  Total:  ${(sessionTokens.input + sessionTokens.output).toLocaleString()} tokens`);
+      const tracker = agent.getTokenTracker();
+      const summary = tracker.getSummary();
+      console.log(c('\nSession Usage:', 'bold'));
+      console.log(`  Input:    ${summary.totalInputTokens.toLocaleString()} tokens`);
+      console.log(`  Output:   ${summary.totalOutputTokens.toLocaleString()} tokens`);
+      console.log(`  Cost:     ${tracker.formatCost()}`);
+      console.log(`  Requests: ${summary.requestCount}`);
+      console.log(`  Tools:    ${summary.toolCalls} calls`);
+      console.log(`  Files:    ${summary.filesModified} modified`);
+      break;
+    }
+    case '/cost': {
+      const tracker = agent.getTokenTracker();
+      console.log(c(`  ${tracker.formatStatusLine()}`, 'dim'));
+      break;
+    }
+    case '/policy': {
+      const policy = agent.getPolicyEnforcer().getPolicy();
+      console.log(c('\nCurrent Policy:', 'bold'));
+      console.log(JSON.stringify(policy, null, 2));
+      break;
+    }
+    case '/audit': {
+      const auditLogger = agent.getAuditLogger();
+      const result = auditLogger.verifySession();
+      if (result.entriesChecked === 0) {
+        console.log(c('No audit entries yet.', 'dim'));
+      } else if (result.valid) {
+        console.log(c(`Audit chain valid (${result.entriesChecked} entries)`, 'green'));
+      } else {
+        console.log(c(`Audit chain INVALID at sequence ${result.firstInvalidAt}`, 'red'));
+        console.log(c(`  ${result.reason}`, 'red'));
+      }
       break;
     }
     case '/routines': {
@@ -400,7 +529,6 @@ function showModels() {
 }
 
 async function resolveConfig(args: Record<string, string | boolean>): Promise<Config> {
-  // Load saved config (CLI args override saved config)
   const saved = loadConfig();
 
   const model = (args.model as string) || process.env.CODEBOT_MODEL || saved.model || 'qwen2.5-coder:32b';
@@ -415,7 +543,6 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     autoApprove: !!args['auto-approve'] || !!args.autonomous || !!args.auto || !!saved.autoApprove,
   };
 
-  // Auto-resolve base URL and API key from provider
   if (!config.baseUrl || !config.apiKey) {
     const defaults = PROVIDER_DEFAULTS[config.provider];
     if (defaults) {
@@ -424,7 +551,6 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     }
   }
 
-  // Fallback: try saved config API key, then generic env vars
   if (!config.apiKey && saved.apiKey) {
     config.apiKey = saved.apiKey;
   }
@@ -432,7 +558,6 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || '';
   }
 
-  // If still no base URL, auto-detect local provider
   if (!config.baseUrl) {
     config.baseUrl = await autoDetectProvider();
   }
@@ -493,6 +618,24 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       result.setup = true;
       continue;
     }
+    if (arg === '--init-policy') {
+      result['init-policy'] = true;
+      continue;
+    }
+    if (arg === '--sandbox-info') {
+      result['sandbox-info'] = true;
+      continue;
+    }
+    if (arg === '--verify-audit') {
+      const next = argv[i + 1];
+      if (next && !next.startsWith('--')) {
+        result['verify-audit'] = next;
+        i++;
+      } else {
+        result['verify-audit'] = true;
+      }
+      continue;
+    }
     if (arg.startsWith('--')) {
       const key = arg.slice(2);
       const next = argv[i + 1];
@@ -542,8 +685,14 @@ ${c('Options:', 'bold')}
   --resume <id>        Resume a previous session by ID
   --continue, -c       Resume the most recent session
   --max-iterations <n> Max agent loop iterations (default: 50)
+  --sandbox <mode>     Execution sandbox: docker, host, auto (default: auto)
   -h, --help           Show this help
   -v, --version        Show version
+
+${c('Security & Policy:', 'bold')}
+  --init-policy        Generate default .codebot/policy.json
+  --verify-audit [id]  Verify audit log hash chain integrity
+  --sandbox-info       Show Docker sandbox status
 
 ${c('Supported Providers:', 'bold')}
   Local:      Ollama, LM Studio, vLLM (auto-detected)
@@ -562,6 +711,8 @@ ${c('Examples:', 'bold')}
   codebot --model deepseek-chat            Uses DeepSeek API
   codebot --model qwen2.5-coder:32b        Uses local Ollama
   codebot --autonomous "refactor src/"     Full auto, no prompts
+  codebot --init-policy                    Create security policy
+  codebot --verify-audit                   Check audit integrity
 
 ${c('Interactive Commands:', 'bold')}
   /help      Show commands
@@ -571,6 +722,10 @@ ${c('Interactive Commands:', 'bold')}
   /auto      Toggle autonomous mode
   /clear     Clear conversation
   /compact   Force context compaction
+  /usage     Show token usage & cost
+  /cost      Show running cost
+  /policy    Show security policy
+  /audit     Verify session audit chain
   /config    Show configuration
   /quit      Exit`);
 }

@@ -1,33 +1,52 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import * as crypto from 'crypto';
 import { maskSecretsInString } from './secrets';
 
 /**
- * Audit logger for CodeBot.
+ * Audit logger for CodeBot v1.7.0
  *
  * Provides append-only JSONL logging of all security-relevant actions.
  * Logs are stored at ~/.codebot/audit/audit-YYYY-MM-DD.jsonl
- * Masks secrets in args before writing.
+ *
+ * v1.7.0: Hash-chained entries for tamper detection.
+ * Each entry includes a SHA-256 hash of (prevHash + entry content).
+ * Verification walks the chain and detects any modifications.
+ *
  * NEVER throws — audit failures must not crash the agent.
  */
 
 export interface AuditEntry {
   timestamp: string;
   sessionId: string;
+  sequence: number;
   tool: string;
-  action: 'execute' | 'deny' | 'error' | 'security_block';
+  action: 'execute' | 'deny' | 'error' | 'security_block' | 'policy_block';
   args: Record<string, unknown>;
   result?: string;
+  reason?: string;
+  prevHash: string;
+  hash: string;
+}
+
+/** Result of verifying an audit chain */
+export interface VerifyResult {
+  valid: boolean;
+  entriesChecked: number;
+  firstInvalidAt?: number;
   reason?: string;
 }
 
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB before rotation
-const MAX_ARG_LENGTH = 500; // Truncate long arg values for logging
+const MAX_ARG_LENGTH = 500;
+const GENESIS_HASH = 'genesis';
 
 export class AuditLogger {
   private logDir: string;
   private sessionId: string;
+  private sequence: number = 0;
+  private prevHash: string = GENESIS_HASH;
 
   constructor(logDir?: string) {
     this.logDir = logDir || path.join(os.homedir(), '.codebot', 'audit');
@@ -39,27 +58,39 @@ export class AuditLogger {
     }
   }
 
-  /** Get the current session ID */
   getSessionId(): string {
     return this.sessionId;
   }
 
-  /** Append an audit entry to the log file */
-  log(entry: Omit<AuditEntry, 'timestamp' | 'sessionId'>): void {
+  /** Append a hash-chained audit entry to the log file */
+  log(entry: Omit<AuditEntry, 'timestamp' | 'sessionId' | 'sequence' | 'prevHash' | 'hash'>): void {
     try {
-      const fullEntry: AuditEntry = {
+      this.sequence++;
+
+      // Build entry without hash first (hash is computed over the other fields)
+      const partial = {
         timestamp: new Date().toISOString(),
         sessionId: this.sessionId,
-        ...entry,
+        sequence: this.sequence,
+        tool: entry.tool,
+        action: entry.action,
         args: this.sanitizeArgs(entry.args),
+        result: entry.result,
+        reason: entry.reason,
+        prevHash: this.prevHash,
       };
+
+      // Compute hash: SHA-256 of (prevHash + JSON of partial entry)
+      const hashInput = this.prevHash + JSON.stringify(partial);
+      const hash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+      const fullEntry: AuditEntry = { ...partial, hash };
+      this.prevHash = hash;
 
       const logFile = this.getLogFilePath();
       const line = JSON.stringify(fullEntry) + '\n';
 
-      // Check if rotation is needed
       this.rotateIfNeeded(logFile);
-
       fs.appendFileSync(logFile, line, 'utf-8');
     } catch {
       // Audit failures must NEVER crash the agent
@@ -67,7 +98,7 @@ export class AuditLogger {
   }
 
   /** Read log entries, optionally filtered */
-  query(filter?: { tool?: string; action?: string; since?: string }): AuditEntry[] {
+  query(filter?: { tool?: string; action?: string; since?: string; sessionId?: string }): AuditEntry[] {
     const entries: AuditEntry[] = [];
     try {
       const files = fs.readdirSync(this.logDir)
@@ -83,6 +114,7 @@ export class AuditLogger {
             if (filter?.tool && entry.tool !== filter.tool) continue;
             if (filter?.action && entry.action !== filter.action) continue;
             if (filter?.since && entry.timestamp < filter.since) continue;
+            if (filter?.sessionId && entry.sessionId !== filter.sessionId) continue;
             entries.push(entry);
           } catch { /* skip malformed */ }
         }
@@ -93,13 +125,83 @@ export class AuditLogger {
     return entries;
   }
 
-  /** Get the path to today's log file */
+  /**
+   * Verify the hash chain integrity of audit entries.
+   * Walks through entries for a given session and checks each hash.
+   */
+  static verify(entries: AuditEntry[]): VerifyResult {
+    if (entries.length === 0) {
+      return { valid: true, entriesChecked: 0 };
+    }
+
+    // Sort by sequence
+    const sorted = [...entries].sort((a, b) => a.sequence - b.sequence);
+
+    for (let i = 0; i < sorted.length; i++) {
+      const entry = sorted[i];
+
+      // Check sequence continuity
+      if (i === 0 && entry.prevHash !== GENESIS_HASH) {
+        // First entry should reference genesis (unless it's a continuation)
+        // Allow non-genesis for continuation of previous sessions
+      }
+
+      // Recompute hash
+      const partial = {
+        timestamp: entry.timestamp,
+        sessionId: entry.sessionId,
+        sequence: entry.sequence,
+        tool: entry.tool,
+        action: entry.action,
+        args: entry.args,
+        result: entry.result,
+        reason: entry.reason,
+        prevHash: entry.prevHash,
+      };
+
+      const hashInput = entry.prevHash + JSON.stringify(partial);
+      const expectedHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+      if (entry.hash !== expectedHash) {
+        return {
+          valid: false,
+          entriesChecked: i + 1,
+          firstInvalidAt: entry.sequence,
+          reason: `Hash mismatch at sequence ${entry.sequence}: expected ${expectedHash.substring(0, 16)}..., got ${entry.hash.substring(0, 16)}...`,
+        };
+      }
+
+      // Check chain continuity (sequence i+1 should reference sequence i's hash)
+      if (i < sorted.length - 1) {
+        const next = sorted[i + 1];
+        if (next.prevHash !== entry.hash) {
+          return {
+            valid: false,
+            entriesChecked: i + 2,
+            firstInvalidAt: next.sequence,
+            reason: `Chain break at sequence ${next.sequence}: prevHash doesn't match previous entry's hash`,
+          };
+        }
+      }
+    }
+
+    return { valid: true, entriesChecked: sorted.length };
+  }
+
+  /**
+   * Verify all entries for a given session.
+   */
+  verifySession(sessionId?: string): VerifyResult {
+    const sid = sessionId || this.sessionId;
+    const entries = this.query({ sessionId: sid });
+    return AuditLogger.verify(entries);
+  }
+
   private getLogFilePath(): string {
-    const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const date = new Date().toISOString().split('T')[0];
     return path.join(this.logDir, `audit-${date}.jsonl`);
   }
 
-  /** Rotate log file if it exceeds MAX_LOG_SIZE */
   private rotateIfNeeded(logFile: string): void {
     try {
       if (!fs.existsSync(logFile)) return;
@@ -113,7 +215,6 @@ export class AuditLogger {
     }
   }
 
-  /** Sanitize args for logging: mask secrets and truncate long values */
   private sanitizeArgs(args: Record<string, unknown>): Record<string, unknown> {
     const sanitized: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(args)) {
@@ -124,7 +225,6 @@ export class AuditLogger {
         }
         sanitized[key] = masked;
       } else if (typeof value === 'object' && value !== null) {
-        // For objects/arrays, stringify and mask
         const str = JSON.stringify(value);
         const masked = maskSecretsInString(str);
         sanitized[key] = masked.length > MAX_ARG_LENGTH

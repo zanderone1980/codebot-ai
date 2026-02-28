@@ -11,6 +11,8 @@ import { loadPlugins } from './plugins';
 import { ToolCache } from './cache';
 import { RateLimiter } from './rate-limiter';
 import { AuditLogger } from './audit';
+import { PolicyEnforcer, loadPolicy } from './policy';
+import { TokenTracker } from './telemetry';
 
 /** Lightweight schema validation — returns error string or null if valid */
 function validateToolArgs(args: Record<string, unknown>, schema: Record<string, unknown>): string | null {
@@ -72,12 +74,15 @@ export class Agent {
   private cache: ToolCache;
   private rateLimiter: RateLimiter;
   private auditLogger: AuditLogger;
+  private policyEnforcer: PolicyEnforcer;
+  private tokenTracker: TokenTracker;
   private askPermission: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
   private onMessage?: (message: Message) => void;
 
   constructor(opts: {
     provider: LLMProvider;
     model: string;
+    providerName?: string;
     maxIterations?: number;
     autoApprove?: boolean;
     askPermission?: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
@@ -87,13 +92,23 @@ export class Agent {
     this.model = opts.model;
     this.tools = new ToolRegistry(process.cwd());
     this.context = new ContextManager(opts.model, opts.provider);
-    this.maxIterations = opts.maxIterations || 25;
+
+    // Load policy
+    this.policyEnforcer = new PolicyEnforcer(loadPolicy(process.cwd()), process.cwd());
+
+    // Use policy-defined max iterations as default, CLI overrides
+    this.maxIterations = opts.maxIterations || this.policyEnforcer.getMaxIterations();
     this.autoApprove = opts.autoApprove || false;
     this.askPermission = opts.askPermission || defaultAskPermission;
     this.onMessage = opts.onMessage;
     this.cache = new ToolCache();
     this.rateLimiter = new RateLimiter();
     this.auditLogger = new AuditLogger();
+
+    // Token & cost tracking
+    this.tokenTracker = new TokenTracker(opts.model, opts.providerName || 'unknown');
+    const costLimit = this.policyEnforcer.getCostLimitUsd();
+    if (costLimit > 0) this.tokenTracker.setCostLimit(costLimit);
 
     // Load plugins
     try {
@@ -169,6 +184,13 @@ export class Agent {
               }
               break;
             case 'usage':
+              // Track tokens and cost
+              if (event.usage) {
+                this.tokenTracker.recordUsage(
+                  event.usage.inputTokens || 0,
+                  event.usage.outputTokens || 0,
+                );
+              }
               yield { type: 'usage', usage: event.usage };
               break;
             case 'error':
@@ -227,6 +249,12 @@ export class Agent {
         return;
       }
 
+      // Cost budget check: stop if over limit
+      if (this.tokenTracker.isOverBudget()) {
+        yield { type: 'error', error: `Cost limit exceeded ($${this.tokenTracker.getTotalCost().toFixed(4)} / $${this.policyEnforcer.getCostLimitUsd().toFixed(2)}). Stopping.` };
+        return;
+      }
+
       // ── Phase 1: Validate & resolve permissions (sequential — needs user input) ──
       interface PreparedCall {
         tc: ToolCall;
@@ -247,6 +275,14 @@ export class Agent {
           continue;
         }
 
+        // Policy check: is this tool allowed?
+        const policyCheck = this.policyEnforcer.isToolAllowed(toolName);
+        if (!policyCheck.allowed) {
+          this.auditLogger.log({ tool: toolName, action: 'policy_block', args: {}, reason: policyCheck.reason });
+          prepared.push({ tc, tool, args: {}, denied: false, error: `Error: ${policyCheck.reason}` });
+          continue;
+        }
+
         let args: Record<string, unknown>;
         try {
           args = JSON.parse(tc.function.arguments);
@@ -264,10 +300,12 @@ export class Agent {
 
         yield { type: 'tool_call', toolCall: { name: toolName, args } };
 
-        // Permission check (sequential — needs user interaction)
+        // Permission check: policy override > tool default
+        const policyPermission = this.policyEnforcer.getToolPermission(toolName);
+        const effectivePermission = policyPermission || tool.permission;
         const needsPermission =
-          tool.permission === 'always-ask' ||
-          (tool.permission === 'prompt' && !this.autoApprove);
+          effectivePermission === 'always-ask' ||
+          (effectivePermission === 'prompt' && !this.autoApprove);
 
         let denied = false;
         if (needsPermission) {
@@ -330,6 +368,12 @@ export class Agent {
 
           // Audit log: successful execution
           this.auditLogger.log({ tool: toolName, action: 'execute', args: prep.args, result: 'success' });
+
+          // Telemetry: track tool calls and file modifications
+          this.tokenTracker.recordToolCall();
+          if ((toolName === 'write_file' || toolName === 'edit_file' || toolName === 'batch_edit') && prep.args.path) {
+            this.tokenTracker.recordFileModified(prep.args.path as string);
+          }
 
           // Store in cache for cacheable tools
           if (prep.tool.cacheable) {
@@ -416,6 +460,21 @@ export class Agent {
 
   getMessages(): Message[] {
     return [...this.messages];
+  }
+
+  /** Get the token tracker for session summary / CLI display */
+  getTokenTracker(): TokenTracker {
+    return this.tokenTracker;
+  }
+
+  /** Get the policy enforcer for inspection */
+  getPolicyEnforcer(): PolicyEnforcer {
+    return this.policyEnforcer;
+  }
+
+  /** Get the audit logger for verification */
+  getAuditLogger(): AuditLogger {
+    return this.auditLogger;
   }
 
   /**
