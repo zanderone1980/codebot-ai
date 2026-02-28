@@ -16,6 +16,12 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async *chat(messages: Message[], tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+    // Early check: Anthropic always requires an API key
+    if (!this.config.apiKey) {
+      yield { type: 'error', error: `No API key configured for ${this.config.model}. Set ANTHROPIC_API_KEY or run: codebot --setup` };
+      return;
+    }
+
     const { systemPrompt, apiMessages } = this.convertMessages(messages);
 
     const body: Record<string, unknown> = {
@@ -79,7 +85,24 @@ export class AnthropicProvider implements LLMProvider {
 
     if (!response || !response.ok) {
       const text = response ? await response.text().catch(() => '') : '';
-      yield { type: 'error', error: `Anthropic error after retries: ${lastError}${text ? ` — ${text}` : ''}` };
+      // Extract readable error message from JSON response
+      let errorMessage = '';
+      try {
+        const json = JSON.parse(text);
+        errorMessage = json?.error?.message || json?.message || '';
+      } catch {
+        errorMessage = text.substring(0, 200);
+      }
+      const status = response?.status;
+      if (status === 401 || (errorMessage && errorMessage.toLowerCase().includes('api key'))) {
+        yield { type: 'error', error: `Authentication failed (${status}): ${errorMessage || 'Invalid API key'}. Set ANTHROPIC_API_KEY or run: codebot --setup` };
+      } else if (status === 403) {
+        yield { type: 'error', error: `Access denied (403): ${errorMessage || 'Permission denied'}. Check your API key permissions.` };
+      } else if (status === 404) {
+        yield { type: 'error', error: `Model not found (404): ${errorMessage || `"${this.config.model}" may not be available`}.` };
+      } else {
+        yield { type: 'error', error: `Anthropic error (${status || 'unknown'}): ${errorMessage || lastError || 'Unknown error'}` };
+      }
       return;
     }
 

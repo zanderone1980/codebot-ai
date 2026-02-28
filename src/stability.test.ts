@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
 import { Agent } from './agent';
 import { LLMProvider, Message, ToolSchema, StreamEvent } from './types';
-import { isRetryable, getRetryDelay, sleep, RETRY_DEFAULTS } from './retry';
+import { isRetryable, isFatalError, getRetryDelay, sleep, RETRY_DEFAULTS } from './retry';
 
 // ─── Mock Providers ──────────────────────────────────────────────────────────
 
@@ -248,6 +248,113 @@ describe('sleep', () => {
     const elapsed = Date.now() - start;
     assert.ok(elapsed >= 40, `Slept only ${elapsed}ms, expected ~50ms`);
     assert.ok(elapsed < 200, `Slept ${elapsed}ms, way too long for 50ms sleep`);
+  });
+});
+
+// ─── Fatal Error Detection Tests ─────────────────────────────────────────────
+
+describe('isFatalError', () => {
+  it('detects missing API key errors', () => {
+    assert.strictEqual(isFatalError('You didn\'t provide an API key'), true);
+    assert.strictEqual(isFatalError('No API key configured for gpt-4.1'), true);
+    assert.strictEqual(isFatalError('Invalid api_key provided'), true);
+  });
+
+  it('detects authentication failures', () => {
+    assert.strictEqual(isFatalError('Authentication failed (401)'), true);
+    assert.strictEqual(isFatalError('Unauthorized request'), true);
+    assert.strictEqual(isFatalError('Access denied'), true);
+    assert.strictEqual(isFatalError('Permission denied'), true);
+  });
+
+  it('detects billing/quota errors', () => {
+    assert.strictEqual(isFatalError('You exceeded your quota'), true);
+    assert.strictEqual(isFatalError('insufficient_quota'), true);
+    assert.strictEqual(isFatalError('Billing issue on your account'), true);
+  });
+
+  it('detects model not found', () => {
+    assert.strictEqual(isFatalError('Model not found: gpt-99'), true);
+    assert.strictEqual(isFatalError('The model does not exist'), true);
+  });
+
+  it('does NOT flag transient errors as fatal', () => {
+    assert.strictEqual(isFatalError('Rate limited, try again'), false);
+    assert.strictEqual(isFatalError('Internal server error'), false);
+    assert.strictEqual(isFatalError('Connection timeout'), false);
+    assert.strictEqual(isFatalError('Stream error: fetch failed'), false);
+  });
+});
+
+// ─── Fatal Error Agent Behavior ─────────────────────────────────────────────
+
+describe('Agent fatal error handling', () => {
+  it('stops immediately on fatal auth error instead of looping', async () => {
+    // Provider that always yields a fatal "missing API key" error
+    class FatalErrorProvider implements LLMProvider {
+      name = 'fatal-mock';
+      callCount = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callCount++;
+        yield { type: 'error', error: 'No API key configured for gpt-4.1. Set OPENAI_API_KEY or run: codebot --setup' };
+        return;
+      }
+    }
+
+    const provider = new FatalErrorProvider();
+    const agent = new Agent({
+      provider,
+      model: 'mock-model',
+      maxIterations: 50,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test fatal error')) {
+      events.push(event);
+    }
+
+    // Should stop after 1 call, NOT loop 50 times
+    assert.strictEqual(provider.callCount, 1, `Should call provider only once, got ${provider.callCount}`);
+
+    const errorEvents = events.filter(e => e.type === 'error');
+    assert.ok(errorEvents.length >= 1, 'Should yield at least one error event');
+    assert.ok(errorEvents[0].error?.includes('API key'), 'Error should mention API key');
+  });
+
+  it('circuit breaker stops after 3 identical transient errors', async () => {
+    // Provider that always yields the same transient (non-fatal) error
+    class RepeatingErrorProvider implements LLMProvider {
+      name = 'repeating-error-mock';
+      callCount = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callCount++;
+        yield { type: 'error', error: 'Some transient LLM hiccup' };
+        return;
+      }
+    }
+
+    const provider = new RepeatingErrorProvider();
+    const agent = new Agent({
+      provider,
+      model: 'mock-model',
+      maxIterations: 50,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test circuit breaker')) {
+      events.push(event);
+    }
+
+    // Should stop after 3 calls (circuit breaker), NOT loop 50 times
+    assert.strictEqual(provider.callCount, 3, `Circuit breaker should stop after 3 calls, got ${provider.callCount}`);
+
+    const errorEvents = events.filter(e => e.type === 'error');
+    const lastError = errorEvents[errorEvents.length - 1];
+    assert.ok(lastError?.error?.includes('repeated'), 'Last error should mention repeated errors');
   });
 });
 

@@ -3,6 +3,7 @@ import { Message, ToolCall, AgentEvent, LLMProvider, ToolSchema, Tool } from './
 import { ToolRegistry } from './tools';
 import { parseToolCalls } from './parser';
 import { ContextManager } from './context/manager';
+import { isFatalError } from './retry';
 import { buildRepoMap } from './context/repo-map';
 import { MemoryManager } from './memory';
 import { getModelInfo } from './providers/registry';
@@ -77,6 +78,10 @@ export class Agent {
       }
     }
 
+    // Circuit breaker: track consecutive identical errors
+    let consecutiveErrors = 0;
+    let lastErrorMsg = '';
+
     for (let i = 0; i < this.maxIterations; i++) {
       // Validate message integrity: ensure every tool_call has a matching tool response
       // This prevents cascading 400 errors from OpenAI when a previous call failed
@@ -118,11 +123,32 @@ export class Agent {
         streamError = `Stream error: ${msg}`;
       }
 
-      // On error: yield it to the UI but DON'T return — continue to next iteration
       if (streamError) {
         yield { type: 'error', error: streamError };
+
+        // Fatal errors (missing API key, auth failure, billing, etc.) — stop immediately
+        if (isFatalError(streamError)) {
+          return;
+        }
+
+        // Circuit breaker: stop after 3 consecutive identical errors
+        if (streamError === lastErrorMsg) {
+          consecutiveErrors++;
+          if (consecutiveErrors >= 3) {
+            yield { type: 'error', error: `Same error repeated ${consecutiveErrors} times — stopping. Fix the issue and try again.` };
+            return;
+          }
+        } else {
+          consecutiveErrors = 1;
+          lastErrorMsg = streamError;
+        }
+
         continue;
       }
+
+      // Reset error tracking on success
+      consecutiveErrors = 0;
+      lastErrorMsg = '';
 
       // If no native tool calls, try parsing from text
       if (toolCalls.length === 0 && fullText) {

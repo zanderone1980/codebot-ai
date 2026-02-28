@@ -61,4 +61,30 @@ export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Returns true if the error message indicates a fatal/permanent failure
+ * that will never succeed on retry (missing API key, auth failure, billing, etc.).
+ */
+export function isFatalError(errorMsg: string): boolean {
+  const lower = errorMsg.toLowerCase();
+  return (
+    lower.includes('api key') ||
+    lower.includes('api_key') ||
+    lower.includes('apikey') ||
+    lower.includes('authentication') ||
+    lower.includes('unauthorized') ||
+    lower.includes('invalid_request_error') ||
+    lower.includes('invalid request') ||
+    lower.includes('permission denied') ||
+    lower.includes('account deactivated') ||
+    lower.includes('account suspended') ||
+    lower.includes('billing') ||
+    (lower.includes('quota') && lower.includes('exceeded')) ||
+    lower.includes('insufficient_quota') ||
+    lower.includes('model not found') ||
+    lower.includes('does not exist') ||
+    lower.includes('access denied')
+  );
+}
+
 export { DEFAULTS as RETRY_DEFAULTS };

@@ -14,6 +14,15 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async *chat(messages: Message[], tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+    const isLocal = this.config.baseUrl.includes('localhost') || this.config.baseUrl.includes('127.0.0.1');
+
+    // Early check: cloud providers require an API key
+    if (!isLocal && !this.config.apiKey) {
+      const hint = this.getApiKeyHint();
+      yield { type: 'error', error: `No API key configured for ${this.config.model}. ${hint}` };
+      return;
+    }
+
     const body: Record<string, unknown> = {
       model: this.config.model,
       messages: messages.map(m => this.formatMessage(m)),
@@ -25,7 +34,6 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     // Ollama/local provider optimizations: set context window and keep model loaded
-    const isLocal = this.config.baseUrl.includes('localhost') || this.config.baseUrl.includes('127.0.0.1');
     if (isLocal) {
       const modelInfo = getModelInfo(this.config.model);
       body.options = { num_ctx: modelInfo.contextWindow };
@@ -77,7 +85,8 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!response || !response.ok) {
       const text = response ? await response.text().catch(() => '') : '';
-      yield { type: 'error', error: `LLM error after retries: ${lastError}${text ? ` — ${text}` : ''}` };
+      const friendlyError = this.formatApiError(response?.status, text, lastError);
+      yield { type: 'error', error: friendlyError };
       return;
     }
 
@@ -250,6 +259,49 @@ export class OpenAIProvider implements LLMProvider {
     } catch {
       return [];
     }
+  }
+
+  /** Get a helpful hint about which env var to set for the current provider */
+  private getApiKeyHint(): string {
+    const url = this.config.baseUrl.toLowerCase();
+    if (url.includes('openai.com')) return 'Set OPENAI_API_KEY or run: codebot --setup';
+    if (url.includes('deepseek')) return 'Set DEEPSEEK_API_KEY or run: codebot --setup';
+    if (url.includes('groq')) return 'Set GROQ_API_KEY or run: codebot --setup';
+    if (url.includes('mistral')) return 'Set MISTRAL_API_KEY or run: codebot --setup';
+    if (url.includes('generativelanguage.googleapis') || url.includes('gemini')) return 'Set GEMINI_API_KEY or run: codebot --setup';
+    if (url.includes('x.ai') || url.includes('grok')) return 'Set XAI_API_KEY or run: codebot --setup';
+    return 'Set your API key or run: codebot --setup';
+  }
+
+  /** Format API error responses into readable messages (not raw JSON) */
+  private formatApiError(status: number | undefined, responseText: string, lastError: string): string {
+    // Try to extract a useful message from JSON error response
+    let errorMessage = '';
+    try {
+      const json = JSON.parse(responseText);
+      errorMessage = json?.error?.message || json?.message || json?.error || '';
+    } catch {
+      errorMessage = responseText.substring(0, 200);
+    }
+
+    const hint = this.getApiKeyHint();
+
+    if (status === 401 || (errorMessage && errorMessage.toLowerCase().includes('api key'))) {
+      return `Authentication failed (${status || 'no status'}): ${errorMessage || 'Invalid or missing API key'}. ${hint}`;
+    }
+    if (status === 403) {
+      return `Access denied (403): ${errorMessage || 'Permission denied'}. Check your API key permissions.`;
+    }
+    if (status === 404) {
+      return `Model not found (404): ${errorMessage || `"${this.config.model}" may not be available`}. Check the model name.`;
+    }
+    if (status === 429) {
+      return `Rate limited (429): ${errorMessage || 'Too many requests'}. Wait a moment and try again.`;
+    }
+
+    // Generic fallback — still clean, not raw JSON
+    const statusStr = status ? `(${status})` : '';
+    return `LLM error ${statusStr}: ${errorMessage || lastError || 'Unknown error'}`;
   }
 
   private formatMessage(msg: Message): Record<string, unknown> {
