@@ -6,6 +6,7 @@ export class GlobTool implements Tool {
   name = 'glob';
   description = 'Find files matching a glob pattern. Returns matching file paths relative to the search directory.';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {

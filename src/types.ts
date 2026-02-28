@@ -26,6 +26,7 @@ export interface Tool {
   description: string;
   parameters: Record<string, unknown>;
   permission: 'auto' | 'prompt' | 'always-ask';
+  cacheable?: boolean;
   execute(args: Record<string, unknown>): Promise<string>;
 }
 

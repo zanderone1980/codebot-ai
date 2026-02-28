@@ -8,6 +8,7 @@ import * as fs from 'fs';
 // Shared browser instance across tool calls
 let client: CDPClient | null = null;
 let debugPort = 9222;
+let connectingPromise: Promise<CDPClient> | null = null;
 const CHROME_DATA_DIR = path.join(os.homedir(), '.codebot', 'chrome-profile');
 
 /** Kill any Chrome using our debug port or data dir (but NEVER kill ourselves) */
@@ -35,8 +36,21 @@ function killExistingChrome(): void {
 }
 
 async function ensureConnected(): Promise<CDPClient> {
+  // Fast path: already connected
   if (client?.isConnected()) return client;
 
+  // Mutex: if another call is already connecting, reuse that promise
+  if (connectingPromise) return connectingPromise;
+
+  connectingPromise = doConnect();
+  try {
+    return await connectingPromise;
+  } finally {
+    connectingPromise = null;
+  }
+}
+
+async function doConnect(): Promise<CDPClient> {
   // Try connecting to existing Chrome with debug port
   try {
     const wsUrl = await getDebuggerUrl(debugPort);
@@ -146,10 +160,11 @@ async function ensureConnected(): Promise<CDPClient> {
     );
   }
 
-  // Wait for Chrome to start
-  for (let i = 0; i < 10; i++) {
+  // Wait for Chrome to start — exponential backoff: 500ms, 1s, 2s, 4s
+  const backoffDelays = [500, 1000, 2000, 4000, 4000, 4000];
+  for (let i = 0; i < backoffDelays.length; i++) {
     try {
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, backoffDelays[i]));
       const wsUrl = await getDebuggerUrl(debugPort);
       client = new CDPClient();
       await client.connect(wsUrl);

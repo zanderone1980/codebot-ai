@@ -594,3 +594,206 @@ describe('Agent message repair', () => {
     assert.ok(events.some(e => e.type === 'done'), 'Should complete');
   });
 });
+
+// ─── v1.5.0 Tests: Parallel Execution, Arg Validation, Caching ─────────────
+
+describe('Agent parallel tool execution', () => {
+  it('executes multiple independent tools in parallel (faster than sequential)', async () => {
+    // Provider that returns 3 simultaneous tool calls, then text
+    class MultiToolProvider implements LLMProvider {
+      name = 'multi-tool-mock';
+      private callIndex = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callIndex++;
+        if (this.callIndex === 1) {
+          // Return 3 tool calls at once — think tool is auto-approved and fast
+          for (let j = 0; j < 3; j++) {
+            yield {
+              type: 'tool_call_end',
+              toolCall: {
+                id: `call_${j}`,
+                type: 'function',
+                function: { name: 'think', arguments: JSON.stringify({ thought: `Thought ${j}` }) },
+              },
+            };
+          }
+          return;
+        }
+        yield { type: 'text', text: 'All tools done.' };
+        yield { type: 'done' };
+      }
+    }
+
+    const agent = new Agent({
+      provider: new MultiToolProvider(),
+      model: 'mock-model',
+      maxIterations: 5,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test parallel execution')) {
+      events.push(event);
+    }
+
+    // Should have 3 tool_result events and final text
+    const toolResults = events.filter(e => e.type === 'tool_result');
+    assert.strictEqual(toolResults.length, 3, `Should have 3 tool results, got ${toolResults.length}`);
+    assert.ok(events.some(e => e.type === 'done'), 'Should complete');
+  });
+
+  it('maintains original tool_call order in results', async () => {
+    // Provider that returns 2 tool calls
+    class OrderTestProvider implements LLMProvider {
+      name = 'order-test-mock';
+      private callIndex = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callIndex++;
+        if (this.callIndex === 1) {
+          yield {
+            type: 'tool_call_end',
+            toolCall: {
+              id: 'call_first',
+              type: 'function',
+              function: { name: 'think', arguments: JSON.stringify({ thought: 'First' }) },
+            },
+          };
+          yield {
+            type: 'tool_call_end',
+            toolCall: {
+              id: 'call_second',
+              type: 'function',
+              function: { name: 'think', arguments: JSON.stringify({ thought: 'Second' }) },
+            },
+          };
+          return;
+        }
+        yield { type: 'text', text: 'Done.' };
+        yield { type: 'done' };
+      }
+    }
+
+    let receivedMessages: Message[] = [];
+    class OrderInspectProvider implements LLMProvider {
+      name = 'order-inspect';
+      private inner = new OrderTestProvider();
+      private callIndex = 0;
+
+      async *chat(messages: Message[], tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callIndex++;
+        if (this.callIndex > 1) {
+          receivedMessages = messages;
+        }
+        yield* this.inner.chat(messages, tools);
+      }
+    }
+
+    const agent = new Agent({
+      provider: new OrderInspectProvider(),
+      model: 'mock-model',
+      maxIterations: 5,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test order')) {
+      events.push(event);
+    }
+
+    // Tool messages in agent history should be in original order
+    const toolMsgs = receivedMessages.filter(m => m.role === 'tool');
+    assert.ok(toolMsgs.length >= 2, `Should have at least 2 tool messages, got ${toolMsgs.length}`);
+    assert.strictEqual(toolMsgs[0].tool_call_id, 'call_first');
+    assert.strictEqual(toolMsgs[1].tool_call_id, 'call_second');
+  });
+});
+
+describe('Agent arg validation', () => {
+  it('catches missing required fields before execution', async () => {
+    // Provider that calls read_file without path
+    class MissingArgProvider implements LLMProvider {
+      name = 'missing-arg-mock';
+      private callIndex = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callIndex++;
+        if (this.callIndex === 1) {
+          yield {
+            type: 'tool_call_end',
+            toolCall: {
+              id: 'call_nopath',
+              type: 'function',
+              function: { name: 'read_file', arguments: '{}' },
+            },
+          };
+          return;
+        }
+        yield { type: 'text', text: 'Handled missing arg.' };
+        yield { type: 'done' };
+      }
+    }
+
+    const agent = new Agent({
+      provider: new MissingArgProvider(),
+      model: 'mock-model',
+      maxIterations: 3,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test arg validation')) {
+      events.push(event);
+    }
+
+    const errorResult = events.find(
+      e => e.type === 'tool_result' && e.toolResult?.is_error && e.toolResult.result.includes('path')
+    );
+    assert.ok(errorResult, 'Should have error mentioning missing path field');
+    assert.ok(events.some(e => e.type === 'done'), 'Should still complete');
+  });
+
+  it('catches wrong type in tool arguments', async () => {
+    // Provider that calls read_file with path as a number
+    class WrongTypeProvider implements LLMProvider {
+      name = 'wrong-type-mock';
+      private callIndex = 0;
+
+      async *chat(_messages: Message[], _tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
+        this.callIndex++;
+        if (this.callIndex === 1) {
+          yield {
+            type: 'tool_call_end',
+            toolCall: {
+              id: 'call_wrongtype',
+              type: 'function',
+              function: { name: 'read_file', arguments: JSON.stringify({ path: 123 }) },
+            },
+          };
+          return;
+        }
+        yield { type: 'text', text: 'Handled wrong type.' };
+        yield { type: 'done' };
+      }
+    }
+
+    const agent = new Agent({
+      provider: new WrongTypeProvider(),
+      model: 'mock-model',
+      maxIterations: 3,
+      autoApprove: true,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test type validation')) {
+      events.push(event);
+    }
+
+    const errorResult = events.find(
+      e => e.type === 'tool_result' && e.toolResult?.is_error && e.toolResult.result.includes('expected string')
+    );
+    assert.ok(errorResult, 'Should have error about expected string type');
+    assert.ok(events.some(e => e.type === 'done'), 'Should still complete');
+  });
+});

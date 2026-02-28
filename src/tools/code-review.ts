@@ -27,6 +27,7 @@ export class CodeReviewTool implements Tool {
   name = 'code_review';
   description = 'Review code for security issues, complexity, and code smells. Actions: security, complexity, review (full).';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {

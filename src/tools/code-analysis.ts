@@ -6,6 +6,7 @@ export class CodeAnalysisTool implements Tool {
   name = 'code_analysis';
   description = 'Analyze code structure. Actions: symbols (list classes/functions/exports), imports (list imports), outline (file structure), references (find where a symbol is used).';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {

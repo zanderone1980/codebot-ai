@@ -6,6 +6,7 @@ export class ReadFileTool implements Tool {
   name = 'read_file';
   description = 'Read the contents of a file. Returns file content with line numbers.';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {

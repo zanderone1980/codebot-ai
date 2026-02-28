@@ -6,6 +6,7 @@ export class GrepTool implements Tool {
   name = 'grep';
   description = 'Search file contents for a regex pattern. Returns matching lines with file paths and line numbers.';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {

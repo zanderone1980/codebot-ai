@@ -8,6 +8,57 @@ import { buildRepoMap } from './context/repo-map';
 import { MemoryManager } from './memory';
 import { getModelInfo } from './providers/registry';
 import { loadPlugins } from './plugins';
+import { ToolCache } from './cache';
+import { RateLimiter } from './rate-limiter';
+
+/** Lightweight schema validation — returns error string or null if valid */
+function validateToolArgs(args: Record<string, unknown>, schema: Record<string, unknown>): string | null {
+  const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
+  const required = schema.required as string[] | undefined;
+
+  if (!props) return null;
+
+  // Check required fields exist
+  if (required) {
+    for (const field of required) {
+      if (args[field] === undefined || args[field] === null) {
+        return `missing required field '${field}'`;
+      }
+    }
+  }
+
+  // Check types match for provided fields
+  for (const [key, value] of Object.entries(args)) {
+    const propSchema = props[key];
+    if (!propSchema) continue; // extra fields are OK
+
+    const expectedType = propSchema.type as string | undefined;
+    if (!expectedType) continue;
+
+    const actualType = Array.isArray(value) ? 'array' : typeof value;
+
+    if (expectedType === 'string' && actualType !== 'string') {
+      return `field '${key}' expected string, got ${actualType}`;
+    }
+    if (expectedType === 'number' && actualType !== 'number') {
+      return `field '${key}' expected number, got ${actualType}`;
+    }
+    if (expectedType === 'boolean' && actualType !== 'boolean') {
+      return `field '${key}' expected boolean, got ${actualType}`;
+    }
+    if (expectedType === 'array' && !Array.isArray(value)) {
+      return `field '${key}' expected array, got ${actualType}`;
+    }
+    if (expectedType === 'object' && (actualType !== 'object' || Array.isArray(value))) {
+      return `field '${key}' expected object, got ${actualType}`;
+    }
+  }
+
+  return null;
+}
+
+/** Tools that use shared global state and must not run concurrently */
+const SEQUENTIAL_TOOLS = new Set(['browser']);
 
 export class Agent {
   private provider: LLMProvider;
@@ -17,6 +68,8 @@ export class Agent {
   private maxIterations: number;
   private autoApprove: boolean;
   private model: string;
+  private cache: ToolCache;
+  private rateLimiter: RateLimiter;
   private askPermission: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
   private onMessage?: (message: Message) => void;
 
@@ -36,6 +89,8 @@ export class Agent {
     this.autoApprove = opts.autoApprove || false;
     this.askPermission = opts.askPermission || defaultAskPermission;
     this.onMessage = opts.onMessage;
+    this.cache = new ToolCache();
+    this.rateLimiter = new RateLimiter();
 
     // Load plugins
     try {
@@ -169,17 +224,23 @@ export class Agent {
         return;
       }
 
-      // Execute each tool call
+      // ── Phase 1: Validate & resolve permissions (sequential — needs user input) ──
+      interface PreparedCall {
+        tc: ToolCall;
+        tool: Tool;
+        args: Record<string, unknown>;
+        denied: boolean;
+        error?: string;
+      }
+
+      const prepared: PreparedCall[] = [];
+
       for (const tc of toolCalls) {
         const toolName = tc.function.name;
         const tool = this.tools.get(toolName);
 
         if (!tool) {
-          const errResult = `Error: Unknown tool "${toolName}"`;
-          const toolMsg: Message = { role: 'tool', content: errResult, tool_call_id: tc.id };
-          this.messages.push(toolMsg);
-          this.onMessage?.(toolMsg);
-          yield { type: 'tool_result', toolResult: { name: toolName, result: errResult, is_error: true } };
+          prepared.push({ tc, tool: null as unknown as Tool, args: {}, denied: false, error: `Error: Unknown tool "${toolName}"` });
           continue;
         }
 
@@ -187,45 +248,128 @@ export class Agent {
         try {
           args = JSON.parse(tc.function.arguments);
         } catch {
-          const errResult = `Error: Invalid JSON arguments for ${toolName}`;
-          const toolMsg: Message = { role: 'tool', content: errResult, tool_call_id: tc.id };
-          this.messages.push(toolMsg);
-          this.onMessage?.(toolMsg);
-          yield { type: 'tool_result', toolResult: { name: toolName, result: errResult, is_error: true } };
+          prepared.push({ tc, tool, args: {}, denied: false, error: `Error: Invalid JSON arguments for ${toolName}` });
+          continue;
+        }
+
+        // Arg validation against schema
+        const validationError = validateToolArgs(args, tool.parameters);
+        if (validationError) {
+          prepared.push({ tc, tool, args, denied: false, error: `Error: ${validationError} for ${toolName}` });
           continue;
         }
 
         yield { type: 'tool_call', toolCall: { name: toolName, args } };
 
-        // Permission check
+        // Permission check (sequential — needs user interaction)
         const needsPermission =
           tool.permission === 'always-ask' ||
           (tool.permission === 'prompt' && !this.autoApprove);
 
+        let denied = false;
         if (needsPermission) {
           const approved = await this.askPermission(toolName, args);
           if (!approved) {
-            const toolMsg: Message = { role: 'tool', content: 'Permission denied by user.', tool_call_id: tc.id };
-            this.messages.push(toolMsg);
-            this.onMessage?.(toolMsg);
-            yield { type: 'tool_result', toolResult: { name: toolName, result: 'Permission denied.' } };
-            continue;
+            denied = true;
           }
         }
 
-        // Execute
+        prepared.push({ tc, tool, args, denied });
+      }
+
+      // ── Phase 2: Execute tools (parallel where possible) ──
+      type ToolOutput = { content: string; is_error?: boolean };
+      const results: ToolOutput[] = new Array(prepared.length);
+
+      // Immediately resolve errors and denials
+      const toExecute: { index: number; prep: PreparedCall }[] = [];
+      for (let idx = 0; idx < prepared.length; idx++) {
+        const prep = prepared[idx];
+        if (prep.error) {
+          results[idx] = { content: prep.error, is_error: true };
+        } else if (prep.denied) {
+          results[idx] = { content: 'Permission denied by user.' };
+        } else {
+          toExecute.push({ index: idx, prep });
+        }
+      }
+
+      // Split into parallel-safe and sequential (browser) groups
+      const parallelBatch: typeof toExecute = [];
+      const sequentialBatch: typeof toExecute = [];
+      for (const item of toExecute) {
+        if (SEQUENTIAL_TOOLS.has(item.prep.tc.function.name)) {
+          sequentialBatch.push(item);
+        } else {
+          parallelBatch.push(item);
+        }
+      }
+
+      // Helper to execute a single tool with cache + rate limiting
+      const executeTool = async (prep: PreparedCall): Promise<ToolOutput> => {
+        const toolName = prep.tc.function.name;
+
+        // Check cache first
+        if (prep.tool.cacheable) {
+          const cacheKey = ToolCache.key(toolName, prep.args);
+          const cached = this.cache.get(cacheKey);
+          if (cached !== null) {
+            return { content: cached };
+          }
+        }
+
+        // Rate limit
+        await this.rateLimiter.throttle(toolName);
+
         try {
-          const output = await tool.execute(args);
-          const toolMsg: Message = { role: 'tool', content: output, tool_call_id: tc.id };
-          this.messages.push(toolMsg);
-          this.onMessage?.(toolMsg);
-          yield { type: 'tool_result', toolResult: { name: toolName, result: output } };
+          const output = await prep.tool.execute(prep.args);
+
+          // Store in cache for cacheable tools
+          if (prep.tool.cacheable) {
+            const ttl = ToolCache.TTL[toolName] || 30_000;
+            this.cache.set(ToolCache.key(toolName, prep.args), output, ttl);
+          }
+
+          // Invalidate cache on write operations
+          if (toolName === 'write_file' || toolName === 'edit_file' || toolName === 'batch_edit') {
+            const filePath = prep.args.path as string;
+            if (filePath) this.cache.invalidate(filePath);
+          }
+
+          return { content: output };
         } catch (err: unknown) {
           const errMsg = err instanceof Error ? err.message : String(err);
-          const toolMsg: Message = { role: 'tool', content: `Error: ${errMsg}`, tool_call_id: tc.id };
-          this.messages.push(toolMsg);
-          this.onMessage?.(toolMsg);
-          yield { type: 'tool_result', toolResult: { name: toolName, result: errMsg, is_error: true } };
+          return { content: `Error: ${errMsg}`, is_error: true };
+        }
+      };
+
+      // Execute parallel batch concurrently
+      if (parallelBatch.length > 0) {
+        const promises = parallelBatch.map(async ({ index, prep }) => {
+          results[index] = await executeTool(prep);
+        });
+        await Promise.allSettled(promises);
+      }
+
+      // Execute sequential batch one at a time
+      for (const { index, prep } of sequentialBatch) {
+        results[index] = await executeTool(prep);
+      }
+
+      // ── Phase 3: Push results in original order + yield events ──
+      for (let idx = 0; idx < prepared.length; idx++) {
+        const prep = prepared[idx];
+        const output = results[idx] || { content: 'Error: execution failed', is_error: true };
+        const toolName = prep.tc.function.name;
+
+        const toolMsg: Message = { role: 'tool', content: output.content, tool_call_id: prep.tc.id };
+        this.messages.push(toolMsg);
+        this.onMessage?.(toolMsg);
+
+        if (prep.denied) {
+          yield { type: 'tool_result', toolResult: { name: toolName, result: 'Permission denied.' } };
+        } else {
+          yield { type: 'tool_result', toolResult: { name: toolName, result: output.content, is_error: output.is_error } };
         }
       }
 
@@ -398,6 +542,8 @@ ${this.tools.all().map(t => `- ${t.name}: ${t.description}`).join('\n')}`;
   }
 }
 
+const PERMISSION_TIMEOUT_MS = 30_000;
+
 async function defaultAskPermission(tool: string, args: Record<string, unknown>): Promise<boolean> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const summary = Object.entries(args)
@@ -407,10 +553,20 @@ async function defaultAskPermission(tool: string, args: Record<string, unknown>)
     })
     .join('\n');
 
-  return new Promise(resolve => {
-    rl.question(`\n⚡ ${tool}\n${summary}\nAllow? [y/N] `, answer => {
+  const userResponse = new Promise<boolean>(resolve => {
+    rl.question(`\n⚡ ${tool}\n${summary}\nAllow? [y/N] (${PERMISSION_TIMEOUT_MS / 1000}s timeout) `, answer => {
       rl.close();
       resolve(answer.toLowerCase().startsWith('y'));
     });
   });
+
+  const timeout = new Promise<boolean>(resolve => {
+    setTimeout(() => {
+      rl.close();
+      process.stdout.write('\n⏱ Permission timed out — denied by default.\n');
+      resolve(false);
+    }, PERMISSION_TIMEOUT_MS);
+  });
+
+  return Promise.race([userResponse, timeout]);
 }

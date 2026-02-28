@@ -33,33 +33,55 @@ export class SessionManager {
 
   /** Append a message to the session file */
   save(message: Message): void {
-    const line = JSON.stringify({
-      ...message,
-      _ts: new Date().toISOString(),
-      _model: this.model,
-    });
-    fs.appendFileSync(this.filePath, line + '\n');
+    try {
+      const line = JSON.stringify({
+        ...message,
+        _ts: new Date().toISOString(),
+        _model: this.model,
+      });
+      fs.appendFileSync(this.filePath, line + '\n');
+    } catch {
+      // Don't crash on write failure — session persistence is best-effort
+    }
   }
 
-  /** Save all messages (overwrite) */
+  /** Save all messages (atomic overwrite via temp file + rename) */
   saveAll(messages: Message[]): void {
-    const lines = messages.map(m =>
-      JSON.stringify({ ...m, _ts: new Date().toISOString(), _model: this.model })
-    );
-    fs.writeFileSync(this.filePath, lines.join('\n') + '\n');
+    try {
+      const lines = messages.map(m =>
+        JSON.stringify({ ...m, _ts: new Date().toISOString(), _model: this.model })
+      );
+      const tmpPath = this.filePath + '.tmp';
+      fs.writeFileSync(tmpPath, lines.join('\n') + '\n');
+      fs.renameSync(tmpPath, this.filePath);
+    } catch {
+      // Don't crash — session persistence is best-effort
+    }
   }
 
-  /** Load messages from a session file */
+  /** Load messages from a session file (skips malformed lines) */
   load(): Message[] {
     if (!fs.existsSync(this.filePath)) return [];
-    const content = fs.readFileSync(this.filePath, 'utf-8').trim();
+    let content: string;
+    try {
+      content = fs.readFileSync(this.filePath, 'utf-8').trim();
+    } catch {
+      return [];
+    }
     if (!content) return [];
-    return content.split('\n').map(line => {
-      const obj = JSON.parse(line);
-      delete obj._ts;
-      delete obj._model;
-      return obj as Message;
-    });
+    const messages: Message[] = [];
+    for (const line of content.split('\n')) {
+      try {
+        const obj = JSON.parse(line);
+        delete obj._ts;
+        delete obj._model;
+        messages.push(obj as Message);
+      } catch {
+        // Skip malformed line — don't crash the whole load
+        continue;
+      }
+    }
+    return messages;
   }
 
   /** List recent sessions */

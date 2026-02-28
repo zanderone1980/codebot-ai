@@ -6,6 +6,7 @@ export class ImageInfoTool implements Tool {
   name = 'image_info';
   description = 'Get image file information — dimensions, format, file size. Supports PNG, JPEG, GIF, BMP, SVG.';
   permission: Tool['permission'] = 'auto';
+  cacheable = true;
   parameters = {
     type: 'object',
     properties: {
