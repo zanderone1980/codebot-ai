@@ -34,25 +34,61 @@ export class ContextManager {
     return total <= this.availableTokens();
   }
 
-  /** Compact conversation by dropping old messages and inserting a summary placeholder */
+  /**
+   * Group messages into atomic blocks that must never be split.
+   * An assistant message with tool_calls + its following tool responses = one block.
+   * All other messages are individual blocks.
+   * This prevents compaction from creating orphaned tool messages.
+   */
+  private groupMessages(messages: Message[]): Message[][] {
+    const groups: Message[][] = [];
+    let i = 0;
+
+    while (i < messages.length) {
+      const msg = messages[i];
+
+      if (msg.role === 'assistant' && msg.tool_calls?.length) {
+        // Start of a tool_call group — keep assistant + all following tool messages together
+        const group: Message[] = [msg];
+        i++;
+        while (i < messages.length && messages[i].role === 'tool') {
+          group.push(messages[i]);
+          i++;
+        }
+        groups.push(group);
+      } else {
+        groups.push([msg]);
+        i++;
+      }
+    }
+
+    return groups;
+  }
+
+  /** Compact conversation by dropping old messages. Never splits tool_call groups. */
   compact(messages: Message[], force = false): Message[] {
     if (!force && this.fitsInBudget(messages)) return messages;
 
     const system = messages[0]?.role === 'system' ? messages[0] : null;
     const rest = system ? messages.slice(1) : [...messages];
 
-    // Keep recent messages that fit within 80% of budget
-    const kept: Message[] = [];
+    // Group messages into atomic blocks (assistant + tool responses stay together)
+    const groups = this.groupMessages(rest);
+
+    // Keep recent groups that fit within 80% of budget
+    const keptGroups: Message[][] = [];
     let tokenCount = 0;
     const budget = this.availableTokens();
 
-    for (let i = rest.length - 1; i >= 0; i--) {
-      const msgTokens = this.estimateTokens(rest[i].content);
-      if (tokenCount + msgTokens > budget * 0.8) break;
-      kept.unshift(rest[i]);
-      tokenCount += msgTokens;
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const group = groups[i];
+      const groupTokens = group.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
+      if (tokenCount + groupTokens > budget * 0.8) break;
+      keptGroups.unshift(group);
+      tokenCount += groupTokens;
     }
 
+    const kept = keptGroups.flat();
     const dropped = rest.length - kept.length;
     if (dropped > 0) {
       kept.unshift({
@@ -65,23 +101,28 @@ export class ContextManager {
     return kept;
   }
 
-  /** Smart compaction: use LLM to summarize dropped messages instead of just discarding */
+  /** Smart compaction: use LLM to summarize dropped messages. Never splits tool_call groups. */
   async compactWithSummary(messages: Message[]): Promise<{ messages: Message[]; summary: string }> {
     const system = messages[0]?.role === 'system' ? messages[0] : null;
     const rest = system ? messages.slice(1) : [...messages];
 
-    // Determine which messages to keep vs summarize
-    const kept: Message[] = [];
+    // Group messages into atomic blocks
+    const groups = this.groupMessages(rest);
+
+    // Keep recent groups that fit within 80% of budget
+    const keptGroups: Message[][] = [];
     let tokenCount = 0;
     const budget = this.availableTokens();
 
-    for (let i = rest.length - 1; i >= 0; i--) {
-      const msgTokens = this.estimateTokens(rest[i].content);
-      if (tokenCount + msgTokens > budget * 0.8) break;
-      kept.unshift(rest[i]);
-      tokenCount += msgTokens;
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const group = groups[i];
+      const groupTokens = group.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
+      if (tokenCount + groupTokens > budget * 0.8) break;
+      keptGroups.unshift(group);
+      tokenCount += groupTokens;
     }
 
+    const kept = keptGroups.flat();
     const droppedCount = rest.length - kept.length;
     if (droppedCount === 0) {
       return { messages, summary: '' };

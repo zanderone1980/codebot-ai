@@ -10,7 +10,7 @@ import { banner, randomGreeting, compactBanner } from './banner';
 import { EditFileTool } from './tools';
 import { Scheduler } from './scheduler';
 
-const VERSION = '1.4.2';
+const VERSION = '1.4.3';
 
 // Session-wide token tracking
 let sessionTokens = { input: 0, output: 0, total: 0 };
