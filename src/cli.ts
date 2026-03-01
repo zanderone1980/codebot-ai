@@ -18,7 +18,7 @@ import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSes
 import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
 
-const VERSION = '1.9.0';
+const VERSION = '2.0.0';
 
 const C = {
   reset: '\x1b[0m',

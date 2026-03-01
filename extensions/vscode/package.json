@@ -1,0 +1,99 @@
+{
+  "name": "codebot-ai-vscode",
+  "displayName": "CodeBot AI",
+  "description": "AI-powered coding assistant with multi-provider support, risk scoring, and policy enforcement.",
+  "version": "2.0.0",
+  "publisher": "ascendral",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:codebotChat"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codebot-sidebar",
+          "title": "CodeBot AI",
+          "icon": "$(hubot)"
+        }
+      ]
+    },
+    "views": {
+      "codebot-sidebar": [
+        {
+          "type": "webview",
+          "id": "codebotChat",
+          "name": "CodeBot Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codebot.startSession",
+        "title": "CodeBot AI: Start New Session"
+      },
+      {
+        "command": "codebot.showUsage",
+        "title": "CodeBot AI: Show Usage Statistics"
+      },
+      {
+        "command": "codebot.initPolicy",
+        "title": "CodeBot AI: Initialize Policy File"
+      }
+    ],
+    "configuration": {
+      "title": "CodeBot AI",
+      "properties": {
+        "codebot.provider": {
+          "type": "string",
+          "default": "openai",
+          "enum": [
+            "openai",
+            "anthropic"
+          ],
+          "description": "LLM provider to use."
+        },
+        "codebot.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model name to use. Leave empty for provider default."
+        },
+        "codebot.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "API key for the selected provider. If empty, reads from environment variable."
+        },
+        "codebot.autoApprove": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically approve tool calls without prompting."
+        },
+        "codebot.maxIterations": {
+          "type": "number",
+          "default": 25,
+          "description": "Maximum number of agent iterations per run."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "codebot-ai": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.5.0"
+  }
+}

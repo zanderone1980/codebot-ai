@@ -1,0 +1,39 @@
+name: 'CodeBot AI'
+description: 'Autonomous AI code review, auto-fix, and security scan'
+author: 'codebot-ai'
+
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+inputs:
+  task:
+    description: 'Task to perform: review, fix, or scan'
+    required: true
+  model:
+    description: 'LLM model to use'
+    required: false
+    default: 'claude-sonnet-4-20250514'
+  provider:
+    description: 'LLM provider: anthropic or openai'
+    required: false
+    default: 'anthropic'
+  api-key:
+    description: 'API key for the LLM provider'
+    required: true
+  sandbox:
+    description: 'Sandbox mode: auto, on, or off'
+    required: false
+    default: 'auto'
+  policy:
+    description: 'Path to the policy configuration file'
+    required: false
+    default: '.codebot/policy.json'
+  max-iterations:
+    description: 'Maximum number of agent iterations'
+    required: false
+    default: '25'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

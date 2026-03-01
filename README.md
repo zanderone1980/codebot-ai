@@ -4,7 +4,7 @@
 [![license](https://img.shields.io/npm/l/codebot-ai.svg)](https://github.com/zanderone1980/codebot-ai/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/codebot-ai.svg)](https://nodejs.org)
 
-**Zero-dependency autonomous AI agent.** Works with any LLM — local or cloud. Code, browse the web, run commands, search, automate routines, and more.
+**Zero-dependency autonomous AI coding agent with enterprise security.** Works with any LLM — local or cloud. Code, browse the web, run commands, search, automate routines, and more. Includes VS Code extension, GitHub Action, policy engine, risk scoring, and hash-chained audit trail.
 
 Built by [Ascendral Software Development & Innovation](https://github.com/AscendralSoftware).
 
@@ -21,6 +21,27 @@ That's it. The setup wizard launches on first run — pick your model, paste an 
 # Or run without installing
 npx codebot-ai
 ```
+
+### VS Code Extension
+
+Install from the VS Code Marketplace: search for **CodeBot AI**, or:
+
+```bash
+code --install-extension codebot-ai-vscode-2.0.0.vsix
+```
+
+Features: sidebar chat panel, inline diff preview, status bar (tokens, cost, risk level), and full theme integration.
+
+### GitHub Action
+
+```yaml
+- uses: zanderone1980/codebot-ai/actions/codebot@v2
+  with:
+    task: review    # or: fix, scan
+    api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Tasks: `review` (PR code review), `fix` (auto-fix CI failures), `scan` (security scan with SARIF upload).
 
 ## What Can It Do?
 
@@ -101,6 +122,8 @@ echo "explain this error" | codebot            # Pipe mode
 /usage      Show token usage for this session
 /clear      Clear conversation
 /compact    Force context compaction
+/metrics    Show session metrics (token counts, latency, costs)
+/risk       Show risk assessment history
 /config     Show configuration
 /quit       Exit
 ```
@@ -217,16 +240,31 @@ Connect external tool servers via [Model Context Protocol](https://modelcontextp
 
 MCP tools appear automatically with the `mcp_<server>_<tool>` prefix.
 
+## Security
+
+CodeBot v2.0.0 is built with security as a core architectural principle:
+
+- **Policy engine** — declarative JSON policies control tool access, filesystem scope, and execution limits
+- **Risk scoring** — every tool call receives a 0-100 risk score based on 6 weighted factors
+- **Secret detection** — scans for AWS keys, GitHub tokens, JWTs, private keys before writing
+- **Sandbox execution** — Docker-based sandboxing with network, CPU, and memory limits
+- **Audit trail** — hash-chained JSONL log with `--verify-audit` integrity check
+- **SARIF export** — `--export-audit sarif` for GitHub Code Scanning integration
+- **SSRF protection** — blocks localhost, private IPs, cloud metadata endpoints
+- **Path safety** — blocks writes to system directories, detects path traversal
+
+See [SECURITY.md](SECURITY.md) and [docs/HARDENING.md](docs/HARDENING.md) for the full security model.
+
 ## Stability
 
-CodeBot v1.3.0 is hardened for continuous operation:
+CodeBot is hardened for continuous operation:
 
 - **Automatic retry** — network errors, rate limits (429), and server errors (5xx) retry with exponential backoff
 - **Stream recovery** — if the LLM connection drops mid-response, the agent loop retries on the next iteration
 - **Context compaction** — when the conversation exceeds the model's context window, messages are intelligently summarized
 - **Process resilience** — unhandled exceptions and rejections are caught, logged, and the REPL keeps running
 - **Routine timeouts** — scheduled tasks are capped at 5 minutes to prevent the scheduler from hanging
-- **99 tests** — comprehensive suite covering error recovery, retry logic, tool execution, and edge cases
+- **483 tests** — comprehensive suite covering core agent, security, extension, and action
 
 ## Programmatic API
 
@@ -245,6 +283,7 @@ const agent = new Agent({
   provider,
   model: 'claude-sonnet-4-6',
   autoApprove: true,
+  projectRoot: '/path/to/project', // optional, defaults to cwd
 });
 
 for await (const event of agent.run('list all TypeScript files')) {

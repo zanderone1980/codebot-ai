@@ -1,0 +1,7 @@
+src/
+src/test/
+**/*.ts
+!dist/**/*.js
+tsconfig.json
+node_modules/
+.vscode/

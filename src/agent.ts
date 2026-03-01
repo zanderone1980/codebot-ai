@@ -80,6 +80,7 @@ export class Agent {
   private tokenTracker: TokenTracker;
   private metricsCollector: MetricsCollector;
   private riskScorer: RiskScorer;
+  private projectRoot: string;
   private branchCreated: boolean = false;
   private askPermission: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
   private onMessage?: (message: Message) => void;
@@ -90,16 +91,18 @@ export class Agent {
     providerName?: string;
     maxIterations?: number;
     autoApprove?: boolean;
+    projectRoot?: string;
     askPermission?: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
     onMessage?: (message: Message) => void;
   }) {
     this.provider = opts.provider;
     this.model = opts.model;
+    this.projectRoot = opts.projectRoot || process.cwd();
 
     // Load policy FIRST — tools need it for filesystem/git enforcement
-    this.policyEnforcer = new PolicyEnforcer(loadPolicy(process.cwd()), process.cwd());
+    this.policyEnforcer = new PolicyEnforcer(loadPolicy(this.projectRoot), this.projectRoot);
 
-    this.tools = new ToolRegistry(process.cwd(), this.policyEnforcer);
+    this.tools = new ToolRegistry(this.projectRoot, this.policyEnforcer);
     this.context = new ContextManager(opts.model, opts.provider);
 
     // Use policy-defined max iterations as default, CLI overrides
@@ -120,7 +123,7 @@ export class Agent {
 
     // Load plugins
     try {
-      const plugins = loadPlugins(process.cwd());
+      const plugins = loadPlugins(this.projectRoot);
       for (const plugin of plugins) {
         this.tools.register(plugin);
       }
@@ -624,10 +627,8 @@ export class Agent {
 
     try {
       const { execSync } = require('child_process');
-      const cwd = process.cwd();
-
       const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
-        cwd, encoding: 'utf-8', timeout: 5000,
+        cwd: this.projectRoot, encoding: 'utf-8', timeout: 5000,
       }).trim();
 
       if (currentBranch !== 'main' && currentBranch !== 'master') {
@@ -643,7 +644,7 @@ export class Agent {
       const branchName = `${prefix}${timestamp}-${slug}`;
 
       execSync(`git checkout -b "${branchName}"`, {
-        cwd, encoding: 'utf-8', timeout: 10000,
+        cwd: this.projectRoot, encoding: 'utf-8', timeout: 10000,
       });
 
       this.branchCreated = true;
@@ -694,7 +695,7 @@ export class Agent {
   private buildSystemPrompt(supportsTools: boolean): string {
     let repoMap = '';
     try {
-      repoMap = buildRepoMap(process.cwd());
+      repoMap = buildRepoMap(this.projectRoot);
     } catch {
       repoMap = 'Project structure: (unable to scan)';
     }
@@ -702,7 +703,7 @@ export class Agent {
     // Load persistent memory
     let memoryBlock = '';
     try {
-      const memory = new MemoryManager(process.cwd());
+      const memory = new MemoryManager(this.projectRoot);
       memoryBlock = memory.getContextBlock();
     } catch {
       // memory unavailable

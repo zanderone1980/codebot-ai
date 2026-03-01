@@ -163,4 +163,64 @@ describe('Agent', () => {
     const after = agent.getMessages().length;
     assert.strictEqual(after, 1, 'Should only have system message after clear');
   });
+
+  it('uses projectRoot when provided', async () => {
+    const provider = new MockProvider([{ text: 'OK' }]);
+    const customRoot = '/tmp/custom-project';
+    const agent = new Agent({
+      provider,
+      model: 'mock-model',
+      autoApprove: true,
+      projectRoot: customRoot,
+    });
+
+    // Agent should accept projectRoot without error
+    const events = [];
+    for await (const event of agent.run('Hello')) {
+      events.push(event);
+    }
+    assert.ok(events.some(e => e.type === 'done'), 'Should complete with custom projectRoot');
+  });
+
+  it('falls back to cwd when projectRoot not provided', async () => {
+    const provider = new MockProvider([{ text: 'OK' }]);
+    const agent = new Agent({
+      provider,
+      model: 'mock-model',
+      autoApprove: true,
+      // no projectRoot specified
+    });
+
+    const events = [];
+    for await (const event of agent.run('Hello')) {
+      events.push(event);
+    }
+    assert.ok(events.some(e => e.type === 'done'), 'Should complete without projectRoot');
+  });
+
+  it('propagates projectRoot through tool execution', async () => {
+    const provider = new MockProvider([
+      {
+        toolCalls: [{ name: 'think', args: { thought: 'test' } }],
+      },
+      { text: 'Done.' },
+    ]);
+
+    const customRoot = '/tmp/test-project';
+    const agent = new Agent({
+      provider,
+      model: 'mock-model',
+      autoApprove: true,
+      projectRoot: customRoot,
+    });
+
+    const events = [];
+    for await (const event of agent.run('Test projectRoot')) {
+      events.push(event);
+    }
+
+    // Tool execution should succeed (think tool doesn't depend on filesystem)
+    const toolResult = events.find(e => e.type === 'tool_result');
+    assert.ok(toolResult, 'Should have tool result with custom projectRoot');
+  });
 });

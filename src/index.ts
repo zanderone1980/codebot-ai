@@ -1,3 +1,4 @@
+export const VERSION = '2.0.0';
 export { Agent } from './agent';
 export { OpenAIProvider } from './providers/openai';
 export { AnthropicProvider } from './providers/anthropic';

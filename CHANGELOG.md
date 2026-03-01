@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.0.0] — 2026-02-28
+
+### Added
+- **VS Code Extension** (`codebot-ai-vscode`) — sidebar chat panel, inline diff preview, status bar (tokens, cost, risk level), webview with VS Code theme integration
+- **GitHub Action** (`@codebot-ai/action`) — PR review, auto-fix CI failures, security scan with SARIF upload to GitHub Code Scanning
+- **Library API: `projectRoot`** — Agent constructor accepts optional `projectRoot` for embedding in VS Code, GitHub Actions, or custom integrations
+- **Library API: `VERSION` export** — `import { VERSION } from 'codebot-ai'`
+- **Documentation suite** — SECURITY.md, ARCHITECTURE.md, POLICY_GUIDE.md, THREAT_MODEL.md, DEPLOYMENT.md, HARDENING.md, COMPARISON.md, CONTRIBUTING.md
+- **Legal framework** — CLA.md, PRIVACY.md, DISCLAIMER.md
+- 104 new tests (483 total: 379 core + 104 extension/action)
+
+### Changed
+- Agent constructor: `process.cwd()` replaced with configurable `projectRoot` (backward-compatible)
+- Package version bumped to 2.0.0
+
+## [1.9.0] — 2026-02-28
+
+### Added
+- **Structured metrics** — `MetricsCollector` with counters, histograms, JSONL persistence, optional OpenTelemetry OTLP export
+- **Risk scoring** — `RiskScorer` with 6-factor weighted assessment (0-100): permission level, file path sensitivity, command destructiveness, network access, data volume, cumulative session risk
+- **SARIF 2.1.0 export** — `exportSarif()` converts audit entries to SARIF for GitHub Code Scanning, Azure DevOps, SonarQube
+- **Per-tool latency tracking** — `tool_latency_seconds` histogram for every tool execution
+- **Risk indicators in CLI** — colored `[Risk: N level]` display on each tool call
+- **Enhanced session summaries** — per-tool breakdown with call counts, timing, risk average
+- **`/metrics` command** — show session metrics snapshot
+- **`/risk` command** — show risk assessment history
+- **`--export-audit sarif` flag** — export audit log as SARIF to stdout
+- 69 new tests (376 total)
+
 ## [1.1.0] — 2026-02-26
 
 ### Added
