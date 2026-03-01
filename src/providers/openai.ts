@@ -1,5 +1,6 @@
 import { LLMProvider, Message, ToolSchema, StreamEvent, ProviderConfig, ToolCall } from '../types';
 import { getModelInfo } from './registry';
+import { buildToolCallSchema } from '../parser';
 import { isRetryable, getRetryDelay, sleep } from '../retry';
 
 export class OpenAIProvider implements LLMProvider {
@@ -7,11 +8,14 @@ export class OpenAIProvider implements LLMProvider {
   temperature?: number;
   private config: ProviderConfig;
   private supportsTools: boolean;
+  private supportsJsonMode: boolean;
 
   constructor(config: ProviderConfig) {
     this.config = config;
     this.name = config.model;
-    this.supportsTools = getModelInfo(config.model).supportsToolCalling;
+    const modelInfo = getModelInfo(config.model);
+    this.supportsTools = modelInfo.supportsToolCalling;
+    this.supportsJsonMode = modelInfo.supportsJsonMode || false;
   }
 
   async *chat(messages: Message[], tools?: ToolSchema[]): AsyncGenerator<StreamEvent> {
@@ -28,6 +32,7 @@ export class OpenAIProvider implements LLMProvider {
       model: this.config.model,
       messages: messages.map(m => this.formatMessage(m)),
       stream: true,
+      stream_options: { include_usage: true },
     };
 
     if (this.temperature !== undefined) {
@@ -36,6 +41,10 @@ export class OpenAIProvider implements LLMProvider {
 
     if (tools?.length && this.supportsTools) {
       body.tools = tools;
+    } else if (tools?.length && !this.supportsTools && this.supportsJsonMode) {
+      // JSON mode fallback: use structured output for models without native tool calling (v2.1.6)
+      const toolNames = tools.map(t => t.function.name);
+      body.response_format = buildToolCallSchema(toolNames);
     }
 
     // Ollama/local provider optimizations: set context window and keep model loaded
@@ -144,6 +153,22 @@ export class OpenAIProvider implements LLMProvider {
 
           try {
             const data = JSON.parse(trimmed.slice(6));
+
+            // Parse usage from stream (requires stream_options.include_usage)
+            if (data.usage) {
+              const usage = data.usage;
+              const cachedTokens = usage.prompt_tokens_details?.cached_tokens || 0;
+              yield {
+                type: 'usage',
+                usage: {
+                  inputTokens: usage.prompt_tokens || 0,
+                  outputTokens: usage.completion_tokens || 0,
+                  totalTokens: usage.total_tokens || 0,
+                  cacheReadTokens: cachedTokens,
+                },
+              };
+            }
+
             const delta = data.choices?.[0]?.delta;
             if (!delta) continue;
 
@@ -312,11 +337,24 @@ export class OpenAIProvider implements LLMProvider {
   private formatMessage(msg: Message): Record<string, unknown> {
     const formatted: Record<string, unknown> = { role: msg.role, content: msg.content };
 
+    // Vision: convert messages with images to content block array (v2.1.6)
+    if (msg.images?.length) {
+      const content: Array<Record<string, unknown>> = [];
+      if (msg.content) content.push({ type: 'text', text: msg.content });
+      for (const img of msg.images) {
+        content.push({
+          type: 'image_url',
+          image_url: { url: `data:${img.mediaType};base64,${img.data}`, detail: 'auto' },
+        });
+      }
+      formatted.content = content;
+    }
+
     if (msg.tool_calls) {
       formatted.tool_calls = msg.tool_calls;
       // OpenAI (especially GPT-4.1) requires content: null when tool_calls are present
       // and there's no actual text content. Empty string "" causes 400 errors.
-      if (!msg.content) formatted.content = null;
+      if (!msg.content && !msg.images?.length) formatted.content = null;
     }
     if (msg.tool_call_id) formatted.tool_call_id = msg.tool_call_id;
     if (msg.name) formatted.name = msg.name;

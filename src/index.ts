@@ -1,4 +1,4 @@
-export const VERSION = '2.1.5';
+export const VERSION = '2.1.6';
 export { Agent } from './agent';
 export { OpenAIProvider } from './providers/openai';
 export { AnthropicProvider } from './providers/anthropic';
@@ -7,7 +7,9 @@ export { ContextManager } from './context/manager';
 export { buildRepoMap } from './context/repo-map';
 export { SessionManager } from './history';
 export { MemoryManager } from './memory';
-export { parseToolCalls } from './parser';
+export { parseToolCalls, parseJsonModeResponse, buildToolCallSchema } from './parser';
+export { classifyComplexity, classifyToolTier, selectModel, autoDetectTierModels } from './router';
+export type { ModelTier, RouterConfig } from './router';
 export { loadPlugins } from './plugins';
 export { loadMCPTools } from './mcp';
 export { MODEL_REGISTRY, PROVIDER_DEFAULTS, getModelInfo, detectProvider } from './providers/registry';

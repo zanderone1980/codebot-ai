@@ -7,6 +7,7 @@ import { isFatalError } from './retry';
 import { buildRepoMap } from './context/repo-map';
 import { MemoryManager } from './memory';
 import { getModelInfo } from './providers/registry';
+import { lastScreenshotData } from './tools/browser';
 import { loadPlugins } from './plugins';
 import { ToolCache } from './cache';
 import { RateLimiter } from './rate-limiter';
@@ -204,6 +205,15 @@ export class Agent {
                 this.metricsCollector.increment('llm_requests_total');
                 this.metricsCollector.increment('llm_tokens_total', { direction: 'input' }, event.usage.inputTokens || 0);
                 this.metricsCollector.increment('llm_tokens_total', { direction: 'output' }, event.usage.outputTokens || 0);
+
+                // Prompt caching metrics (v2.1.6)
+                if (event.usage.cacheCreationTokens) {
+                  this.metricsCollector.increment('cache_creation_tokens_total', {}, event.usage.cacheCreationTokens);
+                }
+                if (event.usage.cacheReadTokens) {
+                  this.metricsCollector.increment('cache_read_tokens_total', {}, event.usage.cacheReadTokens);
+                  this.metricsCollector.increment('cache_hits_total', { source: 'prompt' });
+                }
               }
               yield { type: 'usage', usage: event.usage };
               break;
@@ -479,6 +489,18 @@ export class Agent {
         const toolName = prep.tc.function.name;
 
         const toolMsg: Message = { role: 'tool', content: output.content, tool_call_id: prep.tc.id };
+
+        // Vision: attach screenshot images to tool messages for vision-capable LLMs (v2.1.6)
+        if (toolName === 'browser' && prep.args.action === 'screenshot' && lastScreenshotData) {
+          const modelInfo = getModelInfo(this.model);
+          if (modelInfo.supportsVision) {
+            toolMsg.images = [{ data: lastScreenshotData, mediaType: 'image/png' }];
+          }
+          // Clear the screenshot data reference (module-level export)
+          const browserModule = require('./tools/browser');
+          browserModule.lastScreenshotData = null;
+        }
+
         this.messages.push(toolMsg);
         this.onMessage?.(toolMsg);
 

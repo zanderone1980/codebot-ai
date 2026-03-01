@@ -1,6 +1,10 @@
 export interface ModelInfo {
   contextWindow: number;
   supportsToolCalling: boolean;
+  supportsCaching?: boolean;
+  supportsVision?: boolean;
+  supportsJsonMode?: boolean;
+  tier?: 'fast' | 'standard' | 'powerful';
   provider?: string;
 }
 
@@ -41,32 +45,32 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
   'command-r:35b': { contextWindow: 131072, supportsToolCalling: true },
 
   // ── Anthropic / Claude ─────────────────────────────────────────────────────
-  'claude-opus-4-6': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
-  'claude-sonnet-4-6': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
-  'claude-sonnet-4-20250514': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
-  'claude-haiku-4-5-20251001': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
-  'claude-3-5-sonnet-20241022': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
-  'claude-3-5-haiku-20241022': { contextWindow: 200000, supportsToolCalling: true, provider: 'anthropic' },
+  'claude-opus-4-6': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
+  'claude-sonnet-4-6': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
+  'claude-sonnet-4-20250514': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
+  'claude-haiku-4-5-20251001': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
+  'claude-3-5-sonnet-20241022': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
+  'claude-3-5-haiku-20241022': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'anthropic' },
 
   // ── OpenAI ─────────────────────────────────────────────────────────────────
-  'gpt-4o': { contextWindow: 128000, supportsToolCalling: true, provider: 'openai' },
-  'gpt-4o-mini': { contextWindow: 128000, supportsToolCalling: true, provider: 'openai' },
-  'gpt-4-turbo': { contextWindow: 128000, supportsToolCalling: true, provider: 'openai' },
-  'gpt-4.1': { contextWindow: 1047576, supportsToolCalling: true, provider: 'openai' },
-  'gpt-4.1-mini': { contextWindow: 1047576, supportsToolCalling: true, provider: 'openai' },
-  'gpt-4.1-nano': { contextWindow: 1047576, supportsToolCalling: true, provider: 'openai' },
-  'o1': { contextWindow: 200000, supportsToolCalling: true, provider: 'openai' },
-  'o1-mini': { contextWindow: 128000, supportsToolCalling: true, provider: 'openai' },
-  'o3': { contextWindow: 200000, supportsToolCalling: true, provider: 'openai' },
-  'o3-mini': { contextWindow: 200000, supportsToolCalling: true, provider: 'openai' },
-  'o4-mini': { contextWindow: 200000, supportsToolCalling: true, provider: 'openai' },
+  'gpt-4o': { contextWindow: 128000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-4o-mini': { contextWindow: 128000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-4-turbo': { contextWindow: 128000, supportsToolCalling: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-4.1': { contextWindow: 1047576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-4.1-mini': { contextWindow: 1047576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-4.1-nano': { contextWindow: 1047576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'o1': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, provider: 'openai' },
+  'o1-mini': { contextWindow: 128000, supportsToolCalling: true, supportsCaching: true, provider: 'openai' },
+  'o3': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'openai' },
+  'o3-mini': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, provider: 'openai' },
+  'o4-mini': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'openai' },
 
   // ── Google Gemini (OpenAI-compatible endpoint) ─────────────────────────────
-  'gemini-2.5-pro': { contextWindow: 1048576, supportsToolCalling: true, provider: 'gemini' },
-  'gemini-2.5-flash': { contextWindow: 1048576, supportsToolCalling: true, provider: 'gemini' },
-  'gemini-2.0-flash': { contextWindow: 1048576, supportsToolCalling: true, provider: 'gemini' },
-  'gemini-1.5-pro': { contextWindow: 2097152, supportsToolCalling: true, provider: 'gemini' },
-  'gemini-1.5-flash': { contextWindow: 1048576, supportsToolCalling: true, provider: 'gemini' },
+  'gemini-2.5-pro': { contextWindow: 1048576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
+  'gemini-2.5-flash': { contextWindow: 1048576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
+  'gemini-2.0-flash': { contextWindow: 1048576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
+  'gemini-1.5-pro': { contextWindow: 2097152, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
+  'gemini-1.5-flash': { contextWindow: 1048576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
 
   // ── DeepSeek (OpenAI-compatible) ───────────────────────────────────────────
   'deepseek-chat': { contextWindow: 65536, supportsToolCalling: true, provider: 'deepseek' },
@@ -79,9 +83,9 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
   'gemma2-9b-it': { contextWindow: 8192, supportsToolCalling: true, provider: 'groq' },
 
   // ── Mistral (OpenAI-compatible) ────────────────────────────────────────────
-  'mistral-large-latest': { contextWindow: 131072, supportsToolCalling: true, provider: 'mistral' },
-  'mistral-small-latest': { contextWindow: 131072, supportsToolCalling: true, provider: 'mistral' },
-  'codestral-latest': { contextWindow: 32768, supportsToolCalling: true, provider: 'mistral' },
+  'mistral-large-latest': { contextWindow: 131072, supportsToolCalling: true, supportsJsonMode: true, provider: 'mistral' },
+  'mistral-small-latest': { contextWindow: 131072, supportsToolCalling: true, supportsJsonMode: true, provider: 'mistral' },
+  'codestral-latest': { contextWindow: 32768, supportsToolCalling: true, supportsJsonMode: true, provider: 'mistral' },
 
   // ── xAI / Grok (OpenAI-compatible) ─────────────────────────────────────────
   'grok-3': { contextWindow: 131072, supportsToolCalling: true, provider: 'xai' },

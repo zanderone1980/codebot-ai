@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.1.6] — 2026-03-01
+
+### Added
+- **Prompt caching** — Anthropic: `cache_control` on system prompt and tool definitions with `anthropic-beta: prompt-caching-2024-07-31` header; OpenAI: `stream_options.include_usage` for cache token tracking; cache metrics (`cache_creation_tokens_total`, `cache_read_tokens_total`, `cache_hits_total`) in MetricsCollector
+- **Vision / multimodal** — `ImageAttachment` type on messages; Anthropic `image` content blocks with base64 source; OpenAI `image_url` content blocks with data URIs; browser screenshots auto-attached to tool messages for vision-capable models; image-aware token estimation (~1000 tokens/image) in ContextManager
+- **Model routing** — `src/router.ts`: heuristic task classifier (fast/standard/powerful tiers); auto-detects tier models from provider family (Anthropic, OpenAI, Gemini, DeepSeek, Groq); `classifyComplexity()` and `classifyToolTier()` for per-turn model selection
+- **JSON mode / structured output** — `buildToolCallSchema()` generates JSON schema for tool calling; `parseJsonModeResponse()` parses structured tool responses; OpenAI provider uses `response_format` with JSON schema when native tools unavailable; integrated as first fallback in `parseToolCalls()`
+
+### Changed
+- `UsageStats` extended with `cacheCreationTokens` and `cacheReadTokens` fields
+- `ModelInfo` extended with `supportsCaching`, `supportsVision`, `supportsJsonMode`, and `tier` fields
+- `Message` type extended with `images?: ImageAttachment[]` for multimodal content
+- `ContextManager.fitsInBudget()` and `compact()` now use `estimateMessageTokens()` for image-aware budgeting
+- 559 tests passing (up from 491)
+
 ## [2.1.5] — 2026-02-28
 
 ### Security

@@ -12,6 +12,9 @@ let debugPort = 9222;
 let connectingPromise: Promise<CDPClient> | null = null;
 const CHROME_DATA_DIR = path.join(os.homedir(), '.codebot', 'chrome-profile');
 
+/** Last screenshot base64 data — picked up by agent for vision-capable LLMs */
+export let lastScreenshotData: string | null = null;
+
 /**
  * Kill any Chrome using our debug port or data dir (but NEVER kill ourselves).
  * Uses SIGTERM first (graceful shutdown), falls back to SIGKILL only for
@@ -382,6 +385,9 @@ export class BrowserTool implements Tool {
     // Save to temp file
     const filePath = path.join(os.tmpdir(), `codebot-screenshot-${Date.now()}.png`);
     fs.writeFileSync(filePath, Buffer.from(data, 'base64'));
+
+    // Store base64 for vision-capable LLMs (v2.1.6)
+    lastScreenshotData = data;
 
     return `Screenshot saved: ${filePath} (${Math.round(data.length * 0.75 / 1024)}KB)`;
   }

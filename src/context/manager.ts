@@ -23,6 +23,15 @@ export class ContextManager {
     return Math.ceil(text.length / 3.5);
   }
 
+  /** Estimate tokens for a full message, including images (~1000 tokens per image) */
+  estimateMessageTokens(msg: Message): number {
+    let tokens = this.estimateTokens(msg.content);
+    if (msg.images?.length) {
+      tokens += msg.images.length * 1000; // ~1000 tokens per typical screenshot
+    }
+    return tokens;
+  }
+
   /** Tokens available for conversation messages */
   availableTokens(): number {
     return this.contextWindow - this.reservedForOutput - this.reservedForSystem - this.reservedForTools;
@@ -30,7 +39,7 @@ export class ContextManager {
 
   /** Check if messages fit within budget */
   fitsInBudget(messages: Message[]): boolean {
-    const total = messages.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
+    const total = messages.reduce((sum, m) => sum + this.estimateMessageTokens(m), 0);
     return total <= this.availableTokens();
   }
 
@@ -82,7 +91,7 @@ export class ContextManager {
 
     for (let i = groups.length - 1; i >= 0; i--) {
       const group = groups[i];
-      const groupTokens = group.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
+      const groupTokens = group.reduce((sum, m) => sum + this.estimateMessageTokens(m), 0);
       if (tokenCount + groupTokens > budget * 0.8) break;
       keptGroups.unshift(group);
       tokenCount += groupTokens;
@@ -116,7 +125,7 @@ export class ContextManager {
 
     for (let i = groups.length - 1; i >= 0; i--) {
       const group = groups[i];
-      const groupTokens = group.reduce((sum, m) => sum + this.estimateTokens(m.content), 0);
+      const groupTokens = group.reduce((sum, m) => sum + this.estimateMessageTokens(m), 0);
       if (tokenCount + groupTokens > budget * 0.8) break;
       keptGroups.unshift(group);
       tokenCount += groupTokens;

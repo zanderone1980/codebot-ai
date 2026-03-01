@@ -1,6 +1,12 @@
+export interface ImageAttachment {
+  data: string;        // base64-encoded image data
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp';
+}
+
 export interface Message {
   role: 'system' | 'user' | 'assistant' | 'tool';
   content: string;
+  images?: ImageAttachment[];
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -64,6 +70,8 @@ export interface UsageStats {
   inputTokens?: number;
   outputTokens?: number;
   totalTokens?: number;
+  cacheCreationTokens?: number;
+  cacheReadTokens?: number;
 }
 
 export interface AgentEvent {

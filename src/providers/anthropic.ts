@@ -1,4 +1,5 @@
 import { LLMProvider, Message, ToolSchema, StreamEvent, ProviderConfig, ToolCall } from '../types';
+import { getModelInfo } from './registry';
 import { isRetryable, getRetryDelay, sleep } from '../retry';
 
 interface AnthropicMessage {
@@ -36,16 +37,31 @@ export class AnthropicProvider implements LLMProvider {
       body.temperature = this.temperature;
     }
 
+    // Prompt caching: use content block array with cache_control for Anthropic models
+    const cachingEnabled = getModelInfo(this.config.model).supportsCaching;
     if (systemPrompt) {
-      body.system = systemPrompt;
+      if (cachingEnabled) {
+        body.system = [{
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        }];
+      } else {
+        body.system = systemPrompt;
+      }
     }
 
     if (tools?.length) {
-      body.tools = tools.map(t => ({
+      const toolDefs = tools.map(t => ({
         name: t.function.name,
         description: t.function.description,
         input_schema: t.function.parameters,
       }));
+      // Mark the last tool for caching (caches all tool definitions up to this point)
+      if (cachingEnabled && toolDefs.length > 0) {
+        (toolDefs[toolDefs.length - 1] as Record<string, unknown>).cache_control = { type: 'ephemeral' };
+      }
+      body.tools = toolDefs;
     }
 
     const baseUrl = this.config.baseUrl.replace(/\/+$/, '');
@@ -61,6 +77,7 @@ export class AnthropicProvider implements LLMProvider {
             'Content-Type': 'application/json',
             'x-api-key': this.config.apiKey || '',
             'anthropic-version': '2023-06-01',
+            ...(cachingEnabled ? { 'anthropic-beta': 'prompt-caching-2024-07-31' } : {}),
           },
           body: JSON.stringify(body),
           signal: AbortSignal.timeout(60_000),
@@ -217,6 +234,8 @@ export class AnthropicProvider implements LLMProvider {
                   usage: {
                     inputTokens: usage.input_tokens,
                     outputTokens: usage.output_tokens,
+                    cacheCreationTokens: usage.cache_creation_input_tokens || 0,
+                    cacheReadTokens: usage.cache_read_input_tokens || 0,
                   },
                 };
               }
@@ -323,12 +342,26 @@ export class AnthropicProvider implements LLMProvider {
 
       if (msg.role === 'tool') {
         // Tool results in Anthropic go as user messages with tool_result content
+        // If the tool result has images (e.g., browser screenshot), include them as content blocks
+        let toolContent: string | Array<{ type: string; [key: string]: unknown }> = msg.content;
+        if (msg.images?.length) {
+          const blocks: Array<{ type: string; [key: string]: unknown }> = [];
+          if (msg.content) blocks.push({ type: 'text', text: msg.content });
+          for (const img of msg.images) {
+            blocks.push({
+              type: 'image',
+              source: { type: 'base64', media_type: img.mediaType, data: img.data },
+            });
+          }
+          toolContent = blocks;
+        }
+
         const lastMsg = apiMessages[apiMessages.length - 1];
         if (lastMsg?.role === 'user' && Array.isArray(lastMsg.content)) {
           (lastMsg.content as Array<{ type: string; [key: string]: unknown }>).push({
             type: 'tool_result',
             tool_use_id: msg.tool_call_id,
-            content: msg.content,
+            content: toolContent,
           });
         } else {
           apiMessages.push({
@@ -336,15 +369,27 @@ export class AnthropicProvider implements LLMProvider {
             content: [{
               type: 'tool_result',
               tool_use_id: msg.tool_call_id,
-              content: msg.content,
+              content: toolContent,
             }],
           });
         }
         continue;
       }
 
-      // Regular user message
-      apiMessages.push({ role: 'user', content: msg.content });
+      // Regular user message — may include images
+      if (msg.images?.length) {
+        const content: Array<{ type: string; [key: string]: unknown }> = [];
+        if (msg.content) content.push({ type: 'text', text: msg.content });
+        for (const img of msg.images) {
+          content.push({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mediaType, data: img.data },
+          });
+        }
+        apiMessages.push({ role: 'user', content });
+      } else {
+        apiMessages.push({ role: 'user', content: msg.content });
+      }
     }
 
     // Anthropic requires alternating user/assistant. Merge consecutive same-role messages.
