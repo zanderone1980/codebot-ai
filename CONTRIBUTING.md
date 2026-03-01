@@ -73,7 +73,7 @@ describe('YourModule', () => {
 
 1. Fork the repository and create a feature branch
 2. Write your changes with tests
-3. Ensure `npm test` passes (483+ tests)
+3. Ensure `npm test` passes (427+ tests)
 4. Ensure `npm run lint` passes (TypeScript strict mode)
 5. Submit a PR against `main`
 6. Describe your changes clearly in the PR description

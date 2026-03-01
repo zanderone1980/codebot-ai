@@ -205,4 +205,114 @@ describe('MetricsCollector', () => {
     }
     assert.strictEqual(total, 100);
   });
+
+  // ── Distributed Tracing ──
+
+  it('startSpan returns a span ID', () => {
+    const mc = new MetricsCollector('trace-test');
+    const spanId = mc.startSpan('tool.read_file');
+    assert.ok(typeof spanId === 'string');
+    assert.strictEqual(spanId.length, 16); // 8 bytes hex
+  });
+
+  it('endSpan marks span as completed with OK status', () => {
+    const mc = new MetricsCollector();
+    const spanId = mc.startSpan('tool.execute', { command: 'npm test' });
+    mc.endSpan(spanId);
+
+    const spans = mc.getSpans();
+    assert.strictEqual(spans.length, 1);
+    assert.strictEqual(spans[0].name, 'tool.execute');
+    assert.strictEqual(spans[0].status.code, 1); // OK
+    assert.ok(spans[0].endTimeUnixNano > 0);
+    assert.strictEqual(spans[0].attributes.command, 'npm test');
+  });
+
+  it('endSpan with error sets ERROR status', () => {
+    const mc = new MetricsCollector();
+    const spanId = mc.startSpan('tool.write_file');
+    mc.endSpan(spanId, 'Permission denied');
+
+    const spans = mc.getSpans();
+    assert.strictEqual(spans[0].status.code, 2); // ERROR
+    assert.strictEqual(spans[0].status.message, 'Permission denied');
+    // Should have an exception event
+    assert.ok(spans[0].events.some(e => e.name === 'exception'));
+  });
+
+  it('getSpans only returns completed spans', () => {
+    const mc = new MetricsCollector();
+    const span1 = mc.startSpan('completed');
+    mc.startSpan('still-running');
+    mc.endSpan(span1);
+
+    const spans = mc.getSpans();
+    assert.strictEqual(spans.length, 1);
+    assert.strictEqual(spans[0].name, 'completed');
+  });
+
+  it('addSpanEvent adds event to active span', () => {
+    const mc = new MetricsCollector();
+    const spanId = mc.startSpan('tool.browser');
+    mc.addSpanEvent(spanId, 'page_loaded', { url: 'https://example.com' });
+    mc.addSpanEvent(spanId, 'screenshot_taken');
+    mc.endSpan(spanId);
+
+    const spans = mc.getSpans();
+    // 2 custom events (no exception event since no error)
+    assert.strictEqual(spans[0].events.length, 2);
+    assert.strictEqual(spans[0].events[0].name, 'page_loaded');
+    assert.strictEqual(spans[0].events[1].name, 'screenshot_taken');
+  });
+
+  it('spans share a trace ID within a session', () => {
+    const mc = new MetricsCollector();
+    const span1 = mc.startSpan('op1');
+    const span2 = mc.startSpan('op2');
+    mc.endSpan(span1);
+    mc.endSpan(span2);
+
+    const spans = mc.getSpans();
+    assert.strictEqual(spans[0].traceId, spans[1].traceId);
+    assert.notStrictEqual(spans[0].spanId, spans[1].spanId);
+  });
+
+  it('supports parent span IDs for nested spans', () => {
+    const mc = new MetricsCollector();
+    const parentId = mc.startSpan('agent.iteration');
+    const childId = mc.startSpan('tool.execute', { command: 'ls' }, parentId);
+    mc.endSpan(childId);
+    mc.endSpan(parentId);
+
+    const spans = mc.getSpans();
+    const child = spans.find(s => s.name === 'tool.execute');
+    assert.ok(child);
+    assert.strictEqual(child.parentSpanId, parentId);
+  });
+
+  it('exportTraces does not throw when no endpoint set', () => {
+    const mc = new MetricsCollector();
+    const spanId = mc.startSpan('test');
+    mc.endSpan(spanId);
+    assert.doesNotThrow(() => mc.exportTraces());
+  });
+
+  it('endSpan ignores unknown span IDs', () => {
+    const mc = new MetricsCollector();
+    assert.doesNotThrow(() => mc.endSpan('nonexistent'));
+    assert.strictEqual(mc.getSpans().length, 0);
+  });
+
+  it('addSpanEvent ignores unknown span IDs', () => {
+    const mc = new MetricsCollector();
+    assert.doesNotThrow(() => mc.addSpanEvent('nonexistent', 'event'));
+  });
+
+  it('session.id attribute is automatically added to spans', () => {
+    const mc = new MetricsCollector('my-session-123');
+    const spanId = mc.startSpan('test');
+    mc.endSpan(spanId);
+    const spans = mc.getSpans();
+    assert.strictEqual(spans[0].attributes['session.id'], 'my-session-123');
+  });
 });

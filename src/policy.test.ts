@@ -203,4 +203,125 @@ describe('generateDefaultPolicyFile', () => {
     assert.ok(parsed.filesystem);
     assert.ok(parsed.tools);
   });
+
+  it('includes RBAC example with roles', () => {
+    const content = generateDefaultPolicyFile();
+    const parsed = JSON.parse(content);
+    assert.ok(parsed.rbac);
+    assert.ok(parsed.rbac.roles);
+    assert.ok(parsed.rbac.roles.admin);
+    assert.ok(parsed.rbac.roles.developer);
+    assert.ok(parsed.rbac.roles.reviewer);
+  });
+});
+
+// ── RBAC Tests ──
+
+describe('PolicyEnforcer — RBAC disabled (backward compatible)', () => {
+  it('returns base policy when RBAC is disabled', () => {
+    const enforcer = new PolicyEnforcer(DEFAULT_POLICY);
+    assert.strictEqual(enforcer.resolveRole(), null);
+    const effective = enforcer.getEffectivePolicy();
+    assert.strictEqual(effective, enforcer.getPolicy());
+  });
+
+  it('returns current OS username', () => {
+    const enforcer = new PolicyEnforcer(DEFAULT_POLICY);
+    const user = enforcer.getCurrentUser();
+    assert.ok(typeof user === 'string');
+    assert.ok(user.length > 0);
+  });
+
+  it('allows setUser to override username', () => {
+    const enforcer = new PolicyEnforcer(DEFAULT_POLICY);
+    enforcer.setUser('alice');
+    assert.strictEqual(enforcer.getCurrentUser(), 'alice');
+  });
+});
+
+describe('PolicyEnforcer — RBAC enabled', () => {
+  const rbacPolicy = {
+    ...DEFAULT_POLICY,
+    tools: { enabled: [], disabled: [], permissions: { execute: 'prompt' as const } },
+    limits: { max_iterations: 50 },
+    rbac: {
+      enabled: true,
+      default_role: 'developer',
+      user_roles: {
+        alice: 'admin',
+        bob: 'reviewer',
+      },
+      roles: {
+        admin: {
+          tools: { disabled: [] as string[], permissions: { execute: 'auto' as const } },
+          limits: { max_iterations: 200, cost_limit_usd: 100.0 },
+        },
+        developer: {
+          tools: { disabled: ['ssh_remote'], permissions: { execute: 'prompt' as const } },
+          limits: { max_iterations: 50, cost_limit_usd: 10.0 },
+        },
+        reviewer: {
+          tools: { disabled: ['execute', 'write_file', 'edit_file'] },
+          filesystem: { writable_paths: [] as string[] },
+          limits: { max_iterations: 10, cost_limit_usd: 2.0 },
+        },
+      },
+    },
+  };
+
+  it('resolves admin role for alice', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('alice');
+    assert.strictEqual(enforcer.resolveRole(), 'admin');
+  });
+
+  it('resolves reviewer role for bob', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('bob');
+    assert.strictEqual(enforcer.resolveRole(), 'reviewer');
+  });
+
+  it('falls back to default role for unknown users', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('charlie');
+    assert.strictEqual(enforcer.resolveRole(), 'developer');
+  });
+
+  it('admin gets elevated limits', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('alice');
+    const effective = enforcer.getEffectivePolicy();
+    assert.strictEqual(effective.limits?.max_iterations, 200);
+    assert.strictEqual(effective.limits?.cost_limit_usd, 100.0);
+  });
+
+  it('reviewer has execute tool disabled', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('bob');
+    assert.strictEqual(enforcer.isToolAllowed('execute').allowed, false);
+    assert.strictEqual(enforcer.isToolAllowed('write_file').allowed, false);
+    assert.strictEqual(enforcer.isToolAllowed('read_file').allowed, true);
+  });
+
+  it('admin permission overrides base policy', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('alice');
+    // Base has execute: 'prompt', admin overrides to 'auto'
+    assert.strictEqual(enforcer.getToolPermission('execute'), 'auto');
+  });
+
+  it('reviewer gets restricted limits', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('bob');
+    const effective = enforcer.getEffectivePolicy();
+    assert.strictEqual(effective.limits?.max_iterations, 10);
+    assert.strictEqual(effective.limits?.cost_limit_usd, 2.0);
+  });
+
+  it('developer has ssh_remote disabled', () => {
+    const enforcer = new PolicyEnforcer(rbacPolicy);
+    enforcer.setUser('charlie'); // default role = developer
+    assert.strictEqual(enforcer.isToolAllowed('ssh_remote').allowed, false);
+    assert.strictEqual(enforcer.isToolAllowed('execute').allowed, true);
+  });
 });

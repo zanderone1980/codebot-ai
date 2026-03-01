@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0] — 2026-03-01
+
+### Added
+- **Role-Based Access Control (RBAC)** — `PolicyRole`, `PolicyRbac` interfaces, user-to-role mapping, role-scoped tool permissions, filesystem restrictions, and cost/iteration limits. Three built-in roles: `admin`, `developer`, `reviewer`
+- **Encryption at rest** (`src/encryption.ts`) — AES-256-GCM encryption for audit logs, session files, and memory. PBKDF2-SHA512 key derivation (100K iterations). Opt-in via `CODEBOT_ENCRYPTION_KEY` env var or policy config
+- **Distributed tracing** — `Span`, `SpanEvent` interfaces, `startSpan()`, `endSpan()`, `addSpanEvent()`, `exportTraces()` on `MetricsCollector`. OTLP `/v1/traces` HTTP export alongside existing `/v1/metrics`
+- **ESLint + Prettier** — flat config ESLint with `@typescript-eslint`, Prettier for code formatting. New scripts: `lint`, `lint:fix`, `format`, `format:check`, `typecheck`
+- **Library API exports** — `PolicyEnforcer`, `loadPolicy`, `generateDefaultPolicyFile`, `Policy`, `PolicyRbac`, `PolicyRole`, `Span`, `SpanEvent`, `EncryptionConfig` types
+- 48 new tests (427 total: 379 core + 48 enterprise)
+
+### Changed
+- `PolicyEnforcer` methods (`isToolAllowed`, `getToolPermission`, `getToolCapabilities`, `checkCapability`) now use RBAC-aware effective policy
+- `MetricsCollector` OTLP scope version bumped from `1.9.0` to `2.1.0`
+- `generateDefaultPolicyFile()` includes RBAC example configuration
+- CONTRIBUTING.md test count updated to 427+
+
 ## [2.0.1] — 2026-03-01
 
 ### Added

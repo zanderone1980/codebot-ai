@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as http from 'http';
 import * as https from 'https';
+import * as crypto from 'crypto';
 
 // ── Types ──
 
@@ -38,6 +39,25 @@ export interface MetricsSnapshot {
   timestamp: string;
   counters: CounterValue[];
   histograms: HistogramValue[];
+}
+
+export interface SpanEvent {
+  name: string;
+  timestamp: number;
+  attributes?: Record<string, string | number | boolean>;
+}
+
+export interface Span {
+  traceId: string;
+  spanId: string;
+  parentSpanId?: string;
+  name: string;
+  kind: 'INTERNAL' | 'CLIENT' | 'SERVER';
+  startTimeUnixNano: number;
+  endTimeUnixNano: number;
+  attributes: Record<string, string | number | boolean>;
+  status: { code: 0 | 1 | 2; message?: string }; // 0=UNSET, 1=OK, 2=ERROR
+  events: SpanEvent[];
 }
 
 // ── Helpers ──
@@ -81,9 +101,12 @@ export class MetricsCollector {
   private sessionId: string;
   private counters: Map<string, number> = new Map();
   private histograms: Map<string, { count: number; sum: number; min: number; max: number; buckets: number[] }> = new Map();
+  private traceId: string;
+  private spans: Span[] = [];
 
   constructor(sessionId?: string) {
     this.sessionId = sessionId || `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    this.traceId = crypto.randomBytes(16).toString('hex');
   }
 
   getSessionId(): string {
@@ -218,6 +241,89 @@ export class MetricsCollector {
     return lines.join('\n');
   }
 
+  /** Start a new span for tracking tool execution or other operations */
+  startSpan(name: string, attributes?: Record<string, string | number | boolean>, parentSpanId?: string): string {
+    const spanId = crypto.randomBytes(8).toString('hex');
+    const span: Span = {
+      traceId: this.traceId,
+      spanId,
+      parentSpanId,
+      name,
+      kind: 'INTERNAL',
+      startTimeUnixNano: Date.now() * 1_000_000,
+      endTimeUnixNano: 0,
+      attributes: { 'session.id': this.sessionId, ...attributes },
+      status: { code: 0 },
+      events: [],
+    };
+    this.spans.push(span);
+    return spanId;
+  }
+
+  /** End a span, optionally with error status */
+  endSpan(spanId: string, error?: string): void {
+    const span = this.spans.find(s => s.spanId === spanId);
+    if (!span) return;
+    span.endTimeUnixNano = Date.now() * 1_000_000;
+    if (error) {
+      span.status = { code: 2, message: error };
+      span.events.push({
+        name: 'exception',
+        timestamp: Date.now() * 1_000_000,
+        attributes: { 'exception.message': error },
+      });
+    } else {
+      span.status = { code: 1 };
+    }
+  }
+
+  /** Add an event to an active span */
+  addSpanEvent(spanId: string, name: string, attributes?: Record<string, string | number | boolean>): void {
+    const span = this.spans.find(s => s.spanId === spanId);
+    if (!span) return;
+    span.events.push({ name, timestamp: Date.now() * 1_000_000, attributes });
+  }
+
+  /** Get completed spans */
+  getSpans(): Span[] {
+    return this.spans.filter(s => s.endTimeUnixNano > 0);
+  }
+
+  /** Export traces to OTLP endpoint */
+  exportTraces(): void {
+    try {
+      const endpoint = process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
+      if (!endpoint) return;
+
+      const completedSpans = this.getSpans();
+      if (completedSpans.length === 0) return;
+
+      const payload = this.buildOtlpTracePayload(completedSpans);
+      const url = new URL('/v1/traces', endpoint);
+      const body = JSON.stringify(payload);
+
+      const mod = url.protocol === 'https:' ? https : http;
+      const req = mod.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+        timeout: 5000,
+      });
+
+      req.on('error', () => { /* silent */ });
+      req.on('timeout', () => req.destroy());
+      req.write(body);
+      req.end();
+
+      // Clear exported spans
+      this.spans = this.spans.filter(s => s.endTimeUnixNano === 0);
+    } catch {
+      // Trace export failures are non-fatal
+    }
+  }
+
   /**
    * Export snapshot in OTLP JSON format via HTTP POST.
    * Only fires when OTEL_EXPORTER_OTLP_ENDPOINT is set.
@@ -252,7 +358,53 @@ export class MetricsCollector {
     }
   }
 
-  /** Build OTLP-compatible JSON payload */
+  /** Build OTLP-compatible trace payload */
+  private buildOtlpTracePayload(spans: Span[]): Record<string, unknown> {
+    return {
+      resourceSpans: [{
+        resource: {
+          attributes: [
+            { key: 'service.name', value: { stringValue: 'codebot' } },
+            { key: 'service.version', value: { stringValue: '2.1.0' } },
+            { key: 'session.id', value: { stringValue: this.sessionId } },
+          ],
+        },
+        scopeSpans: [{
+          scope: { name: 'codebot-agent', version: '2.1.0' },
+          spans: spans.map(s => ({
+            traceId: s.traceId,
+            spanId: s.spanId,
+            parentSpanId: s.parentSpanId || '',
+            name: s.name,
+            kind: s.kind === 'CLIENT' ? 3 : s.kind === 'SERVER' ? 2 : 1,
+            startTimeUnixNano: String(s.startTimeUnixNano),
+            endTimeUnixNano: String(s.endTimeUnixNano),
+            attributes: Object.entries(s.attributes).map(([k, v]) => ({
+              key: k,
+              value: typeof v === 'number'
+                ? { intValue: v }
+                : typeof v === 'boolean'
+                  ? { boolValue: v }
+                  : { stringValue: String(v) },
+            })),
+            status: { code: s.status.code === 2 ? 2 : s.status.code === 1 ? 1 : 0, message: s.status.message || '' },
+            events: s.events.map(e => ({
+              name: e.name,
+              timeUnixNano: String(e.timestamp),
+              attributes: e.attributes
+                ? Object.entries(e.attributes).map(([k, v]) => ({
+                    key: k,
+                    value: typeof v === 'number' ? { intValue: v } : { stringValue: String(v) },
+                  }))
+                : [],
+            })),
+          })),
+        }],
+      }],
+    };
+  }
+
+  /** Build OTLP-compatible metrics JSON payload */
   private buildOtlpPayload(snap: MetricsSnapshot): Record<string, unknown> {
     const metrics: Record<string, unknown>[] = [];
 
@@ -301,7 +453,7 @@ export class MetricsCollector {
           ],
         },
         scopeMetrics: [{
-          scope: { name: 'codebot-metrics', version: '1.9.0' },
+          scope: { name: 'codebot-metrics', version: '2.1.0' },
           metrics,
         }],
       }],

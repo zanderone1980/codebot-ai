@@ -1,6 +1,6 @@
 {
   "name": "codebot-ai",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Zero-dependency autonomous AI agent. Code, browse, search, automate. Works with any LLM — Ollama, Claude, GPT, Gemini, DeepSeek, Groq, Mistral, Grok.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,7 +12,12 @@
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
     "test": "node --test dist/*.test.js dist/**/*.test.js",
-    "lint": "tsc --noEmit",
+    "lint": "eslint src/ && tsc --noEmit",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write 'src/**/*.ts' '*.json' '*.md'",
+    "format:check": "prettier --check 'src/**/*.ts' '*.json' '*.md'",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -71,7 +76,12 @@
     "LICENSE"
   ],
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "eslint": "^10.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript": "^5.5.0"
   }
 }

@@ -63,6 +63,23 @@ export interface PolicyLimits {
   cost_limit_usd?: number;
 }
 
+export interface PolicyRole {
+  tools?: PolicyTools;
+  filesystem?: PolicyFilesystem;
+  limits?: PolicyLimits;
+}
+
+export interface PolicyRbac {
+  /** Map OS username or identifier to role name */
+  user_roles?: Record<string, string>;
+  /** Role definitions with scoped policies */
+  roles?: Record<string, PolicyRole>;
+  /** Default role for unrecognized users (falls back to base policy if not set) */
+  default_role?: string;
+  /** Enable RBAC enforcement (default: false for backward compatibility) */
+  enabled?: boolean;
+}
+
 export interface Policy {
   version?: string;
   execution?: PolicyExecution;
@@ -72,6 +89,7 @@ export interface Policy {
   git?: PolicyGit;
   mcp?: PolicyMcp;
   limits?: PolicyLimits;
+  rbac?: PolicyRbac;
 }
 
 // ── Default Policy ──
@@ -115,6 +133,12 @@ export const DEFAULT_POLICY: Required<Policy> = {
     max_file_size_kb: 500,
     max_files_per_operation: 20,
     cost_limit_usd: 0,       // 0 = no limit
+  },
+  rbac: {
+    enabled: false,
+    user_roles: {},
+    roles: {},
+    default_role: undefined,
   },
 };
 
@@ -170,6 +194,7 @@ function validatePolicy(obj: unknown): boolean {
   if (p.git !== undefined && typeof p.git !== 'object') return false;
   if (p.mcp !== undefined && typeof p.mcp !== 'object') return false;
   if (p.limits !== undefined && typeof p.limits !== 'object') return false;
+  if (p.rbac !== undefined && typeof p.rbac !== 'object') return false;
 
   return true;
 }
@@ -208,6 +233,59 @@ export class PolicyEnforcer {
     this.projectRoot = projectRoot || process.cwd();
   }
 
+
+  /** Resolve the current user's role and return merged policy */
+  private currentUser: string | null = null;
+
+  /** Set the current user for RBAC resolution */
+  setUser(username: string): void {
+    this.currentUser = username;
+  }
+
+  /** Get the current OS username */
+  getCurrentUser(): string {
+    return this.currentUser || os.userInfo().username || 'unknown';
+  }
+
+  /** Resolve the role for the current user */
+  resolveRole(): string | null {
+    const rbac = this.policy.rbac;
+    if (!rbac?.enabled) return null;
+
+    const user = this.getCurrentUser();
+    const roleName = rbac.user_roles?.[user] || rbac.default_role || null;
+    return roleName;
+  }
+
+  /** Get the effective policy for the current user (base policy merged with role overrides) */
+  getEffectivePolicy(): Policy {
+    const rbac = this.policy.rbac;
+    if (!rbac?.enabled) return this.policy;
+
+    const roleName = this.resolveRole();
+    if (!roleName || !rbac.roles?.[roleName]) return this.policy;
+
+    const role = rbac.roles[roleName];
+
+    // Merge role overrides on top of base policy
+    const effective = { ...this.policy };
+    if (role.tools) {
+      effective.tools = {
+        ...effective.tools,
+        ...role.tools,
+        permissions: { ...effective.tools?.permissions, ...role.tools.permissions },
+        capabilities: { ...effective.tools?.capabilities, ...role.tools.capabilities },
+      };
+    }
+    if (role.filesystem) {
+      effective.filesystem = { ...effective.filesystem, ...role.filesystem };
+    }
+    if (role.limits) {
+      effective.limits = { ...effective.limits, ...role.limits };
+    }
+
+    return effective;
+  }
   getPolicy(): Policy {
     return this.policy;
   }
@@ -216,7 +294,8 @@ export class PolicyEnforcer {
 
   /** Check if a tool is enabled by policy. Returns { allowed, reason }. */
   isToolAllowed(toolName: string): { allowed: boolean; reason?: string } {
-    const tools = this.policy.tools;
+    const effective = this.getEffectivePolicy();
+    const tools = effective.tools;
     if (!tools) return { allowed: true };
 
     // If explicit disabled list contains it, block
@@ -238,7 +317,7 @@ export class PolicyEnforcer {
 
   /** Get the permission level for a tool (policy override or null for default). */
   getToolPermission(toolName: string): 'auto' | 'prompt' | 'always-ask' | null {
-    return this.policy.tools?.permissions?.[toolName] || null;
+    return this.getEffectivePolicy().tools?.permissions?.[toolName] || null;
   }
 
   // ── Filesystem Access ──
@@ -394,7 +473,7 @@ export class PolicyEnforcer {
 
   /** Get capability restrictions for a tool. undefined = unrestricted. */
   getToolCapabilities(toolName: string): ToolCapabilities | undefined {
-    return this.policy.tools?.capabilities?.[toolName];
+    return this.getEffectivePolicy().tools?.capabilities?.[toolName];
   }
 
   /** Check a specific capability for a tool. Returns { allowed, reason }. */
@@ -403,7 +482,7 @@ export class PolicyEnforcer {
     capabilityType: keyof ToolCapabilities,
     value: string | number,
   ): { allowed: boolean; reason?: string } {
-    const caps = this.policy.tools?.capabilities;
+    const caps = this.getEffectivePolicy().tools?.capabilities;
     if (!caps) return { allowed: true };
     const checker = new CapabilityChecker(caps, this.projectRoot);
     return checker.checkCapability(toolName, capabilityType, value);
@@ -509,6 +588,32 @@ export function generateDefaultPolicyFile(): string {
       max_file_size_kb: 500,
       max_files_per_operation: 20,
       cost_limit_usd: 0,
+    },
+    rbac: {
+      enabled: false,
+      default_role: 'developer',
+      user_roles: {},
+      roles: {
+        admin: {
+          tools: { disabled: [] },
+          limits: { max_iterations: 100, cost_limit_usd: 50.0 },
+        },
+        developer: {
+          tools: {
+            disabled: ['ssh_remote'],
+            permissions: { execute: 'prompt', write_file: 'prompt' },
+          },
+          limits: { max_iterations: 50, cost_limit_usd: 10.0 },
+        },
+        reviewer: {
+          tools: {
+            disabled: ['execute', 'write_file', 'edit_file', 'batch_edit', 'ssh_remote', 'docker', 'database'],
+            permissions: {},
+          },
+          filesystem: { writable_paths: [] },
+          limits: { max_iterations: 10, cost_limit_usd: 2.0 },
+        },
+      },
     },
   }, null, 2) + '\n';
 }
