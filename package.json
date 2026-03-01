@@ -1,6 +1,6 @@
 {
   "name": "codebot-ai",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Zero-dependency autonomous AI agent. Code, browse, search, automate. Works with any LLM — Ollama, Claude, GPT, Gemini, DeepSeek, Groq, Mistral, Grok.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
