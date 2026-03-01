@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { encryptContent, decryptContent } from './encryption';
 
 const MEMORY_DIR = path.join(os.homedir(), '.codebot', 'memory');
 const GLOBAL_MEMORY = path.join(MEMORY_DIR, 'MEMORY.md');
@@ -79,7 +80,7 @@ export class MemoryManager {
   /** Read the global memory file */
   readGlobal(): string {
     if (fs.existsSync(GLOBAL_MEMORY)) {
-      return fs.readFileSync(GLOBAL_MEMORY, 'utf-8');
+      return decryptContent(fs.readFileSync(GLOBAL_MEMORY, 'utf-8'));
     }
     return '';
   }
@@ -89,7 +90,7 @@ export class MemoryManager {
     if (!this.projectDir) return '';
     const memFile = path.join(this.projectDir, 'MEMORY.md');
     if (fs.existsSync(memFile)) {
-      return fs.readFileSync(memFile, 'utf-8');
+      return decryptContent(fs.readFileSync(memFile, 'utf-8'));
     }
     return '';
   }
@@ -97,7 +98,7 @@ export class MemoryManager {
   /** Write to global memory */
   writeGlobal(content: string): void {
     const safe = truncateToSize(content, MAX_FILE_SIZE);
-    fs.writeFileSync(GLOBAL_MEMORY, safe);
+    fs.writeFileSync(GLOBAL_MEMORY, encryptContent(safe));
   }
 
   /** Write to project memory */
@@ -105,7 +106,7 @@ export class MemoryManager {
     if (!this.projectDir) return;
     const memFile = path.join(this.projectDir, 'MEMORY.md');
     const safe = truncateToSize(content, MAX_FILE_SIZE);
-    fs.writeFileSync(memFile, safe);
+    fs.writeFileSync(memFile, encryptContent(safe));
   }
 
   /** Append an entry to global memory */
@@ -130,7 +131,7 @@ export class MemoryManager {
 
     for (const name of fs.readdirSync(dir)) {
       if (!name.endsWith('.md')) continue;
-      files[name] = fs.readFileSync(path.join(dir, name), 'utf-8');
+      files[name] = decryptContent(fs.readFileSync(path.join(dir, name), 'utf-8'));
     }
     return files;
   }

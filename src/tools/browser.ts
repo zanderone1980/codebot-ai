@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { PolicyEnforcer } from '../policy';
 
 // Shared browser instance across tool calls
 let client: CDPClient | null = null;
@@ -11,7 +12,11 @@ let debugPort = 9222;
 let connectingPromise: Promise<CDPClient> | null = null;
 const CHROME_DATA_DIR = path.join(os.homedir(), '.codebot', 'chrome-profile');
 
-/** Kill any Chrome using our debug port or data dir (but NEVER kill ourselves) */
+/**
+ * Kill any Chrome using our debug port or data dir (but NEVER kill ourselves).
+ * Uses SIGTERM first (graceful shutdown), falls back to SIGKILL only for
+ * processes on our specific debug port with our data dir.
+ */
 function killExistingChrome(): void {
   // Close our own CDP connection first so we don't hold the port
   if (client) {
@@ -19,16 +24,27 @@ function killExistingChrome(): void {
     client = null;
   }
 
+  // Check if browser tool is allowed by policy before doing process cleanup
+  try {
+    const enforcer = new PolicyEnforcer();
+    const toolCheck = enforcer.isToolAllowed('browser');
+    if (!toolCheck.allowed) return; // Policy disables browser — don't kill anything
+  } catch { /* no policy loaded — proceed with defaults */ }
+
   const { execSync } = require('child_process');
   const myPid = process.pid;
   try {
     if (process.platform === 'win32') {
       execSync(`for /f "tokens=5" %a in ('netstat -aon ^| findstr :${debugPort}') do taskkill /F /PID %a`, { stdio: 'ignore' });
     } else {
-      // Kill Chrome/Chromium processes on our debug port — exclude our own PID
+      // Graceful: SIGTERM first for Chrome on our debug port — exclude our own PID
+      execSync(`lsof -ti:${debugPort} | grep -v "^${myPid}$" | xargs kill -15 2>/dev/null || true`, { stdio: 'ignore' });
+      // Also SIGTERM any Chrome using our specific data dir (not user's Chrome)
+      execSync(`pkill -15 -f "chrome.*--user-data-dir=${CHROME_DATA_DIR}" 2>/dev/null || true`, { stdio: 'ignore' });
+      // Brief wait for graceful shutdown
+      execSync('sleep 0.5', { stdio: 'ignore' });
+      // Force-kill only stragglers still on our port
       execSync(`lsof -ti:${debugPort} | grep -v "^${myPid}$" | xargs kill -9 2>/dev/null || true`, { stdio: 'ignore' });
-      // Also kill any Chrome using our data dir
-      execSync(`pkill -9 -f "chrome.*--user-data-dir=${CHROME_DATA_DIR}" 2>/dev/null || true`, { stdio: 'ignore' });
     }
   } catch {
     // ignore — nothing to kill
@@ -219,6 +235,15 @@ export class BrowserTool implements Tool {
 
   async execute(args: Record<string, unknown>): Promise<string> {
     const action = args.action as string;
+
+    // RBAC: check if browser tool is allowed for the current user
+    try {
+      const enforcer = new PolicyEnforcer();
+      const toolCheck = enforcer.isToolAllowed('browser');
+      if (!toolCheck.allowed) {
+        return `Blocked by policy: ${toolCheck.reason}`;
+      }
+    } catch { /* no policy — proceed with defaults */ }
 
     try {
       switch (action) {

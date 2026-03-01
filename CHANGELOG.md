@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.1.5] — 2026-02-28
+
+### Security
+- **RBAC consistency sweep** — all 14 `PolicyEnforcer` methods now use `getEffectivePolicy()` instead of reading `this.policy` directly. Role overrides are now applied universally across filesystem, execution, git, secrets, MCP, and limits checks
+- **Execute tool hardened** — uses `PolicyEnforcer` with RBAC instead of raw `loadPolicy()`, sandbox/network/memory settings now respect role overrides
+- **Browser tool safety** — `killExistingChrome()` gated behind policy check; uses SIGTERM before SIGKILL for graceful shutdown; RBAC enforcement added to `BrowserTool.execute()`
+
+### Added
+- **Encryption at rest wired in** — `encryptLine`/`decryptLine` integrated into `SessionManager` (save, saveAll, load, verifyIntegrity, list) and `AuditLogger` (log, query); `encryptContent`/`decryptContent` integrated into `MemoryManager` (readGlobal, readProject, writeGlobal, writeProject, readDir). Opt-in via `CODEBOT_ENCRYPTION_KEY` env var
+
+### Changed
+- Version bumped to 2.1.5
+
+## [2.1.4] — 2026-02-28
+
+### Fixed
+- **Animation visibility** — increased timing presets (~2x) so terminal animations are perceptible; changed CLI from 'fast' to 'normal' speed; added phase pauses between animation stages
+
+## [2.1.3] — 2026-02-28
+
+### Added
+- **Terminal animation system** — 6 animation functions: `animateReveal`, `animateVisorScan`, `animateEyeBoot`, `animateBootSequence`, `animateTyping`, `animateSessionEnd`
+- **`--no-animate` flag** — disable startup animations
+- `shouldAnimate()` — auto-detects TTY, CI, dumb terminal
+- Injectable `AnimationWriter` for testable animation output
+- 15 new animation tests (469 total)
+
+## [2.1.2] — 2026-02-28
+
+### Changed
+- Updated mascot ASCII art tests to match v3 enterprise block-character designs
+- Updated BRANDING.md with final design names (Core, Terminal, Sentinel) and accurate ASCII art
+
+## [2.1.1] — 2026-02-28
+
+### Changed
+- Mascot ASCII art redesigned — third iteration using solid block characters (█ ▄ ▀ ░ ▒ ▓) for enterprise-grade terminal presence
+- Three canonical designs: Core (primary), Terminal (IDE), Sentinel (autonomous/CI)
+- Inline status indicators using geometric symbols
+
 ## [2.1.0] — 2026-03-01
 
 ### Added

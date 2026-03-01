@@ -4,6 +4,7 @@ import * as os from 'os';
 import * as crypto from 'crypto';
 import { Message } from './types';
 import { deriveSessionKey, signMessage, verifyMessage, verifyMessages, IntegrityResult } from './integrity';
+import { encryptLine, decryptLine } from './encryption';
 
 const SESSIONS_DIR = path.join(os.homedir(), '.codebot', 'sessions');
 
@@ -43,7 +44,8 @@ export class SessionManager {
         _model: this.model,
       };
       record._sig = signMessage(record, this.integrityKey);
-      fs.appendFileSync(this.filePath, JSON.stringify(record) + '\n');
+      const line = encryptLine(JSON.stringify(record));
+      fs.appendFileSync(this.filePath, line + '\n');
     } catch {
       // Don't crash on write failure — session persistence is best-effort
     }
@@ -59,7 +61,7 @@ export class SessionManager {
           _model: this.model,
         };
         record._sig = signMessage(record, this.integrityKey);
-        return JSON.stringify(record);
+        return encryptLine(JSON.stringify(record));
       });
       const tmpPath = this.filePath + '.tmp';
       fs.writeFileSync(tmpPath, lines.join('\n') + '\n');
@@ -81,8 +83,9 @@ export class SessionManager {
     if (!content) return [];
     const messages: Message[] = [];
     let dropped = 0;
-    for (const line of content.split('\n')) {
+    for (const rawLine of content.split('\n')) {
       try {
+        const line = decryptLine(rawLine);
         const obj = JSON.parse(line);
 
         // Verify integrity if signature present (backward compat: unsigned messages pass)
@@ -116,8 +119,8 @@ export class SessionManager {
       const content = fs.readFileSync(this.filePath, 'utf-8').trim();
       if (!content) return { valid: 0, tampered: 0, unsigned: 0, tamperedIndices: [] };
       const records: Array<Record<string, unknown>> = [];
-      for (const line of content.split('\n')) {
-        try { records.push(JSON.parse(line)); } catch { continue; }
+      for (const rawLine of content.split('\n')) {
+        try { records.push(JSON.parse(decryptLine(rawLine))); } catch { continue; }
       }
       return verifyMessages(records, this.integrityKey);
     } catch {
@@ -151,18 +154,18 @@ export class SessionManager {
 
       if (lines.length > 0) {
         try {
-          const first = JSON.parse(lines[0]);
+          const first = JSON.parse(decryptLine(lines[0]));
           created = first._ts || '';
           model = first._model || '';
         } catch { /* skip */ }
         try {
-          const last = JSON.parse(lines[lines.length - 1]);
+          const last = JSON.parse(decryptLine(lines[lines.length - 1]));
           updated = last._ts || '';
         } catch { /* skip */ }
         // Find first user message for preview
         for (const line of lines) {
           try {
-            const msg = JSON.parse(line);
+            const msg = JSON.parse(decryptLine(line));
             if (msg.role === 'user') {
               preview = msg.content.substring(0, 80);
               break;

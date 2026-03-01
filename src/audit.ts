@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { maskSecretsInString } from './secrets';
+import { encryptLine, decryptLine } from './encryption';
 
 /**
  * Audit logger for CodeBot v1.7.0
@@ -88,7 +89,7 @@ export class AuditLogger {
       this.prevHash = hash;
 
       const logFile = this.getLogFilePath();
-      const line = JSON.stringify(fullEntry) + '\n';
+      const line = encryptLine(JSON.stringify(fullEntry)) + '\n';
 
       this.rotateIfNeeded(logFile);
       fs.appendFileSync(logFile, line, 'utf-8');
@@ -107,10 +108,10 @@ export class AuditLogger {
 
       for (const file of files) {
         const content = fs.readFileSync(path.join(this.logDir, file), 'utf-8');
-        for (const line of content.split('\n')) {
-          if (!line.trim()) continue;
+        for (const rawLine of content.split('\n')) {
+          if (!rawLine.trim()) continue;
           try {
-            const entry = JSON.parse(line) as AuditEntry;
+            const entry = JSON.parse(decryptLine(rawLine)) as AuditEntry;
             if (filter?.tool && entry.tool !== filter.tool) continue;
             if (filter?.action && entry.action !== filter.action) continue;
             if (filter?.since && entry.timestamp < filter.since) continue;

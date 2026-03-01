@@ -2,7 +2,7 @@ import { execSync } from 'child_process';
 import { Tool } from '../types';
 import { isCwdSafe } from '../security';
 import { sandboxExec, isDockerAvailable } from '../sandbox';
-import { loadPolicy } from '../policy';
+import { PolicyEnforcer } from '../policy';
 
 const BLOCKED_PATTERNS = [
   // Destructive filesystem operations
@@ -120,17 +120,17 @@ export class ExecuteTool implements Tool {
 
     const timeout = (args.timeout as number) || 30000;
 
-    // ── v1.7.0: Sandbox routing ──
-    const policy = loadPolicy(projectRoot);
-    const sandboxMode = policy.execution?.sandbox || 'auto';
+    // ── v1.7.0: Sandbox routing (v2.1.5: uses PolicyEnforcer for RBAC) ──
+    const enforcer = new PolicyEnforcer(undefined, projectRoot);
+    const sandboxMode = enforcer.getSandboxMode();
     const useSandbox =
       sandboxMode === 'docker' ||
       (sandboxMode === 'auto' && isDockerAvailable());
 
     if (useSandbox) {
       const result = sandboxExec(cmd, projectRoot, {
-        network: policy.execution?.network !== false,
-        memoryMb: policy.execution?.max_memory_mb || 512,
+        network: enforcer.isNetworkAllowed(),
+        memoryMb: enforcer.getMaxMemoryMb(),
         timeoutMs: timeout,
       });
 

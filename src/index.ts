@@ -1,4 +1,4 @@
-export const VERSION = '2.1.0';
+export const VERSION = '2.1.5';
 export { Agent } from './agent';
 export { OpenAIProvider } from './providers/openai';
 export { AnthropicProvider } from './providers/anthropic';
@@ -28,4 +28,6 @@ export { PolicyEnforcer, loadPolicy, generateDefaultPolicyFile } from './policy'
 export type { Policy, PolicyRbac, PolicyRole } from './policy';
 export { encrypt, decrypt, encryptLine, decryptLine, encryptContent, decryptContent, isEncryptionEnabled, deriveKey, getPassphrase } from './encryption';
 export type { EncryptionConfig } from './encryption';
+export { banner, randomGreeting, compactBanner, formatReaction, codiReact, sessionSummaryBanner, randomBanner, CODI_FACE, BANNER_1, BANNER_2, BANNER_3, animateReveal, animateVisorScan, animateEyeBoot, animateBootSequence, animateTyping, animateSessionEnd, shouldAnimate } from './banner';
+export type { CodiMood, CodiReaction, AnimationSpeed, AnimationWriter, AnimationOptions } from './banner';
 export * from './types';

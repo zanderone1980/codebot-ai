@@ -1,5 +1,5 @@
 /**
- * Policy Engine for CodeBot v1.7.0
+ * Policy Engine for CodeBot v2.1.5
  *
  * Loads, validates, and enforces declarative security policies.
  * Policy files: .codebot/policy.json (project) + ~/.codebot/policy.json (global)
@@ -324,7 +324,7 @@ export class PolicyEnforcer {
 
   /** Check if a path is writable according to policy. */
   isPathWritable(filePath: string): { allowed: boolean; reason?: string } {
-    const fs_policy = this.policy.filesystem;
+    const fs_policy = this.getEffectivePolicy().filesystem;
     if (!fs_policy) return { allowed: true };
 
     const resolved = path.resolve(filePath);
@@ -380,59 +380,59 @@ export class PolicyEnforcer {
 
   /** Get sandbox mode. */
   getSandboxMode(): 'docker' | 'host' | 'auto' {
-    return this.policy.execution?.sandbox || 'auto';
+    return this.getEffectivePolicy().execution?.sandbox || 'auto';
   }
 
   /** Check if network is allowed for executed commands. */
   isNetworkAllowed(): boolean {
-    return this.policy.execution?.network !== false;
+    return this.getEffectivePolicy().execution?.network !== false;
   }
 
   /** Get execution timeout in milliseconds. */
   getTimeoutMs(): number {
-    const seconds = this.policy.execution?.timeout_seconds || 120;
+    const seconds = this.getEffectivePolicy().execution?.timeout_seconds || 120;
     return seconds * 1000;
   }
 
   /** Get max memory in MB for sandbox. */
   getMaxMemoryMb(): number {
-    return this.policy.execution?.max_memory_mb || 512;
+    return this.getEffectivePolicy().execution?.max_memory_mb || 512;
   }
 
   // ── Git Policy ──
 
   /** Check if agent should always work on a branch. */
   shouldAlwaysBranch(): boolean {
-    return this.policy.git?.always_branch === true;
+    return this.getEffectivePolicy().git?.always_branch === true;
   }
 
   /** Get branch prefix for auto-created branches. */
   getBranchPrefix(): string {
-    return this.policy.git?.branch_prefix || 'codebot/';
+    return this.getEffectivePolicy().git?.branch_prefix || 'codebot/';
   }
 
   /** Check if pushing to main/master is blocked. */
   isMainPushBlocked(): boolean {
-    return this.policy.git?.never_push_main !== false; // default true
+    return this.getEffectivePolicy().git?.never_push_main !== false; // default true
   }
 
   // ── Secrets Policy ──
 
   /** Should secrets block writes (vs just warn)? */
   shouldBlockSecrets(): boolean {
-    return this.policy.secrets?.block_on_detect === true;
+    return this.getEffectivePolicy().secrets?.block_on_detect === true;
   }
 
   /** Should scan for secrets on write? */
   shouldScanSecrets(): boolean {
-    return this.policy.secrets?.scan_on_write !== false; // default true
+    return this.getEffectivePolicy().secrets?.scan_on_write !== false; // default true
   }
 
   // ── MCP Policy ──
 
   /** Check if an MCP server is allowed. */
   isMcpServerAllowed(serverName: string): { allowed: boolean; reason?: string } {
-    const mcp = this.policy.mcp;
+    const mcp = this.getEffectivePolicy().mcp;
     if (!mcp) return { allowed: true };
 
     // Blocked list takes priority
@@ -456,17 +456,17 @@ export class PolicyEnforcer {
 
   /** Get max iterations for the agent loop. */
   getMaxIterations(): number {
-    return this.policy.limits?.max_iterations || 50;
+    return this.getEffectivePolicy().limits?.max_iterations || 50;
   }
 
   /** Get max file size in bytes for write operations. */
   getMaxFileSizeBytes(): number {
-    return (this.policy.limits?.max_file_size_kb || 500) * 1024;
+    return (this.getEffectivePolicy().limits?.max_file_size_kb || 500) * 1024;
   }
 
   /** Get cost limit in USD (0 = no limit). */
   getCostLimitUsd(): number {
-    return this.policy.limits?.cost_limit_usd || 0;
+    return this.getEffectivePolicy().limits?.cost_limit_usd || 0;
   }
 
   // ── Capabilities (v1.8.0) ──

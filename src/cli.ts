@@ -8,7 +8,7 @@ import { detectProvider, PROVIDER_DEFAULTS } from './providers/registry';
 import { AgentEvent, Config, LLMProvider, Message } from './types';
 import { SessionManager } from './history';
 import { loadConfig, isFirstRun, runSetup } from './setup';
-import { banner, randomGreeting, compactBanner } from './banner';
+import { banner, randomGreeting, compactBanner, formatReaction, sessionSummaryBanner, CODI_FACE, animateBootSequence, animateSessionEnd, shouldAnimate } from './banner';
 import { EditFileTool } from './tools';
 import { Scheduler } from './scheduler';
 import { AuditLogger } from './audit';
@@ -18,7 +18,7 @@ import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSes
 import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.5';
 
 const C = {
   reset: '\x1b[0m',
@@ -253,11 +253,28 @@ export async function main() {
   const session = new SessionManager(config.model, resumeId);
 
   const sessionShort = session.getId().substring(0, 8);
-  console.log(banner(VERSION, config.model, `${config.provider} @ ${config.baseUrl}`, `${sessionShort}...`, !!config.autoApprove));
-  if (resumeId) {
-    console.log(c(`   Resuming session...`, 'green'));
+  const providerLabel = `${config.provider} @ ${config.baseUrl}`;
+  const isAuto = !!config.autoApprove;
+  const noAnimate = args['no-animate'] === true || args['no-animation'] === true;
+
+  if (shouldAnimate() && !noAnimate) {
+    await animateBootSequence(banner, VERSION, config.model, providerLabel, `${sessionShort}...`, isAuto, 'normal');
+    if (resumeId) {
+      console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
+    } else if (isAuto) {
+      console.log(formatReaction('autonomous_start'));
+    }
+  } else {
+    console.log(banner(VERSION, config.model, providerLabel, `${sessionShort}...`, isAuto));
+    if (resumeId) {
+      console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
+    } else if (isAuto) {
+      console.log(c(`   ${randomGreeting('confident')}`, 'dim'));
+      console.log(formatReaction('autonomous_start'));
+    } else {
+      console.log(c(`   ${randomGreeting()}\n`, 'dim'));
+    }
   }
-  console.log(c(`   ${randomGreeting()}\n`, 'dim'));
 
   const agent = new Agent({
     provider,
@@ -343,6 +360,14 @@ function printSessionSummary(agent: Agent) {
     console.log(`  Risk:      avg ${riskAvg}/100`);
   }
 
+  // Codi's session summary banner
+  console.log(sessionSummaryBanner({
+    iterations: summary.requestCount,
+    toolCalls: summary.toolCalls,
+    tokensUsed: summary.totalInputTokens + summary.totalOutputTokens,
+    duration,
+  }));
+
   // Save metrics
   metrics.save();
   metrics.exportOtel();
@@ -401,7 +426,7 @@ async function repl(agent: Agent, config: Config, session?: SessionManager) {
 
   rl.on('close', () => {
     printSessionSummary(agent);
-    console.log(c('\nBye!', 'dim'));
+    console.log(formatReaction('session_end'));
     process.exit(0);
   });
 }
