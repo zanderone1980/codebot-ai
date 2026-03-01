@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -19,10 +19,48 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
+          cache: 'npm'
 
-      - run: npm install
+      - run: npm ci
       - run: npm run build
       - run: npm test
+
+  extension-and-action-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Compile extension tests
+        run: |
+          npx tsc --strict --target ES2022 --module commonjs --moduleResolution node \
+            --outDir /tmp/ext-tests --esModuleInterop \
+            extensions/vscode/src/test/agent-bridge.test.ts \
+            extensions/vscode/src/test/diff-preview.test.ts \
+            extensions/vscode/src/test/status-bar.test.ts \
+            extensions/vscode/src/test/sidebar.test.ts
+
+      - name: Compile action tests
+        run: |
+          npx tsc --strict --target ES2022 --module commonjs --moduleResolution node \
+            --outDir /tmp/action-tests --esModuleInterop \
+            actions/codebot/src/test/prompts.test.ts \
+            actions/codebot/src/test/index.test.ts \
+            actions/codebot/src/test/review.test.ts \
+            actions/codebot/src/test/scan.test.ts
+
+      - name: Run extension tests
+        run: node --test $(find /tmp/ext-tests -name '*.test.js')
+
+      - name: Run action tests
+        run: node --test $(find /tmp/action-tests -name '*.test.js')
 
   lint:
     runs-on: ubuntu-latest
@@ -31,5 +69,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm install
+          cache: 'npm'
+      - run: npm ci
       - run: npm run lint

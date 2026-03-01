@@ -1,5 +1,6 @@
 # CodeBot AI
 
+[![CI](https://github.com/zanderone1980/codebot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/zanderone1980/codebot-ai/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/codebot-ai.svg)](https://www.npmjs.com/package/codebot-ai)
 [![license](https://img.shields.io/npm/l/codebot-ai.svg)](https://github.com/zanderone1980/codebot-ai/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/codebot-ai.svg)](https://nodejs.org)
