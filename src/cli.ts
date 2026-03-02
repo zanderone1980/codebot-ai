@@ -236,6 +236,9 @@ export async function main() {
   const config = await resolveConfig(args);
   const provider = createProvider(config);
 
+  // Verbose mode
+  verbose = !!args.verbose;
+
   // Deterministic mode: set temperature=0
   if (args.deterministic) {
     provider.temperature = 0;
@@ -286,6 +289,27 @@ export async function main() {
     maxIterations: config.maxIterations,
     autoApprove: config.autoApprove,
     onMessage: (msg: Message) => session.save(msg),
+  });
+
+  // Wire up the enhanced permission card UI
+  agent.setAskPermission(async (tool, args, risk, sandbox) => {
+    const card = permissionCard(tool, args, risk || { score: 0, level: 'green' }, sandbox);
+    process.stdout.write(card);
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const userResponse = new Promise<boolean>(resolve => {
+      rl.question('Allow? [y/N] ', answer => {
+        rl.close();
+        resolve(answer.toLowerCase().startsWith('y'));
+      });
+    });
+    const timeout = new Promise<boolean>(resolve => {
+      setTimeout(() => {
+        rl.close();
+        process.stdout.write('\n⏱ Permission timed out — denied by default.\n');
+        resolve(false);
+      }, 30_000);
+    });
+    return Promise.race([userResponse, timeout]);
   });
 
   // Resume: load previous messages
@@ -465,31 +489,34 @@ function renderEvent(event: AgentEvent, agent?: Agent) {
         isThinking = false;
       }
       {
-        const riskStr = event.risk
-          ? ' ' + RiskScorer.formatIndicator({ score: event.risk.score, level: event.risk.level as 'green' | 'yellow' | 'orange' | 'red', factors: [] })
-          : '';
-        console.log(
-          c(`\n⚡ ${event.toolCall?.name}`, 'yellow') +
-            c(`(${formatArgs(event.toolCall?.args)})`, 'dim') +
-            riskStr
-        );
+        const risk = event.risk || { score: 0, level: 'green' };
+        const riskColor = risk.level === 'red' ? UI.red : risk.level === 'orange' ? UI.orange : risk.level === 'yellow' ? UI.yellow : UI.green;
+        console.log(`\n${UI.bold}${riskColor}⚡${UI.reset} ${UI.bold}${event.toolCall?.name}${UI.reset} ${riskColor}[${risk.score}]${UI.reset}`);
+        if (event.toolCall?.args) {
+          for (const [k, v] of Object.entries(event.toolCall.args)) {
+            const val = typeof v === 'string' ? (v.length > 80 ? v.substring(0, 80) + '...' : v) : JSON.stringify(v);
+            console.log(`${UI.dim}  ${k}: ${val}${UI.reset}`);
+          }
+        }
       }
       break;
     case 'tool_result':
       if (event.toolResult?.is_error) {
-        console.log(c(`  ✗ ${truncate(event.toolResult.result, 200)}`, 'red'));
+        console.log(`${UI.red}  ✗ ${truncate(event.toolResult.result, 200)}${UI.reset}`);
       } else {
         const result = event.toolResult?.result || '';
         const lines = result.split('\n');
-        if (lines.length > 10) {
-          console.log(c(`  ✓ (${lines.length} lines)`, 'green'));
+        if (lines.length > 5 && !verbose) {
+          console.log(`${UI.brightGreen}  ✓${UI.reset} ${UI.dim}(${lines.length} lines, use --verbose to expand)${UI.reset}`);
+        } else if (lines.length > 10) {
+          console.log(`${UI.brightGreen}  ✓${UI.reset} ${UI.dim}(${lines.length} lines)${UI.reset}`);
         } else {
-          console.log(c(`  ✓ ${truncate(result, 200)}`, 'green'));
+          console.log(`${UI.brightGreen}  ✓${UI.reset} ${truncate(result, 200)}`);
         }
       }
       break;
     case 'usage':
-      if (event.usage && agent) {
+      if (verbose && event.usage && agent) {
         const tracker = agent.getTokenTracker();
         const parts: string[] = [];
         if (event.usage.inputTokens) parts.push(`in: ${event.usage.inputTokens}`);
