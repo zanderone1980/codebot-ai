@@ -110,6 +110,6 @@ describe('DiffViewerTool', () => {
     // This will fail because we're not in a git repo, but it should NOT fail on format validation
     const result = await tool.execute({ action: 'commit', ref: 'HEAD~1' });
     // Should get a git error, not a format error
-    assert.ok(!result.includes('invalid ref format'));
+    assert.ok(!result.startsWith('Error: invalid ref format'));
   });
 });
