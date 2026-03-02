@@ -4,10 +4,28 @@
 [![npm version](https://img.shields.io/npm/v/codebot-ai.svg)](https://www.npmjs.com/package/codebot-ai)
 [![license](https://img.shields.io/npm/l/codebot-ai.svg)](https://github.com/zanderone1980/codebot-ai/blob/main/LICENSE)
 [![node](https://img.shields.io/node/v/codebot-ai.svg)](https://nodejs.org)
+![tests](https://img.shields.io/badge/tests-880%20passing-brightgreen)
+![dependencies](https://img.shields.io/badge/dependencies-0-brightgreen)
+![tools](https://img.shields.io/badge/tools-28-blue)
 
 **Zero-dependency autonomous AI coding agent with enterprise security.** Works with any LLM — local or cloud. Code, browse the web, run commands, search, automate routines, and more. Includes VS Code extension, GitHub Action, policy engine with RBAC, risk scoring, encryption at rest, and hash-chained audit trail.
 
 Built by [Ascendral Software Development & Innovation](https://github.com/AscendralSoftware).
+
+## Why CodeBot AI?
+
+| Feature | CodeBot AI | Aider | Open Interpreter | Cursor |
+|---------|-----------|-------|------------------|--------|
+| Zero dependencies | Yes | No | No | No |
+| Local LLM support | Yes | Yes | Yes | No |
+| Security/RBAC | Yes | No | No | No |
+| Browser automation | Yes | No | Yes | No |
+| Risk scoring | Yes | No | No | No |
+| Audit trail (SARIF) | Yes | No | No | No |
+| VS Code extension | Yes | No | No | Yes |
+| Programmatic API | Yes | No | Yes | No |
+
+CodeBot AI is the only agent that combines zero-dependency simplicity with enterprise-grade security. It runs with any LLM provider (including fully local), ships with 28 built-in tools, and provides a complete audit trail for every action.
 
 ## Quick Start
 
@@ -22,6 +40,47 @@ That's it. The setup wizard launches on first run — pick your model, paste an 
 # Or run without installing
 npx codebot-ai
 ```
+
+## Quick Local Start (Ollama)
+
+```bash
+ollama pull qwen2.5-coder
+npm install -g codebot-ai
+codebot --setup    # select "ollama", model "qwen2.5-coder"
+```
+
+No API keys, no cloud — everything runs on your machine.
+
+## Supported Models
+
+Pick any model during setup. CodeBot works with all of them:
+
+| Provider | Models |
+|----------|--------|
+| **Local (Ollama/LM Studio/vLLM)** | qwen2.5-coder, qwen3, deepseek-coder, llama3.x, mistral, phi-4, codellama, starcoder2, and any model your server runs |
+| **Anthropic** | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
+| **OpenAI** | gpt-4o, gpt-4.1, o1, o3, o4-mini |
+| **Google** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash |
+| **DeepSeek** | deepseek-chat, deepseek-reasoner |
+| **Groq** | llama-3.3-70b, mixtral-8x7b |
+| **Mistral** | mistral-large, codestral |
+| **xAI** | grok-3, grok-3-mini |
+
+For local models, just have Ollama/LM Studio/vLLM running — CodeBot auto-detects them.
+
+For cloud models, set an environment variable:
+
+```bash
+export OPENAI_API_KEY="sk-..."           # GPT
+export ANTHROPIC_API_KEY="sk-ant-..."    # Claude
+export GEMINI_API_KEY="..."              # Gemini
+export DEEPSEEK_API_KEY="sk-..."         # DeepSeek
+export GROQ_API_KEY="gsk_..."            # Groq
+export MISTRAL_API_KEY="..."             # Mistral
+export XAI_API_KEY="xai-..."             # Grok
+```
+
+Or paste your key during setup — either way works.
 
 ### VS Code Extension
 
@@ -59,37 +118,6 @@ The release pipeline runs CI, builds artifacts, publishes to npm, and produces G
 - **Persistent memory** — remembers preferences and context across sessions
 - **Self-recovering** — retries on network errors, recovers from API failures, never drops out
 
-## Supported Models
-
-Pick any model during setup. CodeBot works with all of them:
-
-| Provider | Models |
-|----------|--------|
-| **Local (Ollama/LM Studio/vLLM)** | qwen2.5-coder, qwen3, deepseek-coder, llama3.x, mistral, phi-4, codellama, starcoder2, and any model your server runs |
-| **Anthropic** | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
-| **OpenAI** | gpt-4o, gpt-4.1, o1, o3, o4-mini |
-| **Google** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash |
-| **DeepSeek** | deepseek-chat, deepseek-reasoner |
-| **Groq** | llama-3.3-70b, mixtral-8x7b |
-| **Mistral** | mistral-large, codestral |
-| **xAI** | grok-3, grok-3-mini |
-
-For local models, just have Ollama/LM Studio/vLLM running — CodeBot auto-detects them.
-
-For cloud models, set an environment variable:
-
-```bash
-export OPENAI_API_KEY="sk-..."           # GPT
-export ANTHROPIC_API_KEY="sk-ant-..."    # Claude
-export GEMINI_API_KEY="..."              # Gemini
-export DEEPSEEK_API_KEY="sk-..."         # DeepSeek
-export GROQ_API_KEY="gsk_..."            # Groq
-export MISTRAL_API_KEY="..."             # Mistral
-export XAI_API_KEY="xai-..."             # Grok
-```
-
-Or paste your key during setup — either way works.
-
 ## Usage
 
 ```bash
@@ -113,6 +141,7 @@ echo "explain this error" | codebot            # Pipe mode
 --continue, -c       Resume the most recent session
 --max-iterations <n> Max agent loop iterations (default: 50)
 --no-animate         Disable mascot and banner animations
+--verbose            Show detailed debug output
 ```
 
 ### Interactive Commands
@@ -248,7 +277,7 @@ MCP tools appear automatically with the `mcp_<server>_<tool>` prefix.
 
 ## Security
 
-CodeBot v2.1.5 is built with security as a core architectural principle:
+CodeBot v2.1.6 is built with security as a core architectural principle:
 
 - **Policy engine with RBAC** — declarative JSON policies control tool access, filesystem scope, execution limits, and role-based access control for multi-user environments
 - **Encryption at rest** — AES-256-GCM encryption for sensitive data stored on disk, including session history and audit logs
@@ -264,6 +293,19 @@ CodeBot v2.1.5 is built with security as a core architectural principle:
 
 See [SECURITY.md](SECURITY.md), [docs/HARDENING.md](docs/HARDENING.md), and [docs/SOC2_COMPLIANCE.md](docs/SOC2_COMPLIANCE.md) for the full security model and compliance readiness.
 
+### Security at a Glance
+
+```
+  6-factor risk scoring on every tool call (0-100)
+  AES-256-GCM encryption at rest
+  SHA-256 hash-chained audit trail
+  Docker sandbox with network/CPU/memory limits
+  RBAC policy engine with per-tool permissions
+  SARIF export for GitHub Code Scanning
+  SSRF protection + path traversal blocking
+  Secret detection (15+ patterns)
+```
+
 ## Stability
 
 CodeBot is hardened for continuous operation:
@@ -273,7 +315,7 @@ CodeBot is hardened for continuous operation:
 - **Context compaction** — when the conversation exceeds the model's context window, messages are intelligently summarized
 - **Process resilience** — unhandled exceptions and rejections are caught, logged, and the REPL keeps running
 - **Routine timeouts** — scheduled tasks are capped at 5 minutes to prevent the scheduler from hanging
-- **469+ tests** — comprehensive suite covering core agent, security, extension, and action
+- **880+ tests** — comprehensive suite covering core agent, security, extension, and action
 
 ## Programmatic API
 
@@ -342,6 +384,8 @@ src/
     browser.ts, routine.ts
 ```
 
+See our [Roadmap](ROADMAP.md) for what's next.
+
 ## Configuration
 
 Config is loaded in this order (later values win):
@@ -358,6 +402,23 @@ cd codebot-ai
 npm install && npm run build
 ./bin/codebot
 ```
+
+## Troubleshooting
+
+**Chrome not launching**
+Install Chrome or set the `CHROME_PATH` environment variable to point to your Chrome/Chromium binary.
+
+**Context overflow**
+Use the `/compact` interactive command to force context compaction, or reduce `--max-iterations` to limit how long the agent runs before stopping.
+
+**Rate limit hit**
+CodeBot automatically retries with exponential backoff on 429 responses. If you're hitting limits frequently, switch to a local model via Ollama to avoid rate limits entirely.
+
+**ENOENT: no such file**
+Check that `projectRoot` or your current working directory is correct. CodeBot resolves all file paths relative to the project root.
+
+**Connection refused (Ollama)**
+Make sure the Ollama server is running. Start it with `ollama serve` before launching CodeBot.
 
 ## License
 
