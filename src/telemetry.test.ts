@@ -79,3 +79,72 @@ describe('TokenTracker', () => {
     assert.strictEqual(typeof report, 'string');
   });
 });
+
+describe('estimateRunCost', () => {
+  // Import at top-level won't work since we're appending, so use dynamic import
+  const { estimateRunCost } = require('./telemetry');
+
+  it('returns a cost estimate for a simple task', () => {
+    const est = estimateRunCost('fix the typo', 'gpt-4o', 'openai');
+    assert.strictEqual(typeof est.estimatedCost, 'number');
+    assert.ok(est.estimatedCost > 0, 'Cloud model cost should be positive');
+    assert.strictEqual(est.confidence, 'high');
+    assert.strictEqual(est.estimatedIterations, 3);
+  });
+
+  it('returns higher estimate for complex tasks', () => {
+    const simple = estimateRunCost('fix typo', 'gpt-4o', 'openai');
+    const complex = estimateRunCost(
+      'refactor the entire authentication system to use JWT tokens instead of session cookies and update all middleware and add comprehensive tests for each endpoint including edge cases and error handling',
+      'gpt-4o',
+      'openai'
+    );
+    assert.ok(complex.estimatedCost > simple.estimatedCost, 'Complex should cost more');
+    assert.ok(complex.estimatedIterations > simple.estimatedIterations);
+    assert.ok(complex.estimatedToolCalls > simple.estimatedToolCalls);
+  });
+
+  it('returns medium confidence for medium tasks', () => {
+    const est = estimateRunCost(
+      'refactor the authentication module to use JSON Web Tokens instead of session cookies and then update the middleware layer to properly validate incoming tokens on every request',
+      'gpt-4o',
+      'openai'
+    );
+    assert.strictEqual(est.confidence, 'medium');
+    assert.strictEqual(est.estimatedIterations, 8);
+  });
+
+  it('returns free for local models', () => {
+    const est = estimateRunCost('fix the bug', 'llama3.2', 'ollama');
+    assert.strictEqual(est.estimatedCost, 0);
+  });
+
+  it('returns free for lmstudio provider', () => {
+    const est = estimateRunCost('write tests', 'qwen2.5-coder', 'lmstudio');
+    assert.strictEqual(est.estimatedCost, 0);
+  });
+
+  it('handles unknown models with default pricing', () => {
+    const est = estimateRunCost('do something', 'unknown-model-xyz', 'some-cloud');
+    assert.ok(est.estimatedCost > 0, 'Unknown cloud model should still have a cost');
+  });
+
+  it('returns all required fields', () => {
+    const est = estimateRunCost('build feature', 'gpt-4o', 'openai');
+    assert.strictEqual(typeof est.estimatedInputTokens, 'number');
+    assert.strictEqual(typeof est.estimatedOutputTokens, 'number');
+    assert.strictEqual(typeof est.estimatedCost, 'number');
+    assert.strictEqual(typeof est.estimatedToolCalls, 'number');
+    assert.strictEqual(typeof est.estimatedIterations, 'number');
+    assert.ok(['low', 'medium', 'high'].includes(est.confidence));
+  });
+
+  it('estimates different costs for different models', () => {
+    const gpt4o = estimateRunCost('fix bug', 'gpt-4o', 'openai');
+    const opus = estimateRunCost('fix bug', 'claude-opus-4-6', 'anthropic');
+    // Both should have costs but they should differ
+    assert.ok(gpt4o.estimatedCost > 0);
+    assert.ok(opus.estimatedCost > 0);
+    assert.notStrictEqual(gpt4o.estimatedCost, opus.estimatedCost);
+  });
+});

@@ -17,7 +17,8 @@ import { getSandboxInfo } from './sandbox';
 import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSessions } from './replay';
 import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
-import { UI, permissionCard, summaryBox } from './ui';
+import { UI, permissionCard, summaryBox, box } from './ui';
+import { estimateRunCost } from './telemetry';
 
 const VERSION = '2.1.6';
 
@@ -848,6 +849,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       } else {
         result['replay'] = true; // replay latest
       }
+      continue;
+    }
+    if (arg === '--dry-run' || arg === '--estimate') {
+      result['dry-run'] = true;
       continue;
     }
     if (arg === '--deterministic') {

@@ -303,3 +303,76 @@ export class TokenTracker {
       this.provider === 'local';
   }
 }
+
+
+// ── Cost Estimation (v2.2.0) ──
+
+export interface CostEstimate {
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedCost: number;
+  estimatedToolCalls: number;
+  estimatedIterations: number;
+  confidence: 'low' | 'medium' | 'high';
+}
+
+/** Estimate the cost of running a task before execution. */
+export function estimateRunCost(taskDescription: string, model: string, provider?: string): CostEstimate {
+  // Heuristic: classify task complexity by word count
+  const words = taskDescription.trim().split(/\s+/).length;
+
+  let iterations: number;
+  let toolCalls: number;
+  let confidence: 'low' | 'medium' | 'high';
+
+  if (words < 20) {
+    // Simple task: "fix the typo in index.ts"
+    iterations = 3;
+    toolCalls = 5;
+    confidence = 'high';
+  } else if (words < 50) {
+    // Medium task: "refactor the auth module to use JWT"
+    iterations = 8;
+    toolCalls = 15;
+    confidence = 'medium';
+  } else {
+    // Complex task: long description with many requirements
+    iterations = 15;
+    toolCalls = 30;
+    confidence = 'low';
+  }
+
+  // Estimate tokens per iteration (system prompt ~2k, response ~1k avg)
+  const inputPerIteration = 3000;
+  const outputPerIteration = 1200;
+  const estimatedInputTokens = iterations * inputPerIteration;
+  const estimatedOutputTokens = iterations * outputPerIteration;
+
+  // Look up pricing
+  const pricing = getModelPricing(model, provider);
+  const estimatedCost = (estimatedInputTokens * pricing.input + estimatedOutputTokens * pricing.output) / 1_000_000;
+
+  return {
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    estimatedCost,
+    estimatedToolCalls: toolCalls,
+    estimatedIterations: iterations,
+    confidence,
+  };
+}
+
+/** Get pricing for a model (reuses PRICING table from TokenTracker). */
+function getModelPricing(model: string, provider?: string): { input: number; output: number } {
+  // Local models are free
+  if (!provider || provider === 'ollama' || provider === 'lmstudio' || provider === 'vllm' || provider === 'local') {
+    return { input: 0, output: 0 };
+  }
+  // Exact match
+  if (PRICING[model]) return PRICING[model];
+  // Prefix match
+  for (const [key, pricing] of Object.entries(PRICING)) {
+    if (model.startsWith(key)) return pricing;
+  }
+  return DEFAULT_PRICING;
+}
