@@ -15,7 +15,16 @@ import { AuditLogger } from './audit';
 import { PolicyEnforcer, loadPolicy } from './policy';
 import { TokenTracker } from './telemetry';
 import { MetricsCollector } from './metrics';
-import { RiskScorer } from './risk';
+import { RiskScorer, RiskAssessment } from './risk';
+
+/** Permission callback type — risk and sandbox info are optional for backwards compat */
+type AskPermissionFn = (
+  tool: string,
+  args: Record<string, unknown>,
+  risk?: RiskAssessment,
+  sandbox?: { sandbox: boolean; network: boolean },
+) => Promise<boolean>;
+
 
 /** Lightweight schema validation — returns error string or null if valid */
 function validateToolArgs(args: Record<string, unknown>, schema: Record<string, unknown>): string | null {
@@ -83,7 +92,7 @@ export class Agent {
   private riskScorer: RiskScorer;
   private projectRoot: string;
   private branchCreated: boolean = false;
-  private askPermission: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
+  private askPermission: AskPermissionFn;
   private onMessage?: (message: Message) => void;
 
   constructor(opts: {
@@ -93,7 +102,7 @@ export class Agent {
     maxIterations?: number;
     autoApprove?: boolean;
     projectRoot?: string;
-    askPermission?: (tool: string, args: Record<string, unknown>) => Promise<boolean>;
+    askPermission?: AskPermissionFn;
     onMessage?: (message: Message) => void;
   }) {
     this.provider = opts.provider;
@@ -140,6 +149,11 @@ export class Agent {
   /** Update auto-approve mode at runtime (e.g., from /auto command) */
   setAutoApprove(value: boolean) {
     this.autoApprove = value;
+  }
+
+  /** Replace the permission callback at runtime (e.g., from CLI to inject UI cards) */
+  setAskPermission(fn: AskPermissionFn) {
+    this.askPermission = fn;
   }
 
   /** Load messages from a previous session for resume */
@@ -341,7 +355,7 @@ export class Agent {
 
         let denied = false;
         if (needsPermission) {
-          const approved = await this.askPermission(toolName, args);
+          const approved = await this.askPermission(toolName, args, riskAssessment, { sandbox: this.policyEnforcer.getSandboxMode() === 'docker', network: this.policyEnforcer.isNetworkAllowed() });
           if (!approved) {
             denied = true;
             this.auditLogger.log({ tool: toolName, action: 'deny', args, reason: 'User denied permission' });

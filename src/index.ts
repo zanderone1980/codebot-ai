@@ -35,4 +35,5 @@ export { encrypt, decrypt, encryptLine, decryptLine, encryptContent, decryptCont
 export type { EncryptionConfig } from './encryption';
 export { banner, randomGreeting, compactBanner, formatReaction, codiReact, sessionSummaryBanner, randomBanner, CODI_FACE, BANNER_1, BANNER_2, BANNER_3, animateReveal, animateVisorScan, animateEyeBoot, animateBootSequence, animateTyping, animateSessionEnd, shouldAnimate } from './banner';
 export type { CodiMood, CodiReaction, AnimationSpeed, AnimationWriter, AnimationOptions } from './banner';
+export { box, riskBar, permissionCard, spinner, progressStep, diffPreview, sessionHeader, summaryBox, UI, BOX } from './ui';
 export * from './types';

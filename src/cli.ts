@@ -17,8 +17,11 @@ import { getSandboxInfo } from './sandbox';
 import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSessions } from './replay';
 import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
+import { UI, permissionCard, summaryBox } from './ui';
 
 const VERSION = '2.1.6';
+
+let verbose = false;
 
 const C = {
   reset: '\x1b[0m',
