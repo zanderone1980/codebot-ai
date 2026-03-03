@@ -148,3 +148,64 @@ describe('estimateRunCost', () => {
     assert.notStrictEqual(gpt4o.estimatedCost, opus.estimatedCost);
   });
 });
+
+describe('TokenTracker per-tool cost', () => {
+  it('recordToolCost tracks cost for a tool', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    tracker.recordToolCost('read_file', 500, 200);
+    const breakdown = tracker.getToolCostBreakdown();
+    assert.strictEqual(breakdown.length, 1);
+    assert.strictEqual(breakdown[0].tool, 'read_file');
+    assert.strictEqual(breakdown[0].inputTokens, 500);
+    assert.strictEqual(breakdown[0].outputTokens, 200);
+    assert.strictEqual(breakdown[0].calls, 1);
+    assert.ok(breakdown[0].costUsd > 0);
+  });
+
+  it('recordToolCost accumulates multiple calls', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    tracker.recordToolCost('execute', 300, 100);
+    tracker.recordToolCost('execute', 300, 100);
+    tracker.recordToolCost('execute', 300, 100);
+    const breakdown = tracker.getToolCostBreakdown();
+    assert.strictEqual(breakdown.length, 1);
+    assert.strictEqual(breakdown[0].calls, 3);
+    assert.strictEqual(breakdown[0].inputTokens, 900);
+  });
+
+  it('getToolCostBreakdown sorts by cost descending', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    tracker.recordToolCost('read_file', 100, 50);
+    tracker.recordToolCost('write_file', 1000, 500);
+    tracker.recordToolCost('execute', 500, 200);
+    const breakdown = tracker.getToolCostBreakdown();
+    assert.strictEqual(breakdown[0].tool, 'write_file');
+    assert.strictEqual(breakdown[1].tool, 'execute');
+    assert.strictEqual(breakdown[2].tool, 'read_file');
+  });
+
+  it('getToolCostBreakdown calculates pctOfTotal', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    tracker.recordUsage(1000, 500); // Record overall usage first
+    tracker.recordToolCost('read_file', 1000, 500);
+    const breakdown = tracker.getToolCostBreakdown();
+    assert.ok(breakdown[0].pctOfTotal > 0, 'pctOfTotal should be positive');
+    assert.ok(breakdown[0].pctOfTotal <= 100, 'pctOfTotal should be <= 100');
+  });
+
+  it('formatToolCostBreakdown returns formatted string', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    tracker.recordToolCost('read_file', 500, 200);
+    tracker.recordToolCost('write_file', 1000, 500);
+    const formatted = tracker.formatToolCostBreakdown();
+    assert.ok(formatted.includes('read_file'), 'Should include tool name');
+    assert.ok(formatted.includes('write_file'), 'Should include tool name');
+    assert.ok(formatted.includes('Per-tool Cost Breakdown'), 'Should include header');
+  });
+
+  it('formatToolCostBreakdown handles empty data', () => {
+    const tracker = new TokenTracker('gpt-4o', 'openai');
+    const formatted = tracker.formatToolCostBreakdown();
+    assert.strictEqual(formatted, 'No per-tool cost data.');
+  });
+});

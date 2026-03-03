@@ -39,4 +39,6 @@ export { box, riskBar, permissionCard, spinner, progressStep, diffPreview, sessi
 export { TokenTracker, estimateRunCost } from './telemetry';
 export type { UsageRecord, SessionSummary, CostEstimate } from './telemetry';
 export { BrowserSession } from './tools/browser';
+export { runDoctor, formatDoctorReport } from './doctor';
+export type { HealthCheck, DoctorReport } from './doctor';
 export * from './types';

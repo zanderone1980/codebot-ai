@@ -92,6 +92,7 @@ export class Agent {
   private riskScorer: RiskScorer;
   private projectRoot: string;
   private branchCreated: boolean = false;
+  private lastExecutedTools: string[] = [];
   private askPermission: AskPermissionFn;
   private onMessage?: (message: Message) => void;
 
@@ -216,6 +217,15 @@ export class Agent {
                   event.usage.inputTokens || 0,
                   event.usage.outputTokens || 0,
                 );
+                // Attribute cost to last-executed tools (split evenly)
+                if (this.lastExecutedTools.length > 0) {
+                  const perTool = Math.ceil((event.usage.inputTokens || 0) / this.lastExecutedTools.length);
+                  const perToolOut = Math.ceil((event.usage.outputTokens || 0) / this.lastExecutedTools.length);
+                  for (const tn of this.lastExecutedTools) {
+                    this.tokenTracker.recordToolCost(tn, perTool, perToolOut);
+                  }
+                  this.lastExecutedTools = [];
+                }
                 this.metricsCollector.increment('llm_requests_total');
                 this.metricsCollector.increment('llm_tokens_total', { direction: 'input' }, event.usage.inputTokens || 0);
                 this.metricsCollector.increment('llm_tokens_total', { direction: 'output' }, event.usage.outputTokens || 0);
@@ -442,6 +452,7 @@ export class Agent {
 
           // Telemetry: track tool calls and file modifications
           this.tokenTracker.recordToolCall();
+          this.lastExecutedTools.push(toolName);
           if ((toolName === 'write_file' || toolName === 'edit_file' || toolName === 'batch_edit') && prep.args.path) {
             this.tokenTracker.recordFileModified(prep.args.path as string);
             this.metricsCollector.increment('files_written_total', { tool: toolName });

@@ -19,6 +19,7 @@ import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
 import { UI, permissionCard, summaryBox, box } from './ui';
 import { estimateRunCost } from './telemetry';
+import { runDoctor, formatDoctorReport } from './doctor';
 
 const VERSION = '2.2.0';
 
@@ -227,6 +228,13 @@ export async function main() {
     return;
   }
 
+  // --doctor: Environment health check
+  if (args.doctor) {
+    const report = await runDoctor();
+    console.log(formatDoctorReport(report));
+    process.exit(report.failed > 0 ? 1 : 0);
+  }
+
   // First run: auto-launch setup if nothing is configured
   if (isFirstRun() && process.stdin.isTTY && !args.message) {
     console.log(c('Welcome! No configuration found — launching setup...', 'cyan'));
@@ -378,6 +386,16 @@ function printSessionSummary(agent: Agent) {
       const hist = snap.histograms.find(h => h.name === 'tool_latency_seconds' && h.labels.tool === tc.labels.tool);
       const avg = hist && hist.count > 0 ? (hist.sum / hist.count * 1000).toFixed(0) : '?';
       console.log(c(`    ${tc.labels.tool}: ${tc.value} calls (avg ${avg}ms)`, 'dim'));
+    }
+  }
+
+  // Per-tool cost breakdown
+  const toolCostBreakdown = tracker.getToolCostBreakdown();
+  if (toolCostBreakdown.length > 0) {
+    console.log(c('  Cost by tool:', 'dim'));
+    for (const entry of toolCostBreakdown.slice(0, 5)) {
+      const cost = entry.costUsd === 0 ? 'free' : `$${entry.costUsd.toFixed(4)}`;
+      console.log(c(`    ${entry.tool}: ${entry.calls} calls, ${cost} (${entry.pctOfTotal.toFixed(1)}%)`, 'dim'));
     }
   }
 
@@ -576,6 +594,8 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /risk      Show risk assessment summary
   /policy    Show current security policy
   /audit     Verify audit chain for this session
+  /doctor    Run environment health check
+  /toolcost  Show per-tool cost breakdown
   /config    Show current config
   /quit      Exit`);
       break;
@@ -694,6 +714,17 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(c(`Error listing routines: ${msg}`, 'red'));
         });
+      break;
+    }
+    case '/doctor': {
+      runDoctor().then(report => {
+        console.log(formatDoctorReport(report));
+      });
+      break;
+    }
+    case '/toolcost': {
+      const tracker = agent.getTokenTracker();
+      console.log('\n' + tracker.formatToolCostBreakdown());
       break;
     }
     case '/config':
@@ -851,6 +882,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       }
       continue;
     }
+    if (arg === '--doctor') {
+      result.doctor = true;
+      continue;
+    }
     if (arg === '--dry-run' || arg === '--estimate') {
       result['dry-run'] = true;
       continue;
@@ -918,6 +953,10 @@ ${c('Security & Policy:', 'bold')}
   --export-audit sarif Export audit log as SARIF 2.1.0 JSON
   --sandbox-info       Show Docker sandbox status
 
+${c('Diagnostics:', 'bold')}
+  --doctor             Run environment health check
+  --dry-run, --estimate Estimate cost without executing
+
 ${c('Debugging & Replay:', 'bold')}
   --replay [id]        Replay a session, re-execute tools, compare outputs
   --deterministic      Set temperature=0 for reproducible outputs
@@ -957,6 +996,8 @@ ${c('Interactive Commands:', 'bold')}
   /risk      Show risk assessment summary
   /policy    Show security policy
   /audit     Verify session audit chain
+  /doctor    Run environment health check
+  /toolcost  Show per-tool cost breakdown
   /config    Show configuration
   /quit      Exit`);
 }

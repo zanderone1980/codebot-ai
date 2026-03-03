@@ -85,6 +85,7 @@ export class TokenTracker {
   private records: UsageRecord[] = [];
   private toolCallCount: number = 0;
   private filesModifiedSet: Set<string> = new Set();
+  private toolCosts: Map<string, { inputTokens: number; outputTokens: number; costUsd: number; calls: number }> = new Map();
   private startTime: string;
   private costLimitUsd: number = 0;
 
@@ -126,6 +127,51 @@ export class TokenTracker {
   /** Record a file modification (for summary) */
   recordFileModified(filePath: string): void {
     this.filesModifiedSet.add(filePath);
+  }
+
+  /** Record cost attributed to a specific tool */
+  recordToolCost(toolName: string, inputTokens: number, outputTokens: number): void {
+    const pricing = this.getPricing();
+    const costUsd = (inputTokens * pricing.input + outputTokens * pricing.output) / 1_000_000;
+    const existing = this.toolCosts.get(toolName);
+    if (existing) {
+      existing.inputTokens += inputTokens;
+      existing.outputTokens += outputTokens;
+      existing.costUsd += costUsd;
+      existing.calls += 1;
+    } else {
+      this.toolCosts.set(toolName, { inputTokens, outputTokens, costUsd, calls: 1 });
+    }
+  }
+
+  /** Get per-tool cost breakdown */
+  getToolCostBreakdown(): Array<{ tool: string; inputTokens: number; outputTokens: number; costUsd: number; calls: number; pctOfTotal: number }> {
+    const totalCost = this.getTotalCost();
+    const breakdown: Array<{ tool: string; inputTokens: number; outputTokens: number; costUsd: number; calls: number; pctOfTotal: number }> = [];
+    for (const [tool, data] of this.toolCosts) {
+      breakdown.push({
+        tool,
+        ...data,
+        pctOfTotal: totalCost > 0 ? (data.costUsd / totalCost) * 100 : 0,
+      });
+    }
+    return breakdown.sort((a, b) => b.costUsd - a.costUsd);
+  }
+
+  /** Format per-tool cost breakdown for display */
+  formatToolCostBreakdown(): string {
+    const breakdown = this.getToolCostBreakdown();
+    if (breakdown.length === 0) return 'No per-tool cost data.';
+    const lines: string[] = ['Per-tool Cost Breakdown:'];
+    lines.push('  ' + 'Tool'.padEnd(20) + 'Calls'.padEnd(8) + 'Tokens'.padEnd(14) + 'Cost'.padEnd(12) + '%');
+    lines.push('  ' + '-'.repeat(60));
+    for (const entry of breakdown) {
+      const tokens = `${entry.inputTokens + entry.outputTokens}`;
+      const cost = entry.costUsd === 0 ? 'free' : `$${entry.costUsd.toFixed(4)}`;
+      const pct = entry.pctOfTotal.toFixed(1) + '%';
+      lines.push('  ' + entry.tool.padEnd(20) + String(entry.calls).padEnd(8) + tokens.padEnd(14) + cost.padEnd(12) + pct);
+    }
+    return lines.join('\n');
   }
 
   /** Check if cost limit has been exceeded */
