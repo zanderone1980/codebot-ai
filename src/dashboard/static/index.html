@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeBot AI Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+</head>
+<body>
+  <div id="app">
+    <nav id="sidebar">
+      <div class="logo">
+        <span class="logo-icon">&#x1F916;</span>
+        <span class="logo-text">CodeBot AI</span>
+      </div>
+      <ul class="nav-links">
+        <li><a href="#sessions" class="nav-link active" data-section="sessions">Sessions</a></li>
+        <li><a href="#audit" class="nav-link" data-section="audit">Audit</a></li>
+        <li><a href="#metrics" class="nav-link" data-section="metrics">Metrics</a></li>
+      </ul>
+      <div class="nav-footer">
+        <div id="health-status" class="status-badge">Connecting...</div>
+      </div>
+    </nav>
+
+    <main id="content">
+      <!-- Sessions Section -->
+      <section id="section-sessions" class="section active">
+        <h1>Sessions</h1>
+        <div id="sessions-list" class="card-grid"></div>
+        <div id="session-detail" class="detail-view" style="display:none"></div>
+      </section>
+
+      <!-- Audit Section -->
+      <section id="section-audit" class="section">
+        <h1>Audit Trail</h1>
+        <div class="toolbar">
+          <button id="btn-verify" class="btn">Verify Chain</button>
+          <span id="verify-result" class="status-text"></span>
+        </div>
+        <div id="audit-timeline" class="timeline"></div>
+      </section>
+
+      <!-- Metrics Section -->
+      <section id="section-metrics" class="section">
+        <h1>Metrics</h1>
+        <div id="metrics-cards" class="card-grid"></div>
+        <div id="usage-chart" class="chart-area"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
