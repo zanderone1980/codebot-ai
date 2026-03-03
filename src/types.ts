@@ -75,13 +75,14 @@ export interface UsageStats {
 }
 
 export interface AgentEvent {
-  type: 'thinking' | 'text' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'compaction' | 'usage';
+  type: 'thinking' | 'text' | 'tool_call' | 'tool_result' | 'done' | 'error' | 'compaction' | 'usage' | 'stream_progress';
   text?: string;
   toolCall?: { name: string; args: Record<string, unknown> };
   toolResult?: { name: string; result: string; is_error?: boolean };
   error?: string;
   usage?: UsageStats;
   risk?: { score: number; level: string };
+  streamProgress?: { tokensGenerated: number; tokensPerSecond: number; elapsedMs: number };
 }
 
 export interface Config {

@@ -412,3 +412,92 @@ export function summaryBox(stats: {
 
   return box('Session Summary', lines);
 }
+
+
+// ── budgetBar() ──
+
+/**
+ * Render a cost budget progress bar: green→yellow→orange→red.
+ * Example: [$0.12 ▓▓▓░░░░░░░ $1.00]
+ */
+export function budgetBar(spent: number, limit: number, width: number = 10): string {
+  if (limit <= 0) {
+    return `${UI.dim}[$${spent.toFixed(2)} / no limit]${UI.reset}`;
+  }
+  const pct = Math.min(200, (spent / limit) * 100); // allow overshoot display
+  const filled = Math.min(width, Math.round((pct / 100) * width));
+  const empty = width - filled;
+
+  let color: string;
+  if (pct <= 25) color = UI.green;
+  else if (pct <= 50) color = UI.yellow;
+  else if (pct <= 75) color = UI.orange;
+  else color = UI.red;
+
+  return `${color}[${UI.reset}$${spent.toFixed(2)} ${color}${'▓'.repeat(filled)}${'░'.repeat(empty)}${UI.reset} $${limit.toFixed(2)}${color}]${UI.reset}`;
+}
+
+// ── streamingIndicator() ──
+
+/**
+ * Render a streaming progress indicator.
+ * Example: ... 142 tokens (23 tok/s)
+ */
+export function streamingIndicator(tokenCount: number, tokensPerSecond: number): string {
+  return `${UI.dim}...${UI.reset} ${UI.bold}${tokenCount}${UI.reset} tokens ${UI.dim}(${tokensPerSecond} tok/s)${UI.reset}`;
+}
+
+// ── costBadge() ──
+
+/**
+ * Compact cost badge for REPL prompt.
+ * Without limit: [$0.12]
+ * With limit:    [$0.12/$1.00]
+ */
+export function costBadge(cost: number, limit?: number): string {
+  const costStr = `$${cost.toFixed(2)}`;
+  if (limit !== undefined && limit > 0) {
+    const limitStr = `$${limit.toFixed(2)}`;
+    const pct = (cost / limit) * 100;
+    let color: string;
+    if (pct <= 50) color = UI.green;
+    else if (pct <= 75) color = UI.yellow;
+    else color = UI.red;
+    return `${color}[${costStr}/${limitStr}]${UI.reset}`;
+  }
+  return `${UI.dim}[${costStr}]${UI.reset}`;
+}
+
+// ── timedStep() ──
+
+/**
+ * Render a timed progress step.
+ * Example: [2/5] Editing... (1.2s)
+ */
+export function timedStep(current: number, total: number, label: string, elapsedMs: number): string {
+  const elapsed = (elapsedMs / 1000).toFixed(1);
+  return `${UI.dim}[${current}/${total}]${UI.reset} ${label} ${UI.dim}(${elapsed}s)${UI.reset}`;
+}
+
+// ── collapsibleSection() ──
+
+/**
+ * Render a collapsible section (for TUI and dashboard).
+ * Collapsed: [+] Title (N lines)
+ * Expanded:  [-] Title\n<content in box>
+ */
+export function collapsibleSection(title: string, content: string, expanded: boolean): string {
+  const lines = content ? content.split('\n') : [];
+  const lineCount = lines.length;
+
+  if (!expanded) {
+    return `${UI.dim}[+]${UI.reset} ${UI.bold}${title}${UI.reset} ${UI.dim}(${lineCount} line${lineCount !== 1 ? 's' : ''})${UI.reset}`;
+  }
+
+  const out: string[] = [];
+  out.push(`${UI.dim}[-]${UI.reset} ${UI.bold}${title}${UI.reset}`);
+  for (const line of lines) {
+    out.push(`  ${line}`);
+  }
+  return out.join('\n');
+}

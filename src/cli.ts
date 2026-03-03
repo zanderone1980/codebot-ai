@@ -17,7 +17,7 @@ import { getSandboxInfo } from './sandbox';
 import { ReplayProvider, loadSessionForReplay, compareOutputs, listReplayableSessions } from './replay';
 import { RiskScorer } from './risk';
 import { exportSarif, sarifToString } from './sarif';
-import { UI, permissionCard, summaryBox, box } from './ui';
+import { UI, permissionCard, summaryBox, box, budgetBar, streamingIndicator, costBadge } from './ui';
 import { estimateRunCost } from './telemetry';
 import { runDoctor, formatDoctorReport } from './doctor';
 import { loadTheme, setTheme, getTheme, getThemeNames } from './theme';
@@ -551,6 +551,12 @@ function renderEvent(event: AgentEvent, agent?: Agent) {
         if (parts.length > 0) {
           console.log(c(`  [${parts.join(', ')} tokens | ${tracker.formatCost()}]`, 'dim'));
         }
+        // Show budget bar when cost limit is active
+        const costSoFar = tracker.getTotalCost();
+        const costLimit2 = agent.getPolicyEnforcer().getCostLimitUsd();
+        if (costLimit2 > 0) {
+          console.log(`  ${budgetBar(costSoFar, costLimit2)}`);
+        }
       }
       break;
     case 'compaction':
@@ -558,6 +564,9 @@ function renderEvent(event: AgentEvent, agent?: Agent) {
       break;
     case 'error':
       console.error(c(`\n✗ ${event.error}`, 'red'));
+      break;
+    case 'stream_progress':
+      // Streaming indicator handled in TUI mode
       break;
     case 'done':
       if (isThinking) {
@@ -921,6 +930,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       }
       continue;
     }
+    if (arg === '--no-stream') {
+      result.noStream = true;
+      continue;
+    }
     if (arg === '--theme') {
       const next = argv[i + 1];
       if (next && !next.startsWith('--')) {
@@ -987,6 +1000,7 @@ ${c('Options:', 'bold')}
   --provider <name>    Provider: openai, anthropic, gemini, deepseek, groq, mistral, xai
   --base-url <url>     LLM API base URL (auto-detects Ollama/LM Studio/vLLM + cloud)
   --api-key <key>      API key (or set provider-specific env var)
+  --no-stream          Suppress streaming progress indicators
   --theme <name>       Theme: dark, light, mono (default: auto)
   --autonomous         Skip ALL permission prompts — full auto mode
   --auto-approve       Same as --autonomous

@@ -196,6 +196,9 @@ export class Agent {
       let fullText = '';
       let toolCalls: ToolCall[] = [];
       let streamError: string | null = null;
+      let streamTokenCount = 0;
+      let streamStartTime = Date.now();
+      let lastProgressTime = 0;
 
       // Stream LLM response — wrapped in try-catch for resilience
       try {
@@ -204,7 +207,18 @@ export class Agent {
           switch (event.type) {
             case 'text':
               fullText += event.text || '';
+              streamTokenCount += (event.text || '').length > 0 ? 1 : 0;
               yield { type: 'text', text: event.text };
+              // Stream progress update every 500ms
+              {
+                const now = Date.now();
+                if (now - lastProgressTime >= 500) {
+                  const elapsedMs = now - streamStartTime;
+                  const tps = elapsedMs > 0 ? Math.round((streamTokenCount / elapsedMs) * 1000) : 0;
+                  yield { type: 'stream_progress', streamProgress: { tokensGenerated: streamTokenCount, tokensPerSecond: tps, elapsedMs } };
+                  lastProgressTime = now;
+                }
+              }
               break;
             case 'thinking':
               yield { type: 'thinking', text: event.text };
