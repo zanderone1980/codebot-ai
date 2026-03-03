@@ -40,5 +40,7 @@ export { TokenTracker, estimateRunCost } from './telemetry';
 export type { UsageRecord, SessionSummary, CostEstimate } from './telemetry';
 export { BrowserSession } from './tools/browser';
 export { runDoctor, formatDoctorReport } from './doctor';
+export { DARK_THEME, LIGHT_THEME, MONO_THEME, loadTheme, setTheme, getTheme, applyColor, getThemeNames } from './theme';
+export type { Theme } from './theme';
 export type { HealthCheck, DoctorReport } from './doctor';
 export * from './types';

@@ -20,6 +20,7 @@ import { exportSarif, sarifToString } from './sarif';
 import { UI, permissionCard, summaryBox, box } from './ui';
 import { estimateRunCost } from './telemetry';
 import { runDoctor, formatDoctorReport } from './doctor';
+import { loadTheme, setTheme, getTheme, getThemeNames } from './theme';
 
 const VERSION = '2.2.0';
 
@@ -55,6 +56,13 @@ export async function main() {
   });
 
   const args = parseArgs(process.argv.slice(2));
+
+  // Apply theme early (before any output)
+  if (typeof args.theme === 'string') {
+    setTheme(loadTheme(args.theme));
+  } else {
+    setTheme(loadTheme());
+  }
 
   if (args.help) {
     showHelp();
@@ -594,6 +602,7 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
   /risk      Show risk assessment summary
   /policy    Show current security policy
   /audit     Verify audit chain for this session
+  /theme     Show or change theme (/theme dark|light|mono)
   /doctor    Run environment health check
   /toolcost  Show per-tool cost breakdown
   /config    Show current config
@@ -714,6 +723,24 @@ function handleSlashCommand(input: string, agent: Agent, config: Config) {
           const msg = err instanceof Error ? err.message : String(err);
           console.error(c(`Error listing routines: ${msg}`, 'red'));
         });
+      break;
+    }
+    case '/theme': {
+      if (rest.length > 0) {
+        const themeName = rest[0];
+        const available = getThemeNames();
+        if (available.includes(themeName)) {
+          setTheme(loadTheme(themeName));
+          console.log(c(`Theme set to: ${themeName}`, 'green'));
+        } else {
+          console.log(c(`Unknown theme: ${themeName}. Available: ${available.join(', ')}`, 'yellow'));
+        }
+      } else {
+        const current = getTheme();
+        const available = getThemeNames();
+        console.log(`Current theme: ${current.name}`);
+        console.log(c(`Available: ${available.join(', ')}`, 'dim'));
+      }
       break;
     }
     case '/doctor': {
@@ -882,6 +909,16 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       }
       continue;
     }
+    if (arg === '--theme') {
+      const next = argv[i + 1];
+      if (next && !next.startsWith('--')) {
+        result.theme = next;
+        i++;
+      } else {
+        result.theme = true;
+      }
+      continue;
+    }
     if (arg === '--doctor') {
       result.doctor = true;
       continue;
@@ -938,6 +975,7 @@ ${c('Options:', 'bold')}
   --provider <name>    Provider: openai, anthropic, gemini, deepseek, groq, mistral, xai
   --base-url <url>     LLM API base URL (auto-detects Ollama/LM Studio/vLLM + cloud)
   --api-key <key>      API key (or set provider-specific env var)
+  --theme <name>       Theme: dark, light, mono (default: auto)
   --autonomous         Skip ALL permission prompts — full auto mode
   --auto-approve       Same as --autonomous
   --resume <id>        Resume a previous session by ID
@@ -996,6 +1034,7 @@ ${c('Interactive Commands:', 'bold')}
   /risk      Show risk assessment summary
   /policy    Show security policy
   /audit     Verify session audit chain
+  /theme     Show or change theme
   /doctor    Run environment health check
   /toolcost  Show per-tool cost breakdown
   /config    Show configuration
