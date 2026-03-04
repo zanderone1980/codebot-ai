@@ -277,35 +277,59 @@ const App = {
   terminalHistoryIndex: -1,
 
   async initCommand() {
+    let agentConnected = false;
     try {
       const status = await this.fetch('/api/command/status');
-      if (status.available) {
-        document.getElementById('cmd-unavailable').style.display = 'none';
-        document.getElementById('cmd-available').style.display = '';
-      } else {
-        document.getElementById('cmd-unavailable').style.display = '';
-        document.getElementById('cmd-available').style.display = 'none';
-        return;
-      }
-    } catch {
-      document.getElementById('cmd-unavailable').style.display = '';
-      document.getElementById('cmd-available').style.display = 'none';
-      return;
+      agentConnected = status.available;
+    } catch { /* standalone */ }
+
+    // Always show command panel — Terminal + Quick Actions work without agent
+    document.getElementById('cmd-unavailable').style.display = 'none';
+    document.getElementById('cmd-available').style.display = '';
+
+    // Status badge
+    const statusEl = document.getElementById('cmd-status');
+    if (statusEl) {
+      statusEl.innerHTML = agentConnected
+        ? '<span class="badge badge-ok">Agent Connected</span>'
+        : '<span class="badge badge-warn">Standalone Mode</span>';
     }
+
+    // Disable agent-only tabs when standalone
+    if (!agentConnected) {
+      document.querySelectorAll('.cmd-tab').forEach(tab => {
+        const t = tab.dataset.cmdTab;
+        if (t === 'chat' || t === 'toolrunner') {
+          tab.classList.add('disabled');
+          tab.title = 'Requires agent — run codebot --dashboard';
+        }
+      });
+      // Default to terminal tab in standalone
+      document.querySelectorAll('.cmd-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.cmd-panel').forEach(p => p.classList.remove('active'));
+      const termTab = document.querySelector('.cmd-tab[data-cmd-tab="terminal"]');
+      if (termTab) termTab.classList.add('active');
+      const termPanel = document.getElementById('cmd-terminal');
+      if (termPanel) termPanel.classList.add('active');
+    }
+
     if (this.cmdInitialized) return;
     this.cmdInitialized = true;
+    this.agentConnected = agentConnected;
+
     document.querySelectorAll('.cmd-tab').forEach(tab => {
       tab.addEventListener('click', () => {
+        if (tab.classList.contains('disabled')) return;
         document.querySelectorAll('.cmd-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.cmd-panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
         document.getElementById('cmd-' + tab.dataset.cmdTab).classList.add('active');
       });
     });
-    this.initChat();
+    if (agentConnected) this.initChat();
     this.initQuickActions();
     this.initTerminal();
-    this.initToolRunner();
+    if (agentConnected) this.initToolRunner();
   },
 
   initChat() {
@@ -409,6 +433,8 @@ const App = {
           var payload = line.slice(6); if (payload === '[DONE]') break;
           try { var ev = JSON.parse(payload);
             if (ev.type === 'text') { fullText += ev.text || ''; output.textContent = fullText; }
+            else if (ev.type === 'stdout') { fullText += ev.text || ''; output.textContent = fullText; }
+            else if (ev.type === 'stderr') { fullText += ev.text || ''; output.textContent = fullText; }
             else if (ev.type === 'tool_result' && ev.toolResult) { fullText += '\n' + (ev.toolResult.result || ''); output.textContent = fullText; }
           } catch(e) {}
         }

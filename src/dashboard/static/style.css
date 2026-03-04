@@ -814,6 +814,10 @@ h1 {
 .cmd-tab { flex:1; padding:10px 16px; background:transparent; border:none; border-radius:var(--radius-sm); color:var(--text-secondary); font-size:13px; font-weight:500; font-family:inherit; cursor:pointer; transition:all var(--transition); }
 .cmd-tab:hover { color:var(--text-primary); background:var(--bg-card); }
 .cmd-tab.active { color:var(--text-primary); background:var(--accent-glow); box-shadow:inset 0 0 0 1px rgba(99,102,241,0.25); }
+.cmd-tab.disabled { opacity:0.35; cursor:not-allowed; pointer-events:none; }
+.badge { display:inline-block; padding:4px 10px; border-radius:var(--radius-sm); font-size:11px; font-weight:600; letter-spacing:0.5px; }
+.badge-ok { background:rgba(16,185,129,0.15); color:var(--success); border:1px solid rgba(16,185,129,0.3); }
+.badge-warn { background:rgba(245,158,11,0.15); color:var(--warning); border:1px solid rgba(245,158,11,0.3); }
 .cmd-panel { display:none; }
 .cmd-panel.active { display:block; animation:fadeIn 0.3s ease; }
 

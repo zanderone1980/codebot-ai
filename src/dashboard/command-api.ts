@@ -2,7 +2,7 @@
  * Command Center API — interactive endpoints for the dashboard.
  *
  * Provides: chat (SSE), terminal exec (SSE), quick actions, tool listing & execution.
- * Requires an Agent instance for chat/quick-action routes.
+ * Terminal + Quick Actions work standalone. Chat + Tool Runner need an Agent.
  */
 
 import * as http from 'http';
@@ -11,16 +11,16 @@ import { DashboardServer } from './server';
 import { Agent } from '../agent';
 import { BLOCKED_PATTERNS, FILTERED_ENV_VARS } from '../tools/execute';
 
-/** Predefined quick-action prompts */
-const QUICK_ACTIONS: Record<string, string> = {
-  'git-status': 'Run git status and show me the result briefly.',
-  'run-tests': 'Run the project test suite and report a brief summary of results.',
-  'list-tools': 'List all your available tools with a one-line description each.',
-  'health-check': 'Check system health: run node --version, git --version, and df -h. Report briefly.',
-  'git-log': 'Run git log --oneline -10 and show me the output.',
-  'git-diff': 'Run git diff --stat and show me the summary.',
-  'list-files': 'List the files in the current project root directory.',
-  'npm-outdated': 'Run npm outdated and show me what packages need updating.',
+/** Quick-action definitions: AI prompt (agent) + shell command (standalone) */
+const QUICK_ACTIONS: Record<string, { prompt: string; command: string }> = {
+  'git-status':   { prompt: 'Run git status and show me the result briefly.',                      command: 'git status' },
+  'run-tests':    { prompt: 'Run the project test suite and report a brief summary of results.',   command: 'npm test 2>&1 || true' },
+  'list-tools':   { prompt: 'List all your available tools with a one-line description each.',     command: 'echo "Requires agent connection for tool listing"' },
+  'health-check': { prompt: 'Check system health: run node --version, git --version, and df -h.',  command: 'echo "=== Node ===" && node --version && echo "=== Git ===" && git --version && echo "=== Disk ===" && df -h .' },
+  'git-log':      { prompt: 'Run git log --oneline -10 and show me the output.',                   command: 'git log --oneline -10' },
+  'git-diff':     { prompt: 'Run git diff --stat and show me the summary.',                        command: 'git diff --stat' },
+  'list-files':   { prompt: 'List the files in the current project root directory.',               command: 'ls -la' },
+  'npm-outdated': { prompt: 'Run npm outdated and show me what packages need updating.',           command: 'npm outdated 2>&1 || true' },
 };
 
 /** Build a filtered env for child processes (strip secrets) */
@@ -32,9 +32,66 @@ function filteredEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** Spawn a shell command and stream stdout/stderr as SSE events */
+function execAndStream(
+  res: http.ServerResponse,
+  command: string,
+  cwd?: string,
+): void {
+  DashboardServer.sseHeaders(res);
+
+  let closed = false;
+  const child = spawn('sh', ['-c', command], {
+    cwd: cwd || process.cwd(),
+    env: filteredEnv(),
+  });
+
+  res.on('close', () => {
+    closed = true;
+    if (!child.killed) child.kill('SIGTERM');
+  });
+
+  child.stdout.on('data', (data: Buffer) => {
+    if (!closed) DashboardServer.sseSend(res, { type: 'stdout', text: data.toString() });
+  });
+
+  child.stderr.on('data', (data: Buffer) => {
+    if (!closed) DashboardServer.sseSend(res, { type: 'stderr', text: data.toString() });
+  });
+
+  child.on('close', (code) => {
+    if (!closed) {
+      DashboardServer.sseSend(res, { type: 'exit', code: code ?? 0 });
+      DashboardServer.sseClose(res);
+    }
+  });
+
+  child.on('error', (err) => {
+    if (!closed) {
+      DashboardServer.sseSend(res, { type: 'stderr', text: err.message });
+      DashboardServer.sseSend(res, { type: 'exit', code: 1 });
+      DashboardServer.sseClose(res);
+    }
+  });
+
+  const timer = setTimeout(() => {
+    if (!child.killed) {
+      child.kill('SIGTERM');
+      if (!closed) {
+        DashboardServer.sseSend(res, { type: 'stderr', text: '\n[Timed out after 30s]' });
+        DashboardServer.sseSend(res, { type: 'exit', code: 124 });
+        DashboardServer.sseClose(res);
+      }
+    }
+  }, 30_000);
+
+  child.on('close', () => clearTimeout(timer));
+}
+
 /**
  * Register command-center API routes on the dashboard server.
- * If agent is null, endpoints return 503 (standalone mode).
+ * Terminal + Quick Actions work in standalone mode (no agent).
+ * Chat + Tool Runner require an agent instance.
  */
 export function registerCommandRoutes(
   server: DashboardServer,
@@ -42,7 +99,7 @@ export function registerCommandRoutes(
 ): void {
   let agentBusy = false;
 
-  // ── GET /api/command/status — check if command center is available ──
+  // ── GET /api/command/status ──
   server.route('GET', '/api/command/status', (_req, res) => {
     DashboardServer.json(res, {
       available: agent !== null,
@@ -50,7 +107,7 @@ export function registerCommandRoutes(
     });
   });
 
-  // ── GET /api/command/tools — list all registered tools ──
+  // ── GET /api/command/tools ──
   server.route('GET', '/api/command/tools', (_req, res) => {
     if (!agent) {
       DashboardServer.error(res, 503, 'Agent not available (standalone mode)');
@@ -65,7 +122,7 @@ export function registerCommandRoutes(
     DashboardServer.json(res, { tools });
   });
 
-  // ── POST /api/command/tool/run — execute a single tool directly ──
+  // ── POST /api/command/tool/run ──
   server.route('POST', '/api/command/tool/run', async (req, res) => {
     if (!agent) {
       DashboardServer.error(res, 503, 'Agent not available');
@@ -108,7 +165,7 @@ export function registerCommandRoutes(
     }
   });
 
-  // ── POST /api/command/chat — send message to agent, stream SSE response ──
+  // ── POST /api/command/chat (agent only) ──
   server.route('POST', '/api/command/chat', async (req, res) => {
     if (!agent) {
       DashboardServer.error(res, 503, 'Agent not available');
@@ -158,13 +215,8 @@ export function registerCommandRoutes(
     }
   });
 
-  // ── POST /api/command/quick-action — run a predefined action via agent ──
+  // ── POST /api/command/quick-action (works standalone via exec) ──
   server.route('POST', '/api/command/quick-action', async (req, res) => {
-    if (!agent) {
-      DashboardServer.error(res, 503, 'Agent not available');
-      return;
-    }
-
     let body: { action?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
@@ -173,43 +225,49 @@ export function registerCommandRoutes(
       return;
     }
 
-    const prompt = QUICK_ACTIONS[body?.action || ''];
-    if (!prompt) {
+    const actionDef = QUICK_ACTIONS[body?.action || ''];
+    if (!actionDef) {
       DashboardServer.error(res, 400, `Unknown action: "${body?.action}". Available: ${Object.keys(QUICK_ACTIONS).join(', ')}`);
       return;
     }
 
-    if (agentBusy) {
-      DashboardServer.error(res, 409, 'Agent is busy processing another request');
+    // Agent mode: use AI
+    if (agent) {
+      if (agentBusy) {
+        DashboardServer.error(res, 409, 'Agent is busy processing another request');
+        return;
+      }
+      agentBusy = true;
+      DashboardServer.sseHeaders(res);
+
+      let closed = false;
+      res.on('close', () => { closed = true; });
+
+      try {
+        for await (const event of agent.run(actionDef.prompt)) {
+          if (closed) break;
+          DashboardServer.sseSend(res, event);
+          if (event.type === 'done' || event.type === 'error') break;
+        }
+      } catch (err: unknown) {
+        if (!closed) {
+          DashboardServer.sseSend(res, {
+            type: 'error',
+            text: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        agentBusy = false;
+        if (!closed) DashboardServer.sseClose(res);
+      }
       return;
     }
 
-    agentBusy = true;
-    DashboardServer.sseHeaders(res);
-
-    let closed = false;
-    res.on('close', () => { closed = true; });
-
-    try {
-      for await (const event of agent.run(prompt)) {
-        if (closed) break;
-        DashboardServer.sseSend(res, event);
-        if (event.type === 'done' || event.type === 'error') break;
-      }
-    } catch (err: unknown) {
-      if (!closed) {
-        DashboardServer.sseSend(res, {
-          type: 'error',
-          text: err instanceof Error ? err.message : String(err),
-        });
-      }
-    } finally {
-      agentBusy = false;
-      if (!closed) DashboardServer.sseClose(res);
-    }
+    // Standalone mode: run shell command directly
+    execAndStream(res, actionDef.command);
   });
 
-  // ── POST /api/command/exec — execute a shell command, stream stdout/stderr ──
+  // ── POST /api/command/exec (always works) ──
   server.route('POST', '/api/command/exec', async (req, res) => {
     let body: { command?: string; cwd?: string };
     try {
@@ -224,7 +282,6 @@ export function registerCommandRoutes(
       return;
     }
 
-    // Security: check against blocked patterns
     for (const pattern of BLOCKED_PATTERNS) {
       if (pattern.test(body.command)) {
         DashboardServer.error(res, 403, 'Blocked: dangerous command pattern detected');
@@ -232,58 +289,10 @@ export function registerCommandRoutes(
       }
     }
 
-    DashboardServer.sseHeaders(res);
-
-    let closed = false;
-    res.on('close', () => {
-      closed = true;
-      if (!child.killed) child.kill('SIGTERM');
-    });
-
-    const child = spawn('sh', ['-c', body.command], {
-      cwd: body.cwd || process.cwd(),
-      env: filteredEnv(),
-    });
-
-    child.stdout.on('data', (data: Buffer) => {
-      if (!closed) DashboardServer.sseSend(res, { type: 'stdout', text: data.toString() });
-    });
-
-    child.stderr.on('data', (data: Buffer) => {
-      if (!closed) DashboardServer.sseSend(res, { type: 'stderr', text: data.toString() });
-    });
-
-    child.on('close', (code) => {
-      if (!closed) {
-        DashboardServer.sseSend(res, { type: 'exit', code: code ?? 0 });
-        DashboardServer.sseClose(res);
-      }
-    });
-
-    child.on('error', (err) => {
-      if (!closed) {
-        DashboardServer.sseSend(res, { type: 'stderr', text: err.message });
-        DashboardServer.sseSend(res, { type: 'exit', code: 1 });
-        DashboardServer.sseClose(res);
-      }
-    });
-
-    // 30s timeout
-    const timer = setTimeout(() => {
-      if (!child.killed) {
-        child.kill('SIGTERM');
-        if (!closed) {
-          DashboardServer.sseSend(res, { type: 'stderr', text: '\n[Timed out after 30s]' });
-          DashboardServer.sseSend(res, { type: 'exit', code: 124 });
-          DashboardServer.sseClose(res);
-        }
-      }
-    }, 30_000);
-
-    child.on('close', () => clearTimeout(timer));
+    execAndStream(res, body.command, body.cwd);
   });
 
-  // ── GET /api/command/history — get recent agent messages ──
+  // ── GET /api/command/history ──
   server.route('GET', '/api/command/history', (_req, res) => {
     if (!agent) {
       DashboardServer.json(res, { messages: [] });
