@@ -3,54 +3,114 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeBot AI Dashboard</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <title>CodeBot AI — Dashboard</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="icon" href="favicon.svg?v=2" type="image/svg+xml">
 </head>
 <body>
   <div id="app">
     <nav id="sidebar">
-      <div class="logo">
-        <span class="logo-icon">&#x1F916;</span>
-        <span class="logo-text">CodeBot AI</span>
+      <div class="sidebar-header">
+        <div class="logo">
+          <div class="logo-mark">
+            <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect width="36" height="36" rx="10" fill="url(#lg)"/>
+              <rect x="7" y="8" width="22" height="16" rx="4" fill="rgba(255,255,255,0.15)"/>
+              <circle cx="13" cy="16" r="2.5" fill="#fff"/>
+              <circle cx="23" cy="16" r="2.5" fill="#fff"/>
+              <rect x="13" y="14" width="1.2" height="5" rx="0.6" fill="var(--accent)" opacity="0.9"/>
+              <rect x="23" y="14" width="1.2" height="5" rx="0.6" fill="var(--accent)" opacity="0.9"/>
+              <path d="M11 27 L14 24 L22 24 L25 27" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+              <line x1="15" y1="24" x2="15" y2="27" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <line x1="21" y1="24" x2="21" y2="27" stroke="rgba(255,255,255,0.2)" stroke-width="1"/>
+              <defs><linearGradient id="lg" x1="0" y1="0" x2="36" y2="36"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#06b6d4"/></linearGradient></defs>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="logo-name">CodeBot</span>
+            <span class="logo-badge">AI</span>
+          </div>
+        </div>
       </div>
-      <ul class="nav-links">
-        <li><a href="#sessions" class="nav-link active" data-section="sessions">Sessions</a></li>
-        <li><a href="#audit" class="nav-link" data-section="audit">Audit</a></li>
-        <li><a href="#metrics" class="nav-link" data-section="metrics">Metrics</a></li>
-      </ul>
-      <div class="nav-footer">
-        <div id="health-status" class="status-badge">Connecting...</div>
+
+      <div class="nav-section">
+        <span class="nav-section-label">Overview</span>
+        <ul class="nav-links">
+          <li>
+            <a href="#sessions" class="nav-link active" data-section="sessions">
+              <span class="nav-icon">&#x2630;</span>
+              Sessions
+            </a>
+          </li>
+          <li>
+            <a href="#audit" class="nav-link" data-section="audit">
+              <span class="nav-icon">&#x1F6E1;</span>
+              Audit Trail
+            </a>
+          </li>
+          <li>
+            <a href="#metrics" class="nav-link" data-section="metrics">
+              <span class="nav-icon">&#x2593;</span>
+              Metrics
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <div class="sidebar-footer">
+        <div id="health-status" class="health-pill">
+          <span class="health-dot"></span>
+          <span class="health-text">Connecting...</span>
+        </div>
       </div>
     </nav>
 
     <main id="content">
-      <!-- Sessions Section -->
+      <!-- Sessions -->
       <section id="section-sessions" class="section active">
-        <h1>Sessions</h1>
-        <div id="sessions-list" class="card-grid"></div>
-        <div id="session-detail" class="detail-view" style="display:none"></div>
-      </section>
-
-      <!-- Audit Section -->
-      <section id="section-audit" class="section">
-        <h1>Audit Trail</h1>
-        <div class="toolbar">
-          <button id="btn-verify" class="btn">Verify Chain</button>
-          <span id="verify-result" class="status-text"></span>
+        <div class="section-header">
+          <div>
+            <h1>Sessions</h1>
+            <p class="section-subtitle">Browse and inspect your CodeBot conversations</p>
+          </div>
+          <div class="header-stats" id="session-stats"></div>
         </div>
-        <div id="audit-timeline" class="timeline"></div>
+        <div id="sessions-list" class="card-grid"></div>
+        <div id="session-detail" class="detail-panel" style="display:none"></div>
       </section>
 
-      <!-- Metrics Section -->
+      <!-- Audit -->
+      <section id="section-audit" class="section">
+        <div class="section-header">
+          <div>
+            <h1>Audit Trail</h1>
+            <p class="section-subtitle">Cryptographically verified tool execution log</p>
+          </div>
+          <div class="header-actions">
+            <button id="btn-verify" class="btn btn-primary">
+              &#x2713; Verify Chain
+            </button>
+            <span id="verify-result" class="verify-badge"></span>
+          </div>
+        </div>
+        <div id="audit-timeline" class="timeline-container"></div>
+      </section>
+
+      <!-- Metrics -->
       <section id="section-metrics" class="section">
-        <h1>Metrics</h1>
-        <div id="metrics-cards" class="card-grid"></div>
-        <div id="usage-chart" class="chart-area"></div>
+        <div class="section-header">
+          <div>
+            <h1>Metrics</h1>
+            <p class="section-subtitle">Usage analytics and performance overview</p>
+          </div>
+        </div>
+        <div id="metrics-cards" class="stats-grid"></div>
+        <div id="usage-chart" class="chart-panel"></div>
+        <div id="tool-breakdown" class="breakdown-panel"></div>
       </section>
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2"></script>
 </body>
 </html>

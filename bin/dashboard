@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+/**
+ * Standalone dashboard launcher.
+ * Starts the DashboardServer on port 3120 with API routes + static frontend.
+ */
+const path = require('path');
+const { DashboardServer } = require('../dist/dashboard/server');
+const { registerApiRoutes } = require('../dist/dashboard/api');
+
+const PORT = parseInt(process.env.PORT || '3120', 10);
+const STATIC = path.join(__dirname, '..', 'dist', 'dashboard', 'static');
+
+async function main() {
+  const server = new DashboardServer({ port: PORT, staticDir: STATIC });
+  const os = require('os');
+  registerApiRoutes(server, os.homedir());
+  const { url } = await server.start();
+  console.log(`Dashboard running at ${url}`);
+}
+
+main().catch(err => {
+  console.error(err.message);
+  process.exit(1);
+});
