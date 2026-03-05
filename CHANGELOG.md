@@ -51,6 +51,108 @@
 - Tests: 1035 → 1114 (connector + vault + skills tests)
 
 
+## [2.5.2] — 2026-03-04
+
+### Added
+- **Command Center** — fully functional interactive dashboard tab with 4 sub-features:
+  - **Terminal** — execute shell commands with live streaming output, command history (arrow keys)
+  - **Quick Actions** — 8 one-click buttons (Git Status, Run Tests, Git Log, Git Diff, Health Check, List Tools, List Files, NPM Outdated)
+  - **Chat** — interactive AI chat with agent (requires `codebot --dashboard`)
+  - **Tool Runner** — select any tool, fill parameters via dynamic form, execute with result display
+- **Standalone mode** — Terminal + Quick Actions work without agent connection
+- **Dual-mode Quick Actions** — AI-powered summaries with agent, direct shell exec standalone
+- **Standalone Mode badge** — clear visual indicator when running without agent
+- **SSE streaming** for all command execution (chat, exec, quick actions)
+- **Concurrency guard** — prevents parallel agent.run() calls (409 Conflict)
+
+### Changed
+- Dashboard Command tab defaults to Terminal in standalone mode
+- Chat and Tool Runner tabs gracefully disabled (greyed out) without agent
+- Version alignment: cli.ts, index.ts, and package.json now all report 2.5.2
+- Tests: 1125 → 1135+ (command-api standalone tests added)
+
+### Security
+- Terminal commands filtered against BLOCKED_PATTERNS (dangerous command rejection)
+- Environment variables sanitized before child process spawn (API keys stripped)
+- 30-second timeout on all terminal commands with SIGTERM
+
+
+## [2.5.1] — 2026-03-03
+
+### Added
+- **Graphics toolchain** — OpenAI DALL-E image generation, Replicate ML model connector, graphics processing tool
+- **OpenAI Images connector** — generate, edit, and create variations via DALL-E 2/3
+- **Replicate connector** — run any ML model on Replicate's API with automatic polling
+- **Graphics tool** — resize, crop, rotate, flip, convert, compress, watermark, thumbnail generation
+
+### Fixed
+- `pollPrediction` return type in replicate.ts — added missing `id` field
+
+
+## [2.5.0] — 2026-03-03
+
+### Added
+- **App connectors** — GitHub, Jira, Linear, Slack integrations with OAuth/API key auth
+- **Credential vault** — encrypted storage for API keys and tokens (AES-256-GCM)
+- **Skills system** — reusable prompt-based workflows with parameter templating
+- **Connector registry** — discover, configure, and manage external app connections
+- **`app-connector` tool** — unified interface for all connector operations
+
+### Changed
+- Tests: 1035 → 1114 (connector + vault + skills tests)
+
+
+## [2.5.2] — 2026-03-04
+
+### Added
+- **Command Center** — fully functional interactive dashboard tab with 4 sub-features:
+  - **Terminal** — execute shell commands with live streaming output, command history (arrow keys)
+  - **Quick Actions** — 8 one-click buttons (Git Status, Run Tests, Git Log, Git Diff, Health Check, List Tools, List Files, NPM Outdated)
+  - **Chat** — interactive AI chat with agent (requires `codebot --dashboard`)
+  - **Tool Runner** — select any tool, fill parameters via dynamic form, execute with result display
+- **Standalone mode** — Terminal + Quick Actions work without agent connection
+- **Dual-mode Quick Actions** — AI-powered summaries with agent, direct shell exec standalone
+- **Standalone Mode badge** — clear visual indicator when running without agent
+- **SSE streaming** for all command execution (chat, exec, quick actions)
+- **Concurrency guard** — prevents parallel agent.run() calls (409 Conflict)
+
+### Changed
+- Dashboard Command tab defaults to Terminal in standalone mode
+- Chat and Tool Runner tabs gracefully disabled (greyed out) without agent
+- Version alignment: cli.ts, index.ts, and package.json now all report 2.5.2
+- Tests: 1125 → 1135+ (command-api standalone tests added)
+
+### Security
+- Terminal commands filtered against BLOCKED_PATTERNS (dangerous command rejection)
+- Environment variables sanitized before child process spawn (API keys stripped)
+- 30-second timeout on all terminal commands with SIGTERM
+
+
+## [2.5.1] — 2026-03-03
+
+### Added
+- **Graphics toolchain** — OpenAI DALL-E image generation, Replicate ML model connector, graphics processing tool
+- **OpenAI Images connector** — generate, edit, and create variations via DALL-E 2/3
+- **Replicate connector** — run any ML model on Replicate's API with automatic polling
+- **Graphics tool** — resize, crop, rotate, flip, convert, compress, watermark, thumbnail generation
+
+### Fixed
+- `pollPrediction` return type in replicate.ts — added missing `id` field
+
+
+## [2.5.0] — 2026-03-03
+
+### Added
+- **App connectors** — GitHub, Jira, Linear, Slack integrations with OAuth/API key auth
+- **Credential vault** — encrypted storage for API keys and tokens (AES-256-GCM)
+- **Skills system** — reusable prompt-based workflows with parameter templating
+- **Connector registry** — discover, configure, and manage external app connections
+- **`app-connector` tool** — unified interface for all connector operations
+
+### Changed
+- Tests: 1035 → 1114 (connector + vault + skills tests)
+
+
 ## [2.3.0] — 2026-03-02
 
 ### Added
