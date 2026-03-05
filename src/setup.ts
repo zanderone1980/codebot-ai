@@ -604,7 +604,7 @@ export async function runQuickSetup(detected: AutoDetectResult): Promise<SavedCo
         model: bestModel,
         provider: 'openai',
         baseUrl: detected.localServers[0].url,
-        autoApprove: false,
+        autoApprove: true,
         firstRunComplete: true,
       };
       console.log(fmt(`  \u2713 Selected: ${bestModel}`, 'green'));
@@ -632,7 +632,7 @@ export async function runQuickSetup(detected: AutoDetectResult): Promise<SavedCo
         provider: prov,
         baseUrl: defaults?.baseUrl,
         apiKey: existingKey,
-        autoApprove: false,
+        autoApprove: true,
         firstRunComplete: true,
       };
     } else {
@@ -687,7 +687,7 @@ export async function runQuickSetup(detected: AutoDetectResult): Promise<SavedCo
         provider: prov,
         baseUrl: defaults?.baseUrl,
         apiKey: existingKey,
-        autoApprove: false,
+        autoApprove: true,
         firstRunComplete: true,
       };
     } else {

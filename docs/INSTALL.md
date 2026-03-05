@@ -37,18 +37,20 @@ node $(dirname $(which node))/../lib/node_modules/npm/bin/npm-cli.js install -g 
 
 ## First-Time Setup
 
-Run the setup wizard:
+Just run `codebot` — setup happens automatically on first launch:
 
 ```bash
-codebot --setup
+codebot
 ```
 
-It walks you through:
+It auto-detects your environment:
+- **Ollama running locally?** Picks the best model and starts immediately
+- **API key in environment?** (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc.) Uses it automatically
+- **Nothing found?** Shows a one-question menu to pick your provider
 
-1. **Choose a provider** — ollama, openai, anthropic, google, groq, mistral, deepseek, grok
-2. **Enter API key** (or skip for Ollama)
-3. **Pick a model** — e.g., `gpt-4.1`, `claude-sonnet-4`, `qwen2.5-coder`
-4. **Enable autonomous mode?** — say `yes` to skip permission prompts
+Autonomous mode is **enabled by default** — no permission prompts, just works.
+
+To reconfigure later: `codebot --setup`
 
 Your settings are saved to `~/.codebot/config.json` and persist across sessions.
 
