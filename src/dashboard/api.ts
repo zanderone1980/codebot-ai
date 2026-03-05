@@ -248,6 +248,47 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     activeSwarm = swarm;
   };
 
+  // ── Swarm API ──
+
+  let activeSwarm: import('../swarm').SwarmOrchestrator | null = null;
+
+  server.route('GET', '/api/swarm/status', (_req, res) => {
+    if (!activeSwarm) {
+      DashboardServer.json(res, { active: false, swarm: null });
+      return;
+    }
+    DashboardServer.json(res, { active: true, swarm: activeSwarm.getState() });
+  });
+
+  server.route('GET', '/api/swarm/scores', (_req, res) => {
+    if (!activeSwarm) {
+      DashboardServer.json(res, { scores: [] });
+      return;
+    }
+    DashboardServer.json(res, { scores: activeSwarm.getScorer().getAllPerformance() });
+  });
+
+  server.route('GET', '/api/swarm/bus', (req, res) => {
+    if (!activeSwarm) {
+      DashboardServer.json(res, { messages: [] });
+      return;
+    }
+    const query = DashboardServer.parseQuery(req.url || '');
+    let messages = activeSwarm.getBus().getAllMessages();
+    if (query.type) {
+      messages = messages.filter((m: { type: string }) => m.type === query.type);
+    }
+    if (query.role) {
+      messages = messages.filter((m: { fromRole: string }) => m.fromRole === query.role);
+    }
+    DashboardServer.json(res, { messages });
+  });
+
+  /** Setter for external code to register the active swarm */
+  (server as unknown as Record<string, unknown>)._setActiveSwarm = (swarm: import('../swarm').SwarmOrchestrator | null) => {
+    activeSwarm = swarm;
+  };
+
 }
 
 // ── File system helpers (fail-safe) ──
