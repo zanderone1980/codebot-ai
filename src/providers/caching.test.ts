@@ -50,7 +50,7 @@ describe('Prompt Caching — Anthropic provider cache_control injection', () => 
     const systemPrompt = 'You are a helpful assistant.';
     const cachingEnabled = true;
 
-    let body: Record<string, unknown> = {};
+    const body: Record<string, unknown> = {};
     if (systemPrompt) {
       if (cachingEnabled) {
         body.system = [{
@@ -75,7 +75,7 @@ describe('Prompt Caching — Anthropic provider cache_control injection', () => 
     const systemPrompt = 'You are a helpful assistant.';
     const cachingEnabled = false;
 
-    let body: Record<string, unknown> = {};
+    const body: Record<string, unknown> = {};
     if (systemPrompt) {
       if (cachingEnabled) {
         body.system = [{ type: 'text', text: systemPrompt, cache_control: { type: 'ephemeral' } }];
