@@ -50,7 +50,7 @@ export function isDockerAvailable(): boolean {
 
   try {
     execSync('docker info', {
-      timeout: 5000,
+      timeout: 2000,
       stdio: ['pipe', 'pipe', 'pipe'],
       encoding: 'utf-8',
     });
