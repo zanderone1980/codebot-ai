@@ -176,7 +176,6 @@ export class CapabilityChecker {
 
     // Prefix match (directory)
     if (cleanPath.startsWith(cleanPattern + '/')) return true;
-    if (cleanPath.startsWith(cleanPattern + path.sep)) return true;
 
     // Glob expansion
     if (pattern.includes('*')) {

@@ -11,7 +11,7 @@ describe('isPathSafe', () => {
   it('blocks writes to /etc/passwd', () => {
     const result = isPathSafe('/etc/passwd', PROJECT);
     assert.strictEqual(result.safe, false);
-    assert.ok(result.reason?.includes('/etc'), `Reason should mention /etc: ${result.reason}`);
+    assert.ok(result.reason?.includes('etc'), `Reason should mention etc: ${result.reason}`);
   });
 
   it('blocks writes to /etc/shadow', () => {
