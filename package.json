@@ -11,14 +11,14 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/cli.js",
-    "test": "node --test dist/*.test.js dist/**/*.test.js",
+    "test": "node scripts/run-tests.js",
     "lint": "eslint src/ && tsc --noEmit",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write 'src/**/*.ts' '*.json' '*.md'",
     "format:check": "prettier --check 'src/**/*.ts' '*.json' '*.md'",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist",
-    "postbuild": "cp -r src/dashboard/static dist/dashboard/",
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "postbuild": "node -e \"require('fs').cpSync('src/dashboard/static','dist/dashboard/static',{recursive:true})\"",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
