@@ -268,7 +268,7 @@ export class DashboardServer {
       res.writeHead(200, {
         'Content-Type': mime,
         'Content-Length': content.length,
-        'Cache-Control': ext === '.html' ? 'no-cache' : 'max-age=3600',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Access-Control-Allow-Origin': '*',
       });
       res.end(content);

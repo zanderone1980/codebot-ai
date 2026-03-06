@@ -151,6 +151,41 @@ Opens a web dashboard at `http://localhost:3120` with:
 - **Sessions** — view session history
 - **Metrics** — usage stats
 
+### Swarm (Multi-LLM)
+
+Swarm lets multiple AI providers collaborate on a single task. To use it, set API keys for the providers you want:
+
+```bash
+# Add as many as you want — each one unlocks a provider in the Swarm panel
+export ANTHROPIC_API_KEY=sk-ant-...     # Anthropic (Claude)
+export OPENAI_API_KEY=sk-...            # OpenAI (GPT-4o)
+export GEMINI_API_KEY=AIza...           # Google (Gemini)
+export DEEPSEEK_API_KEY=sk-...          # DeepSeek
+export GROQ_API_KEY=gsk_...             # Groq (Llama)
+export MISTRAL_API_KEY=...              # Mistral
+export XAI_API_KEY=xai-...              # xAI (Grok)
+```
+
+To make them permanent, add the export lines to your shell profile:
+
+```bash
+# macOS / zsh
+echo 'export OPENAI_API_KEY=sk-...' >> ~/.zshrc
+source ~/.zshrc
+
+# Linux / bash
+echo 'export OPENAI_API_KEY=sk-...' >> ~/.bashrc
+source ~/.bashrc
+```
+
+Then launch the dashboard and click **Launch Swarm**:
+
+```bash
+codebot --dashboard
+# Open http://localhost:3120 → click "Launch Swarm"
+# Select providers (green = key found) → pick strategy → enter task → Run
+```
+
 ### Health Check
 
 ```bash

@@ -9,9 +9,36 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import { DashboardServer } from './server';
 import { VERSION } from '../index';
 import { PROVIDER_DEFAULTS } from '../providers/registry';
+
+/** Load API key availability from config + env */
+function detectAvailableProviders(): Record<string, boolean> {
+  const available: Record<string, boolean> = {};
+
+  // Check ~/.codebot/config.json
+  let configProvider = '';
+  try {
+    const configPath = path.join(os.homedir(), '.codebot', 'config.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    if (config.apiKey && config.provider) {
+      configProvider = config.provider;
+    }
+  } catch { /* no config */ }
+
+  for (const [name, info] of Object.entries(PROVIDER_DEFAULTS)) {
+    const envVal = process.env[info.envKey];
+    const hasEnv = !!(envVal && envVal.length > 5);
+    const hasConfig = (name === configProvider);
+    // Anthropic OAuth fallback
+    const hasOAuth = (name === 'anthropic' && !!(process.env.CLAUDE_CODE_OAUTH_TOKEN && process.env.CLAUDE_CODE_OAUTH_TOKEN.length > 5));
+    available[name] = hasEnv || hasConfig || hasOAuth;
+  }
+
+  return available;
+}
 
 /** Register all API routes on the server */
 export function registerApiRoutes(server: DashboardServer, projectRoot?: string): void {
@@ -222,11 +249,13 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     xai: 'grok-3',
   };
 
+  const providerAvailability = detectAvailableProviders();
+
   server.route('GET', '/api/swarm/providers', (_req, res) => {
     const providers = Object.entries(PROVIDER_DEFAULTS).map(([name, info]) => ({
       name,
       envKey: info.envKey,
-      available: !!process.env[info.envKey],
+      available: providerAvailability[name] || false,
       defaultModel: PROVIDER_MODELS[name] || name,
     }));
     DashboardServer.json(res, { providers });

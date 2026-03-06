@@ -62,7 +62,7 @@ const App = {
       case 'sessions': this.loadSessions(); break;
       case 'terminal': this.initTerminal(); break;
       case 'tools': this.initTools(); break;
-      case 'metrics': this.loadMetrics(); break;
+      // metrics removed
       case 'swarm': this.initSwarm(); break;
     }
   },
@@ -544,66 +544,6 @@ const App = {
     }
   },
 
-  // ===========================================================
-  // METRICS
-  // ===========================================================
-
-  async loadMetrics() {
-    const cards = document.getElementById('metrics-cards');
-    const chart = document.getElementById('usage-chart');
-    const breakdown = document.getElementById('tool-breakdown');
-    cards.innerHTML = this.renderLoading();
-
-    try {
-      const results = await Promise.all([
-        this.fetch('/api/metrics/summary'),
-        this.fetch('/api/usage'),
-      ]);
-      const summary = results[0], usage = results[1];
-
-      const toolCount = Object.keys(summary.toolUsage || {}).length;
-      const actionCount = Object.keys(summary.actionBreakdown || {}).length;
-      cards.innerHTML =
-        '<div class="stat-card blue"><div class="stat-value">' + summary.sessions + '</div><div class="stat-label">Sessions</div></div>' +
-        '<div class="stat-card cyan"><div class="stat-value">' + summary.auditEntries + '</div><div class="stat-label">Audit Events</div></div>' +
-        '<div class="stat-card green"><div class="stat-value">' + toolCount + '</div><div class="stat-label">Tools Used</div></div>' +
-        '<div class="stat-card yellow"><div class="stat-value">' + actionCount + '</div><div class="stat-label">Action Types</div></div>';
-
-      // Bar chart
-      if (usage.usage && usage.usage.length > 0) {
-        let maxMsg = Math.max.apply(null, usage.usage.map(u => u.messageCount));
-        if (maxMsg < 1) maxMsg = 1;
-        chart.innerHTML = '<div class="chart-title">Recent Sessions</div><div class="bar-chart">' +
-          usage.usage.map(u => {
-            const h = Math.max(8, (u.messageCount / maxMsg) * 100);
-            const label = u.sessionId.substring(0, 6);
-            return '<div class="bar-wrapper"><span class="bar-value">' + u.messageCount + '</span>' +
-              '<div class="bar" style="height:' + h + 'px" title="' + App.escapeHtml(u.sessionId) + '"></div>' +
-              '<span class="bar-label">' + App.escapeHtml(label) + '</span></div>';
-          }).join('') + '</div>';
-      } else {
-        chart.innerHTML = this.renderEmpty('No usage data', 'Run some sessions to see charts');
-      }
-
-      // Tool breakdown
-      const tools = Object.entries(summary.toolUsage || {}).sort((a, b) => b[1] - a[1]);
-      if (tools.length > 0) {
-        const maxCount = tools[0][1];
-        breakdown.innerHTML = '<div class="chart-title">Tool Usage</div>' +
-          tools.slice(0, 15).map(pair => {
-            return '<div class="breakdown-row">' +
-              '<span class="breakdown-name">' + App.escapeHtml(pair[0]) + '</span>' +
-              '<div class="breakdown-bar"><div class="breakdown-fill" style="width:' + (pair[1] / maxCount * 100).toFixed(1) + '%"></div></div>' +
-              '<span class="breakdown-count">' + pair[1] + '</span></div>';
-          }).join('');
-      } else {
-        breakdown.innerHTML = '';
-      }
-    } catch {
-      cards.innerHTML = this.renderEmpty('Error loading metrics', '');
-    }
-  },
-
 
   // ===========================================================
   // SWARM
@@ -630,8 +570,16 @@ const App = {
 
   async loadSwarmProviders() {
     const container = document.getElementById('swarm-providers');
+    const hint = document.getElementById('swarm-setup-hint');
     try {
       const data = await this.fetch('/api/swarm/providers');
+      const availableCount = data.providers.filter(function(p) { return p.available; }).length;
+
+      // Show setup hint if no providers have API keys
+      if (hint) {
+        hint.style.display = availableCount === 0 ? '' : 'none';
+      }
+
       container.innerHTML = data.providers.map(function(p) {
         const cls = p.available ? 'swarm-card available' : 'swarm-card unavailable';
         return '<div class="' + cls + '" data-provider="' + App.escapeHtml(p.name) + '">' +

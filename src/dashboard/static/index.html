@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CodeBot AI</title>
-  <link rel="stylesheet" href="style.css?v=16">
-  <link rel="icon" href="favicon.svg?v=16" type="image/svg+xml">
+  <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="pragma" content="no-cache">
+  <meta http-equiv="expires" content="0">
+  <title>CodeBot AI — v2</title>
+  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="icon" href="favicon.svg?v=20" type="image/svg+xml">
 </head>
 <body>
   <!-- Main Content -->
@@ -37,6 +40,11 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
+          <!-- Big Swarm Button -->
+          <button id="swarm-launch-btn" class="swarm-launch-btn" onclick="window.location.hash='swarm'">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
+            <span>Launch Swarm</span>
+          </button>
         </div>
 
         <!-- Sessions Panel -->
@@ -125,8 +133,14 @@
             <h2>Swarm</h2>
             <div id="swarm-status" class="panel-stats"></div>
           </div>
+          <div id="swarm-setup-hint" class="swarm-hint" style="display:none">
+            <strong>No providers detected.</strong> Set API keys as environment variables and restart:
+            <code>export OPENAI_API_KEY=sk-...</code>
+            <code>export ANTHROPIC_API_KEY=sk-ant-...</code>
+            <span class="hint-muted">Supports: Anthropic, OpenAI, Gemini, DeepSeek, Groq, Mistral, xAI</span>
+          </div>
           <div class="swarm-section">
-            <h3 class="swarm-heading">Providers</h3>
+            <h3 class="swarm-heading">Providers <span class="hint-muted">(click to select)</span></h3>
             <div id="swarm-providers" class="swarm-grid"></div>
           </div>
           <div class="swarm-section">
@@ -143,15 +157,6 @@
           <div id="swarm-output" class="cmd-output"></div>
         </div>
 
-        <!-- Metrics Panel -->
-        <div id="panel-metrics" class="panel">
-          <div class="panel-title-row">
-            <h2>Metrics</h2>
-          </div>
-          <div id="metrics-cards" class="stats-grid"></div>
-          <div id="usage-chart" class="chart-panel"></div>
-          <div id="tool-breakdown" class="breakdown-panel"></div>
-        </div>
 
       </div>
     </div>
@@ -178,13 +183,9 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
         <span>Swarm</span>
       </button>
-      <button class="nav-pill" data-panel="metrics">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
-        <span>Metrics</span>
-      </button>
     </nav>
   </div>
 
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>
