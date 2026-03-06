@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DashboardServer } from './server';
 import { VERSION } from '../index';
+import { PROVIDER_DEFAULTS } from '../providers/registry';
 
 /** Register all API routes on the server */
 export function registerApiRoutes(server: DashboardServer, projectRoot?: string): void {
@@ -209,6 +210,28 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   });
 
   // -- Swarm API --
+
+  // Default models per provider (best representative model)
+  const PROVIDER_MODELS: Record<string, string> = {
+    anthropic: 'claude-sonnet-4-6',
+    openai: 'gpt-4o',
+    gemini: 'gemini-2.5-pro',
+    deepseek: 'deepseek-chat',
+    groq: 'llama-3.3-70b-versatile',
+    mistral: 'mistral-large-latest',
+    xai: 'grok-3',
+  };
+
+  server.route('GET', '/api/swarm/providers', (_req, res) => {
+    const providers = Object.entries(PROVIDER_DEFAULTS).map(([name, info]) => ({
+      name,
+      envKey: info.envKey,
+      available: !!process.env[info.envKey],
+      defaultModel: PROVIDER_MODELS[name] || name,
+    }));
+    DashboardServer.json(res, { providers });
+  });
+
 
   let activeSwarm: import('../swarm').SwarmOrchestrator | null = null;
 

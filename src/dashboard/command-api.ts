@@ -289,6 +289,68 @@ export function registerCommandRoutes(
     execAndStream(res, body.command, body.cwd);
   });
 
+  // ── POST /api/command/swarm ──
+  server.route('POST', '/api/command/swarm', async (req, res) => {
+    let body: { task?: string; providers?: string[]; strategy?: string };
+    try {
+      body = (await DashboardServer.parseBody(req)) as typeof body;
+    } catch {
+      DashboardServer.error(res, 400, 'Invalid JSON body');
+      return;
+    }
+
+    if (!body?.task) {
+      DashboardServer.error(res, 400, 'Missing "task" field');
+      return;
+    }
+
+    if (!body?.providers || body.providers.length === 0) {
+      DashboardServer.error(res, 400, 'Select at least one provider');
+      return;
+    }
+
+    if (!agent) {
+      DashboardServer.error(res, 503, 'Agent not available');
+      return;
+    }
+
+    if (agentBusy) {
+      DashboardServer.error(res, 409, 'Agent is busy processing another request');
+      return;
+    }
+
+    agentBusy = true;
+    DashboardServer.sseHeaders(res);
+
+    let closed = false;
+    res.on('close', () => { closed = true; });
+
+    const strategy = body.strategy || 'auto';
+    const providerList = body.providers.join(', ');
+
+    // Use the delegate tool in swarm mode via the agent
+    const swarmPrompt = `Use the delegate tool in swarm mode to accomplish this task. ` +
+      `Strategy: ${strategy}. Providers: ${providerList}. Task: ${body.task}`;
+
+    try {
+      for await (const event of agent.run(swarmPrompt)) {
+        if (closed) break;
+        DashboardServer.sseSend(res, event);
+        if (event.type === 'done' || event.type === 'error') break;
+      }
+    } catch (err: unknown) {
+      if (!closed) {
+        DashboardServer.sseSend(res, {
+          type: 'error',
+          text: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      agentBusy = false;
+      if (!closed) DashboardServer.sseClose(res);
+    }
+  });
+
   // ── GET /api/command/history ──
   server.route('GET', '/api/command/history', (_req, res) => {
     if (!agent) {

@@ -14,102 +14,11 @@ const App = {
 
   // -- Init --
   init() {
-    this.initMatrixRain();
     this.setupNavigation();
     this.checkHealth();
     this.navigateToHash();
     window.addEventListener('hashchange', () => this.navigateToHash());
     setInterval(() => this.checkHealth(), 30000);
-  },
-
-  // ===========================================================
-  // MATRIX CODE RAIN
-  // ===========================================================
-
-  initMatrixRain() {
-    const canvas = document.getElementById('matrix-bg');
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-
-    // Character set: code-like symbols
-    const chars = '01{}();=>[]//var const let function return if else for while import export class async await 0xABCDEF #!'.split('');
-
-    let columns = [];
-    let w = 0;
-    let h = 0;
-    const fontSize = 14;
-    let lastFrame = 0;
-    const targetInterval = 1000 / 15; // ~15fps
-
-    function resize() {
-      w = canvas.width = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-      const colCount = Math.floor(w / fontSize);
-      // Preserve existing columns, add new ones
-      while (columns.length < colCount) {
-        columns.push({
-          y: Math.random() * h,
-          speed: 0.5 + Math.random() * 2,
-          opacity: 0.03 + Math.random() * 0.10,
-          char: chars[Math.floor(Math.random() * chars.length)],
-          changeInterval: 3 + Math.floor(Math.random() * 12),
-          tick: 0,
-          greenTint: false // Pure white/light gray only
-        });
-      }
-      // Remove excess columns
-      if (columns.length > colCount) {
-        columns.length = colCount;
-      }
-    }
-
-    function draw(timestamp) {
-      requestAnimationFrame(draw);
-
-      // Throttle to ~15fps
-      if (timestamp - lastFrame < targetInterval) return;
-      lastFrame = timestamp;
-
-      // Fade effect
-      ctx.fillStyle = 'rgba(6, 6, 10, 0.15)';
-      ctx.fillRect(0, 0, w, h);
-
-      ctx.font = fontSize + 'px monospace';
-
-      for (let i = 0; i < columns.length; i++) {
-        const col = columns[i];
-        col.tick++;
-
-        // Change character periodically
-        if (col.tick % col.changeInterval === 0) {
-          col.char = chars[Math.floor(Math.random() * chars.length)];
-        }
-
-        // Color
-        if (col.greenTint) {
-          ctx.fillStyle = 'rgba(34, 197, 94, ' + (col.opacity * 0.7) + ')';
-        } else {
-          ctx.fillStyle = 'rgba(232, 232, 239, ' + col.opacity + ')';
-        }
-
-        ctx.fillText(col.char, i * fontSize, col.y);
-
-        // Move down
-        col.y += col.speed;
-
-        // Reset when off screen
-        if (col.y > h + 20) {
-          col.y = -20;
-          col.speed = 0.5 + Math.random() * 2;
-          col.opacity = 0.03 + Math.random() * 0.12;
-          col.greenTint = false;
-        }
-      }
-    }
-
-    resize();
-    window.addEventListener('resize', resize);
-    requestAnimationFrame(draw);
   },
 
   // ===========================================================
@@ -154,6 +63,7 @@ const App = {
       case 'terminal': this.initTerminal(); break;
       case 'tools': this.initTools(); break;
       case 'metrics': this.loadMetrics(); break;
+      case 'swarm': this.initSwarm(); break;
     }
   },
 
@@ -692,6 +602,169 @@ const App = {
     } catch {
       cards.innerHTML = this.renderEmpty('Error loading metrics', '');
     }
+  },
+
+
+  // ===========================================================
+  // SWARM
+  // ===========================================================
+
+  swarmInitialized: false,
+  selectedProviders: [],
+  selectedStrategy: 'auto',
+
+  initSwarm() {
+    if (this.swarmInitialized) return;
+    this.swarmInitialized = true;
+    this.loadSwarmProviders();
+    this.renderSwarmStrategies();
+
+    const runBtn = document.getElementById('swarm-run');
+    const taskInput = document.getElementById('swarm-task');
+
+    runBtn.addEventListener('click', () => this.runSwarm());
+    taskInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.runSwarm(); }
+    });
+  },
+
+  async loadSwarmProviders() {
+    const container = document.getElementById('swarm-providers');
+    try {
+      const data = await this.fetch('/api/swarm/providers');
+      container.innerHTML = data.providers.map(function(p) {
+        const cls = p.available ? 'swarm-card available' : 'swarm-card unavailable';
+        return '<div class="' + cls + '" data-provider="' + App.escapeHtml(p.name) + '">' +
+          '<span class="swarm-card-dot"></span>' +
+          '<div class="swarm-card-name">' + App.escapeHtml(p.name) + '</div>' +
+          '<div class="swarm-card-model">' + App.escapeHtml(p.defaultModel) + '</div>' +
+        '</div>';
+      }).join('');
+
+      // Click to toggle selection (multi-select)
+      container.querySelectorAll('.swarm-card.available').forEach(function(card) {
+        card.addEventListener('click', function() {
+          card.classList.toggle('selected');
+          App.updateSwarmSelection();
+        });
+      });
+    } catch (err) {
+      container.innerHTML = App.renderEmpty('Error loading providers', err.message);
+    }
+  },
+
+  renderSwarmStrategies() {
+    var strategies = [
+      { id: 'auto', name: 'Auto', desc: 'Router picks best' },
+      { id: 'debate', name: 'Debate', desc: 'Agents propose and vote' },
+      { id: 'moa', name: 'Mixture', desc: 'Diverse solutions merged' },
+      { id: 'pipeline', name: 'Pipeline', desc: 'Sequential stages' },
+      { id: 'fan-out', name: 'Fan-Out', desc: 'Parallel subtasks' },
+      { id: 'generator-critic', name: 'Gen-Critic', desc: 'Iterate to quality' },
+    ];
+
+    var container = document.getElementById('swarm-strategies');
+    container.innerHTML = strategies.map(function(s) {
+      var cls = s.id === 'auto' ? 'swarm-card selected' : 'swarm-card';
+      return '<div class="' + cls + '" data-strategy="' + s.id + '">' +
+        '<div class="swarm-card-name">' + App.escapeHtml(s.name) + '</div>' +
+        '<div class="swarm-card-desc">' + App.escapeHtml(s.desc) + '</div>' +
+      '</div>';
+    }).join('');
+
+    // Click to select (single-select)
+    container.querySelectorAll('.swarm-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        container.querySelectorAll('.swarm-card').forEach(function(c) { c.classList.remove('selected'); });
+        card.classList.add('selected');
+        App.selectedStrategy = card.dataset.strategy;
+      });
+    });
+  },
+
+  updateSwarmSelection() {
+    var selected = [];
+    document.querySelectorAll('#swarm-providers .swarm-card.selected').forEach(function(card) {
+      selected.push(card.dataset.provider);
+    });
+    this.selectedProviders = selected;
+
+    var runBtn = document.getElementById('swarm-run');
+    runBtn.disabled = selected.length === 0;
+
+    var status = document.getElementById('swarm-status');
+    if (selected.length > 0) {
+      status.innerHTML = '<span class="stat-chip"><strong>' + selected.length + '</strong> provider' + (selected.length > 1 ? 's' : '') + '</span>';
+    } else {
+      status.innerHTML = '';
+    }
+  },
+
+  async runSwarm() {
+    var taskInput = document.getElementById('swarm-task');
+    var task = taskInput.value.trim();
+    if (!task) return;
+    if (this.selectedProviders.length === 0) return;
+
+    var output = document.getElementById('swarm-output');
+    var runBtn = document.getElementById('swarm-run');
+    runBtn.disabled = true;
+    output.style.display = '';
+    output.textContent = 'Starting swarm...\n';
+
+    try {
+      var res = await window.fetch(this.baseUrl + '/api/command/swarm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          task: task,
+          providers: this.selectedProviders,
+          strategy: this.selectedStrategy,
+        }),
+      });
+
+      if (!res.ok) {
+        var errD = await res.json().catch(function() { return {}; });
+        output.textContent = 'Error: ' + (errD.error || 'HTTP ' + res.status);
+        runBtn.disabled = false;
+        return;
+      }
+
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      output.textContent = '';
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          if (!line.startsWith('data: ')) continue;
+          var payload = line.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            var ev = JSON.parse(payload);
+            if (ev.type === 'text') {
+              output.textContent += ev.text || '';
+            } else if (ev.type === 'tool_call' && ev.toolCall) {
+              output.textContent += '\n[tool: ' + ev.toolCall.name + ']\n';
+            } else if (ev.type === 'error') {
+              output.textContent += '\n[Error: ' + (ev.text || 'unknown') + ']\n';
+            }
+            output.scrollTop = output.scrollHeight;
+          } catch(e) {}
+        }
+      }
+      if (!output.textContent.trim()) output.textContent = '(no output)';
+    } catch (err) {
+      output.textContent = 'Error: ' + err.message;
+    }
+
+    runBtn.disabled = this.selectedProviders.length === 0;
   },
 
   // ===========================================================

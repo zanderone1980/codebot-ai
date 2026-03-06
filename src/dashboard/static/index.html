@@ -4,13 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CodeBot AI</title>
-  <link rel="stylesheet" href="style.css?v=15">
-  <link rel="icon" href="favicon.svg?v=15" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=16">
+  <link rel="icon" href="favicon.svg?v=16" type="image/svg+xml">
 </head>
 <body>
-  <!-- Matrix Code Rain Canvas -->
-  <canvas id="matrix-bg"></canvas>
-
   <!-- Main Content -->
   <div id="app">
     <!-- Connection Indicator -->
@@ -23,7 +20,7 @@
     <div id="center-stage">
       <!-- Logo -->
       <div id="logo-area">
-        <img src="logo.svg?v=15" alt="CodeBot" id="logo-img" />
+        <img src="logo.svg?v=16" alt="CodeBot" id="logo-img" />
         <div id="logo-tagline">AI Development Console</div>
       </div>
 
@@ -121,6 +118,31 @@
           </div>
         </div>
 
+
+        <!-- Swarm Panel -->
+        <div id="panel-swarm" class="panel">
+          <div class="panel-title-row">
+            <h2>Swarm</h2>
+            <div id="swarm-status" class="panel-stats"></div>
+          </div>
+          <div class="swarm-section">
+            <h3 class="swarm-heading">Providers</h3>
+            <div id="swarm-providers" class="swarm-grid"></div>
+          </div>
+          <div class="swarm-section">
+            <h3 class="swarm-heading">Strategy</h3>
+            <div id="swarm-strategies" class="swarm-grid"></div>
+          </div>
+          <div class="swarm-input-row">
+            <input type="text" id="swarm-task" class="chat-input"
+                   placeholder="Describe the task for the swarm..." autocomplete="off" />
+            <button id="swarm-run" class="btn-send" disabled>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            </button>
+          </div>
+          <div id="swarm-output" class="cmd-output"></div>
+        </div>
+
         <!-- Metrics Panel -->
         <div id="panel-metrics" class="panel">
           <div class="panel-title-row">
@@ -152,6 +174,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         <span>Tools</span>
       </button>
+      <button class="nav-pill" data-panel="swarm">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
+        <span>Swarm</span>
+      </button>
       <button class="nav-pill" data-panel="metrics">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
         <span>Metrics</span>
@@ -159,6 +185,6 @@
     </nav>
   </div>
 
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
 </body>
 </html>
