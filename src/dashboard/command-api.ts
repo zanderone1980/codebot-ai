@@ -84,8 +84,48 @@ function hasApiKey(name: string): boolean {
   return !!(API_KEYS[info.envKey]);
 }
 
-/** Build a ProviderSlot from a provider name (returns null if API key missing) */
-function buildProviderSlot(name: string): ProviderSlot | null {
+/** Cached Ollama model (detected at runtime) */
+let _ollamaModel: string | null = null;
+
+/** Detect best Ollama model */
+async function detectOllamaModel(): Promise<string | null> {
+  if (_ollamaModel) return _ollamaModel;
+  try {
+    const res = await fetch('http://localhost:11434/v1/models', {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { data?: Array<{ id: string }> };
+    const models = (data.data || []).map((m: { id: string }) => m.id);
+    if (models.length === 0) return null;
+    // Prefer coding/text models (avoid -vl vision variants for text tasks)
+    const textModels = models.filter((m: string) => !/-vl/i.test(m));
+    const pool = textModels.length > 0 ? textModels : models;
+    _ollamaModel = pool.find((m: string) => /qwen.*coder|deepseek-coder|codellama/i.test(m))
+      || pool.find((m: string) => /qwen|deepseek|llama|mistral|phi/i.test(m))
+      || pool[0];
+    return _ollamaModel;
+  } catch { return null; }
+}
+
+/** Build a ProviderSlot from a provider name (returns null if unavailable) */
+function buildProviderSlot(name: string, ollamaModel?: string): ProviderSlot | null {
+  // Ollama — no API key needed, runs on localhost
+  if (name === 'ollama') {
+    const model = ollamaModel || _ollamaModel || 'llama3.1:8b';
+    const provider = new OpenAIProvider({
+      baseUrl: 'http://localhost:11434',
+      apiKey: 'ollama',  // Ollama doesn't need a real key
+      model,
+    });
+    return {
+      providerName: 'ollama',
+      model,
+      provider,
+      tier: 'standard' as const,
+    };
+  }
+
   const info = PROVIDER_DEFAULTS[name];
   if (!info) return null;
   const apiKey = API_KEYS[info.envKey];
@@ -497,6 +537,11 @@ export function registerCommandRoutes(
     if (agentBusy) {
       DashboardServer.error(res, 409, 'Agent is busy processing another request');
       return;
+    }
+
+    // Detect Ollama model if ollama is in the provider list
+    if (body.providers.includes('ollama')) {
+      await detectOllamaModel();
     }
 
     // Build ProviderSlots from selected provider names

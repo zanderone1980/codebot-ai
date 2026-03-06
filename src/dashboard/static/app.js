@@ -589,13 +589,15 @@ const App = {
         '</div>';
       }).join('');
 
-      // Click to toggle selection (multi-select)
+      // Auto-select all available providers
       container.querySelectorAll('.swarm-card.available').forEach(function(card) {
+        card.classList.add('selected');
         card.addEventListener('click', function() {
           card.classList.toggle('selected');
           App.updateSwarmSelection();
         });
       });
+      App.updateSwarmSelection();
     } catch (err) {
       container.innerHTML = App.renderEmpty('Error loading providers', err.message);
     }

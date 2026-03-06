@@ -71,7 +71,7 @@ export class OpenAIProvider implements LLMProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(60_000),
+          signal: AbortSignal.timeout(isLocal ? 300_000 : 60_000),
         });
 
         if (response.ok || !isRetryable(null, response.status)) {

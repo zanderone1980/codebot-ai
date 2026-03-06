@@ -251,13 +251,36 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
   const providerAvailability = detectAvailableProviders();
 
-  server.route('GET', '/api/swarm/providers', (_req, res) => {
+  server.route('GET', '/api/swarm/providers', async (_req, res) => {
     const providers = Object.entries(PROVIDER_DEFAULTS).map(([name, info]) => ({
       name,
       envKey: info.envKey,
       available: providerAvailability[name] || false,
       defaultModel: PROVIDER_MODELS[name] || name,
     }));
+
+    // Detect Ollama on localhost:11434
+    try {
+      const ollamaRes = await fetch('http://localhost:11434/v1/models', {
+        signal: AbortSignal.timeout(2000),
+      });
+      if (ollamaRes.ok) {
+        const data = await ollamaRes.json() as { data?: Array<{ id: string }> };
+        const models = (data.data || []).map((m: { id: string }) => m.id);
+        const textModels = models.filter((m: string) => !/-vl/i.test(m));
+        const pool = textModels.length > 0 ? textModels : models;
+        const bestModel = pool.find((m: string) => /qwen.*coder|deepseek-coder|codellama/i.test(m))
+          || pool.find((m: string) => /qwen|deepseek|llama|mistral|phi/i.test(m))
+          || pool[0] || 'unknown';
+        providers.push({
+          name: 'ollama',
+          envKey: '',
+          available: true,
+          defaultModel: bestModel,
+        });
+      }
+    } catch { /* Ollama not running */ }
+
     DashboardServer.json(res, { providers });
   });
 
