@@ -1,5 +1,25 @@
 # Changelog
 
+## [2.7.0] — 2026-03-07
+
+### Added
+- **Constitutional AI Safety Layer** — integrated CORD engine (14-dimension risk scoring) and VIGIL threat patrol (behavioral memory, canary tokens, 7-layer deobfuscation, 110+ threat patterns)
+- **Hard-block enforcement** for moral violations, protocol drift, and prompt injection
+- **Dashboard Security panel** with live decision feed, block rate metrics, risk dimension breakdown, and VIGIL status
+- **Constitutional risk factor** — 7th factor in risk scoring pipeline (weight 15)
+- **Policy configuration** for constitutional checks (enabled, vigil_enabled, hard_block_enabled)
+- **CLI flag**: `--no-constitutional` to disable safety layer
+
+### Changed
+- Tests: 1151 → 1168 (17 new constitutional adapter + integration tests)
+- First production dependency: `cord-engine` (same author, zero transitive deps)
+
+### Security
+- VIGIL outer ring scans all input/output for injection, canary leaks, PII exfiltration
+- CORD middle ring evaluates all tool actions with 14-dimension weighted scoring
+- Hard blocks bypass permission system entirely for critical threats
+
+
 ## [2.5.2] — 2026-03-04
 
 ### Added
