@@ -17,6 +17,7 @@ import { PolicyEnforcer, loadPolicy } from './policy';
 import { TokenTracker } from './telemetry';
 import { MetricsCollector } from './metrics';
 import { RiskScorer, RiskAssessment } from './risk';
+import { ConstitutionalLayer, ConstitutionalResult } from './constitutional';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -76,6 +77,14 @@ function validateToolArgs(args: Record<string, unknown>, schema: Record<string, 
 /** Tools that use shared global state and must not run concurrently */
 const SEQUENTIAL_TOOLS = new Set(['browser']);
 
+/** Map CodeBot tool names to CORD tool types */
+const TOOL_TYPE_MAP: Record<string, string> = {
+  execute: 'exec', write_file: 'write', edit_file: 'edit', batch_edit: 'edit',
+  read_file: 'read', browser: 'browser', web_fetch: 'network', http_client: 'network',
+  web_search: 'network', git: 'exec', docker: 'exec', ssh_remote: 'exec',
+  notification: 'message', database: 'exec',
+};
+
 /** Max concurrent parallel tool executions */
 const MAX_CONCURRENT_TOOLS = 4;
 
@@ -110,6 +119,7 @@ export class Agent {
   private tokenTracker: TokenTracker;
   private metricsCollector: MetricsCollector;
   private riskScorer: RiskScorer;
+  private constitutional: ConstitutionalLayer | null = null;
   private projectRoot: string;
   private branchCreated: boolean = false;
   private lastExecutedTools: string[] = [];
@@ -125,6 +135,7 @@ export class Agent {
     projectRoot?: string;
     askPermission?: AskPermissionFn;
     onMessage?: (message: Message) => void;
+    constitutional?: { enabled?: boolean; vigilEnabled?: boolean; hardBlockEnabled?: boolean };
   }) {
     this.provider = opts.provider;
     this.model = opts.model;
@@ -150,6 +161,14 @@ export class Agent {
     this.tokenTracker = new TokenTracker(opts.model, opts.providerName || 'unknown');
     this.metricsCollector = new MetricsCollector();
     this.riskScorer = new RiskScorer();
+    // Initialize constitutional safety layer (CORD + VIGIL)
+    if (opts.constitutional?.enabled !== false) {
+      try {
+        this.constitutional = new ConstitutionalLayer(opts.constitutional);
+        this.constitutional.start();
+      } catch { /* cord-engine not available — continue without constitutional layer */ }
+    }
+
     const costLimit = this.policyEnforcer.getCostLimitUsd();
     if (costLimit > 0) this.tokenTracker.setCostLimit(costLimit);
 
@@ -430,7 +449,7 @@ export class Agent {
 
         // Compute risk score before execution
         const policyPermission = this.policyEnforcer.getToolPermission(toolName);
-        const effectivePermission = policyPermission || tool.permission;
+        let effectivePermission = policyPermission || tool.permission;
         const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
         yield { type: 'tool_call', toolCall: { name: toolName, args }, risk: { score: riskAssessment.score, level: riskAssessment.level } };
 
@@ -438,6 +457,24 @@ export class Agent {
         if (riskAssessment.score > 50) {
           const breakdown = riskAssessment.factors.map(f => `${f.name}=${f.rawScore}`).join(', ');
           this.auditLogger.log({ tool: toolName, action: 'execute', args, result: `risk:${riskAssessment.score}`, reason: breakdown });
+        }
+
+        // Constitutional safety check (CORD + VIGIL)
+        if (this.constitutional) {
+          const cordResult = this.constitutional.evaluateAction({
+            tool: toolName, args, type: TOOL_TYPE_MAP[toolName] || 'unknown',
+          });
+
+          if (cordResult.decision === 'BLOCK') {
+            this.auditLogger.log({ tool: toolName, action: 'constitutional_block', args, reason: cordResult.explanation || 'Constitutional violation' });
+            this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'constitutional' });
+            prepared.push({ tc, tool, args, denied: false, error: `Error: Blocked by constitutional safety: ${cordResult.explanation || 'violation detected'}` });
+            continue;
+          }
+
+          if (cordResult.decision === 'CHALLENGE') {
+            effectivePermission = 'always-ask';
+          }
         }
 
         // Permission check: policy override > tool default
@@ -697,6 +734,11 @@ export class Agent {
   /** Get the risk scorer for risk assessment history */
   getRiskScorer(): RiskScorer {
     return this.riskScorer;
+  }
+
+  /** Get the constitutional layer for security metrics */
+  getConstitutional(): ConstitutionalLayer | null {
+    return this.constitutional;
   }
 
   /**

@@ -88,5 +88,8 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "typescript": "^5.5.0"
+  },
+  "dependencies": {
+    "cord-engine": "^4.1.0"
   }
 }

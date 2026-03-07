@@ -80,6 +80,12 @@ export interface PolicyRbac {
   enabled?: boolean;
 }
 
+export interface PolicyConstitutional {
+  enabled?: boolean;
+  vigil_enabled?: boolean;
+  hard_block_enabled?: boolean;
+}
+
 export interface Policy {
   version?: string;
   execution?: PolicyExecution;
@@ -90,12 +96,18 @@ export interface Policy {
   mcp?: PolicyMcp;
   limits?: PolicyLimits;
   rbac?: PolicyRbac;
+  constitutional?: PolicyConstitutional;
 }
 
 // ── Default Policy ──
 
 export const DEFAULT_POLICY: Required<Policy> = {
   version: '1.0',
+  constitutional: {
+    enabled: true,
+    vigil_enabled: true,
+    hard_block_enabled: true,
+  },
   execution: {
     sandbox: 'auto',
     network: false,             // safe default: no network in sandbox
@@ -559,6 +571,11 @@ export class PolicyEnforcer {
 export function generateDefaultPolicyFile(): string {
   return JSON.stringify({
     version: '1.0',
+  constitutional: {
+    enabled: true,
+    vigil_enabled: true,
+    hard_block_enabled: true,
+  },
     execution: {
       sandbox: 'auto',
       network: false,

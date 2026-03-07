@@ -23,7 +23,7 @@ export interface AuditEntry {
   sessionId: string;
   sequence: number;
   tool: string;
-  action: 'execute' | 'deny' | 'error' | 'security_block' | 'policy_block' | 'capability_block';
+  action: 'execute' | 'deny' | 'error' | 'security_block' | 'policy_block' | 'capability_block' | 'constitutional_block';
   args: Record<string, unknown>;
   result?: string;
   reason?: string;

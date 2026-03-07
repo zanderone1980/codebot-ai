@@ -9,6 +9,8 @@
  * NEVER throws — risk scoring failures must not crash the agent.
  */
 
+import type { ConstitutionalResult } from './constitutional/types';
+
 // ── Types ──
 
 export interface RiskAssessment {
@@ -146,6 +148,63 @@ export class RiskScorer {
       // Fail-safe: return zero risk if scoring fails
       return { score: 0, level: 'green', factors: [] };
     }
+  }
+
+  /**
+   * Assess risk with constitutional layer enrichment.
+   * Adds a 7th factor based on CORD's constitutional score.
+   */
+  assessWithConstitutional(
+    toolName: string,
+    args: Record<string, unknown>,
+    permission: 'auto' | 'prompt' | 'always-ask' = 'auto',
+    constitutional: ConstitutionalResult,
+  ): RiskAssessment {
+    try {
+      const factors: RiskFactor[] = [
+        this.scorePermissionLevel(permission),
+        this.scoreFilePathSensitivity(toolName, args),
+        this.scoreCommandDestructiveness(toolName, args),
+        this.scoreNetworkAccess(toolName),
+        this.scoreDataVolume(args),
+        this.scoreCumulativeRisk(),
+        this.scoreConstitutional(constitutional),
+      ];
+
+      const score = Math.min(100, Math.round(
+        factors.reduce((sum, f) => sum + f.weighted, 0)
+      ));
+
+      const level = scoreToLevel(score);
+      const assessment: RiskAssessment = { score, level, factors };
+      this.sessionHistory.push(assessment);
+      return assessment;
+    } catch {
+      return { score: 0, level: 'green', factors: [] };
+    }
+  }
+
+  /** Factor 7: Constitutional score (weight 15) — CORD evaluation result */
+  private scoreConstitutional(result: ConstitutionalResult): RiskFactor {
+    const weight = 15;
+    const rawScore = Math.min(100, result.score);
+    const reason = result.hardBlock
+      ? `Constitutional hard block: ${result.hardBlockReason || 'violation'}`
+      : result.decision === 'BLOCK'
+        ? `Constitutional BLOCK (score ${result.score})`
+        : result.decision === 'CHALLENGE'
+          ? `Constitutional CHALLENGE (score ${result.score})`
+          : result.decision === 'CONTAIN'
+            ? `Constitutional CONTAIN (score ${result.score})`
+            : 'Constitutional ALLOW';
+
+    return {
+      name: 'constitutional',
+      weight,
+      rawScore,
+      weighted: rawScore * (weight / 100),
+      reason,
+    };
   }
 
   /** Get all assessments from this session */

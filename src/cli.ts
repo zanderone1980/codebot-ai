@@ -1120,6 +1120,10 @@ function parseArgs(argv: string[]): Record<string, string | boolean> {
       result['safe'] = true;
       continue;
     }
+    if (arg === '--no-constitutional') {
+      result['no-constitutional'] = true;
+      continue;
+    }
     if (arg === '--dry-run' || arg === '--estimate') {
       result['dry-run'] = true;
       continue;
@@ -1202,6 +1206,10 @@ ${c('Issue Solving:', 'bold')}
   --max-files <n>        Max files to modify (default: 10)
   --timeout-min <n>      Hard timeout in minutes (default: 20)
   --json                 Structured JSON output
+
+${c('Constitutional Safety:', 'bold')}
+  --no-constitutional    Disable CORD + VIGIL safety layer
+  (enabled by default — 14-dimension constitutional evaluation + threat patrol)
 
 ${c('Debugging & Replay:', 'bold')}
   --replay [id]        Replay a session, re-execute tools, compare outputs
