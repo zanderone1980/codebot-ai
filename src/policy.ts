@@ -175,9 +175,15 @@ function loadPolicyFile(filePath: string): Policy | null {
   }
 }
 
+/** Known top-level policy fields for typo detection */
+const KNOWN_POLICY_FIELDS = new Set([
+  'version', 'execution', 'filesystem', 'tools', 'secrets', 'git', 'mcp', 'limits', 'rbac',
+]);
+
 /**
  * Basic validation — ensures the policy file has a recognizable shape.
  * Does NOT throw — returns false for invalid policies (fail-open with defaults).
+ * Warns about unknown fields to catch typos.
  */
 function validatePolicy(obj: unknown): boolean {
   if (!obj || typeof obj !== 'object') return false;
@@ -195,6 +201,23 @@ function validatePolicy(obj: unknown): boolean {
   if (p.mcp !== undefined && typeof p.mcp !== 'object') return false;
   if (p.limits !== undefined && typeof p.limits !== 'object') return false;
   if (p.rbac !== undefined && typeof p.rbac !== 'object') return false;
+
+  // Warn about unknown top-level fields (catches typos like "filesytem")
+  for (const key of Object.keys(p)) {
+    if (!KNOWN_POLICY_FIELDS.has(key)) {
+      console.warn(`Policy warning: unknown field "${key}" — did you mean one of: ${[...KNOWN_POLICY_FIELDS].join(', ')}?`);
+    }
+  }
+
+  // Validate writable_paths don't escape the project
+  const fs_policy = p.filesystem as Record<string, unknown> | undefined;
+  if (fs_policy?.writable_paths && Array.isArray(fs_policy.writable_paths)) {
+    for (const wp of fs_policy.writable_paths as string[]) {
+      if (wp.startsWith('/') || wp.startsWith('~') || wp.includes('..')) {
+        console.warn(`Policy warning: writable_path "${wp}" uses absolute/home/parent path — this may be unsafe.`);
+      }
+    }
+  }
 
   return true;
 }

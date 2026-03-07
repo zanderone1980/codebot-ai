@@ -10,6 +10,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 
 /** MIME type mapping for static files */
 const MIME_TYPES: Record<string, string> = {
@@ -50,11 +51,18 @@ export class DashboardServer {
   private host: string;
   private staticDir: string | null;
   private running: boolean = false;
+  private authToken: string;
 
   constructor(opts?: { port?: number; host?: string; staticDir?: string }) {
     this.port = opts?.port ?? 3120;
     this.host = opts?.host ?? '127.0.0.1';
     this.staticDir = opts?.staticDir ?? null;
+    this.authToken = crypto.randomBytes(24).toString('hex');
+  }
+
+  /** Get the auth token (for CLI display / embedding in served pages) */
+  getAuthToken(): string {
+    return this.authToken;
   }
 
   /** Register an API route */
@@ -114,6 +122,18 @@ export class DashboardServer {
     return this.port;
   }
 
+  /** Check Bearer token or query param auth */
+  private checkAuth(req: http.IncomingMessage): boolean {
+    const rawUrl = req.url || '';
+    const query = DashboardServer.parseQuery(rawUrl);
+    if (query.token === this.authToken) return true;
+    const authHeader = req.headers['authorization'] || '';
+    if (authHeader.startsWith('Bearer ')) {
+      return authHeader.slice(7) === this.authToken;
+    }
+    return false;
+  }
+
   // ── Static helpers for route handlers ──
 
   /** Send JSON response */
@@ -124,7 +144,7 @@ export class DashboardServer {
       'Content-Length': Buffer.byteLength(body),
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     });
     res.end(body);
   }
@@ -186,7 +206,7 @@ export class DashboardServer {
       'Connection': 'keep-alive',
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       'X-Accel-Buffering': 'no',
     });
   }
@@ -214,7 +234,7 @@ export class DashboardServer {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
       });
       res.end();
       return;
@@ -225,6 +245,11 @@ export class DashboardServer {
       if (route.method !== method) continue;
       const match = urlPath.match(route.pattern);
       if (match) {
+        // Require auth for /api/* routes
+        if (urlPath.startsWith('/api/') && !this.checkAuth(req)) {
+          DashboardServer.error(res, 401, 'Unauthorized');
+          return;
+        }
         const params: Record<string, string> = {};
         for (let i = 0; i < route.paramNames.length; i++) {
           params[route.paramNames[i]] = match[i + 1] || '';
@@ -264,10 +289,17 @@ export class DashboardServer {
       const ext = path.extname(fullPath).toLowerCase();
       const mime = MIME_TYPES[ext] || 'application/octet-stream';
 
-      const content = fs.readFileSync(fullPath);
+      let content: Buffer | string = fs.readFileSync(fullPath);
+
+      // Inject auth token into index.html so the frontend JS can use it
+      if (path.basename(fullPath) === 'index.html') {
+        const html = content.toString('utf-8');
+        const tokenScript = `<script>window.__CODEBOT_TOKEN="${this.authToken}";</script>`;
+        content = Buffer.from(html.replace('</head>', `${tokenScript}\n</head>`));
+      }
       res.writeHead(200, {
         'Content-Type': mime,
-        'Content-Length': content.length,
+        'Content-Length': Buffer.isBuffer(content) ? content.length : Buffer.byteLength(content),
         'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Access-Control-Allow-Origin': '*',
       });

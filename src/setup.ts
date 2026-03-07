@@ -29,11 +29,23 @@ export function loadConfig(): SavedConfig {
   return {};
 }
 
-/** Save config to ~/.codebot/config.json */
+/** Save config to ~/.codebot/config.json (with backup + atomic write) */
 export function saveConfig(config: SavedConfig): void {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
   const safe = { ...config };
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(safe, null, 2) + '\n');
+  const content = JSON.stringify(safe, null, 2) + '\n';
+
+  // Create backup of existing config
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      fs.copyFileSync(CONFIG_FILE, CONFIG_FILE + '.bak');
+    } catch { /* best effort */ }
+  }
+
+  // Atomic write: write to temp file, then rename
+  const tmpFile = CONFIG_FILE + '.tmp';
+  fs.writeFileSync(tmpFile, content);
+  fs.renameSync(tmpFile, CONFIG_FILE);
 }
 
 /** Check if this is the first run (no config, no env keys) */

@@ -36,6 +36,7 @@ export class ProviderRateLimiter {
   private activeRequests: number = 0;
   private config: ProviderRateConfig;
   private originalConfig: ProviderRateConfig;
+  private waiters: Array<() => void> = [];
 
   constructor(provider: string, overrides?: Partial<ProviderRateConfig>) {
     const defaults = PROVIDER_RATE_DEFAULTS[provider] || PROVIDER_RATE_DEFAULTS.local;
@@ -72,10 +73,11 @@ export class ProviderRateLimiter {
       }
     }
 
-    // Check concurrent limit
-    while (this.activeRequests >= this.config.concurrentRequests) {
-      await this.sleep(100);
-      totalWait += 100;
+    // Check concurrent limit — use promise-based queue instead of busy-wait
+    if (this.activeRequests >= this.config.concurrentRequests) {
+      const waitStart = Date.now();
+      await this.waitForSlot();
+      totalWait += Date.now() - waitStart;
     }
 
     // Wait if needed
@@ -90,9 +92,21 @@ export class ProviderRateLimiter {
     return totalWait;
   }
 
+  /** Wait for a concurrent slot to open (promise-based, no polling) */
+  private waitForSlot(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.waiters.push(resolve);
+    });
+  }
+
   /** Release a concurrent request slot. */
   release(): void {
     this.activeRequests = Math.max(0, this.activeRequests - 1);
+    // Wake next waiter if any
+    if (this.waiters.length > 0) {
+      const next = this.waiters.shift()!;
+      next();
+    }
   }
 
   /** Record actual tokens consumed (for TPM tracking). */

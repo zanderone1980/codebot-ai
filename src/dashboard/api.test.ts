@@ -6,9 +6,11 @@ import * as path from 'path';
 import { DashboardServer } from './server';
 import { registerApiRoutes } from './api';
 
-function request(url: string, method: string = 'GET'): Promise<{ status: number; body: string }> {
+function request(url: string, method: string = 'GET', token?: string): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const req = http.request(url, { method }, (res) => {
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const req = http.request(url, { method, headers }, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
       res.on('end', () => {
@@ -70,7 +72,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/health`);
+    const res = await request(`http://127.0.0.1:${port}/api/health`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.status, 'ok');
@@ -85,7 +87,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/sessions`);
+    const res = await request(`http://127.0.0.1:${port}/api/sessions`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(Array.isArray(body.sessions));
@@ -100,7 +102,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/sessions/test-session-1`);
+    const res = await request(`http://127.0.0.1:${port}/api/sessions/test-session-1`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.id, 'test-session-1');
@@ -114,7 +116,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/sessions/nonexistent`);
+    const res = await request(`http://127.0.0.1:${port}/api/sessions/nonexistent`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 404);
   });
 
@@ -125,7 +127,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/audit?days=365`);
+    const res = await request(`http://127.0.0.1:${port}/api/audit?days=365`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(Array.isArray(body.entries));
@@ -139,7 +141,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/audit/verify`);
+    const res = await request(`http://127.0.0.1:${port}/api/audit/verify`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(body.chainIntegrity === 'verified' || body.chainIntegrity === 'broken');
@@ -152,7 +154,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/metrics/summary`);
+    const res = await request(`http://127.0.0.1:${port}/api/metrics/summary`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(typeof body.sessions === 'number');
@@ -166,7 +168,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/usage`);
+    const res = await request(`http://127.0.0.1:${port}/api/usage`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(Array.isArray(body.usage));
@@ -179,7 +181,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, root);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/audit/export`, 'POST');
+    const res = await request(`http://127.0.0.1:${port}/api/audit/export`, 'POST', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.ok(body.format);
@@ -193,7 +195,7 @@ describe('Dashboard API', () => {
     registerApiRoutes(server, tmpDir);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/sessions`);
+    const res = await request(`http://127.0.0.1:${port}/api/sessions`, 'GET', server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
     assert.strictEqual(body.total, 0);

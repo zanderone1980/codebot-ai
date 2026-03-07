@@ -1,4 +1,6 @@
-export const VERSION = '2.5.2';
+// Single source of truth — read version from package.json
+const _pkg = require('../package.json') as { version: string };
+export const VERSION: string = _pkg.version;
 export { Agent } from './agent';
 export { OpenAIProvider } from './providers/openai';
 export { AnthropicProvider } from './providers/anthropic';

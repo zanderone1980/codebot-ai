@@ -110,9 +110,8 @@ describe('GitTool — safety: git clean blocking', () => {
       action: 'reset',
       args: '&& git clean -f',
     });
-    // The fullCmd becomes "git reset && git clean -f"
-    // This should be caught by the clean -f regex
-    assert.ok(result.includes('Error: git clean -f is blocked') || result.includes('Exit'));
+    // With injection detection, the && characters are caught first
+    assert.ok(result.includes('Error: arguments contain disallowed characters') || result.includes('Error: git clean -f is blocked'));
   });
 });
 

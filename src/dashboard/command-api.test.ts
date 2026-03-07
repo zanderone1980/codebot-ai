@@ -8,12 +8,14 @@ function request(
   url: string,
   method: string = 'GET',
   body?: string,
+  token?: string,
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     const opts: http.RequestOptions = { method };
-    if (body) {
-      opts.headers = { 'Content-Type': 'application/json' };
-    }
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    if (body) headers['Content-Type'] = 'application/json';
+    if (Object.keys(headers).length > 0) opts.headers = headers;
     const req = http.request(url, opts, (res) => {
       const chunks: Buffer[] = [];
       res.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -51,7 +53,7 @@ describe('Command Center API', () => {
     registerCommandRoutes(server, null);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/command/status`);
+    const res = await request(`http://127.0.0.1:${port}/api/command/status`, 'GET', undefined, server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const data = JSON.parse(res.body);
     assert.strictEqual(data.available, false);
@@ -63,7 +65,7 @@ describe('Command Center API', () => {
     registerCommandRoutes(server, null);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/command/tools`);
+    const res = await request(`http://127.0.0.1:${port}/api/command/tools`, 'GET', undefined, server!.getAuthToken());
     assert.strictEqual(res.status, 503);
   });
 
@@ -77,6 +79,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/tool/run`,
       'POST',
       JSON.stringify({ tool: 'read_file', args: { path: '/tmp/x' } }),
+      server!.getAuthToken(),
     );
     assert.strictEqual(res.status, 503);
   });
@@ -91,6 +94,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/chat`,
       'POST',
       JSON.stringify({ message: 'hello' }),
+      server!.getAuthToken(),
     );
     assert.strictEqual(res.status, 503);
   });
@@ -106,6 +110,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/quick-action`,
       'POST',
       JSON.stringify({ action: 'nonexistent' }),
+      server!.getAuthToken(),
     );
     // 400 because action is validated first (standalone mode runs exec)
     assert.strictEqual(res.status, 400);
@@ -121,6 +126,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/exec`,
       'POST',
       JSON.stringify({ command: 'echo hello-from-test' }),
+      server!.getAuthToken(),
     );
     assert.strictEqual(res.status, 200);
     assert.ok(res.body.includes('hello-from-test'));
@@ -137,6 +143,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/exec`,
       'POST',
       JSON.stringify({ command: 'rm -rf /' }),
+      server!.getAuthToken(),
     );
     assert.strictEqual(res.status, 403);
     const data = JSON.parse(res.body);
@@ -153,6 +160,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/exec`,
       'POST',
       JSON.stringify({}),
+      server!.getAuthToken(),
     );
     assert.strictEqual(res.status, 400);
   });
@@ -163,7 +171,7 @@ describe('Command Center API', () => {
     registerCommandRoutes(server, null);
     await server.start();
 
-    const res = await request(`http://127.0.0.1:${port}/api/command/history`);
+    const res = await request(`http://127.0.0.1:${port}/api/command/history`, 'GET', undefined, server!.getAuthToken());
     assert.strictEqual(res.status, 200);
     const data = JSON.parse(res.body);
     assert.deepStrictEqual(data.messages, []);
@@ -181,6 +189,7 @@ describe('Command Center API', () => {
       `http://127.0.0.1:${port}/api/command/exec`,
       'POST',
       JSON.stringify({ command: 'echo test123' }),
+      server!.getAuthToken(),
     );
 
     // Verify SSE format: lines start with "data: "

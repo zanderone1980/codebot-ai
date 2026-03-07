@@ -29,7 +29,7 @@ import { DashboardServer } from './dashboard/server';
 import { registerApiRoutes } from './dashboard/api';
 import { registerCommandRoutes } from './dashboard/command-api';
 
-const VERSION = '2.5.2';
+import { VERSION } from './index';
 
 let verbose = false;
 
@@ -912,7 +912,7 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     model,
     baseUrl: (args['base-url'] as string) || process.env.CODEBOT_BASE_URL || saved.baseUrl || '',
     apiKey: (args['api-key'] as string) || '',
-    maxIterations: parseInt((args['max-iterations'] as string) || String(saved.maxIterations || 50), 10),
+    maxIterations: Math.max(1, Math.min(parseInt((args['max-iterations'] as string) || String(saved.maxIterations || 50), 10) || 50, 500)),
     autoApprove: !!args['auto-approve'] || !!args.autonomous || !!args.auto || !!saved.autoApprove,
   };
 
@@ -933,6 +933,18 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
 
   if (!config.baseUrl) {
     config.baseUrl = await autoDetectProvider();
+  }
+
+  // Validate base URL format
+  if (config.baseUrl && !config.baseUrl.startsWith('http://') && !config.baseUrl.startsWith('https://')) {
+    console.log(c(`  ⚠ Invalid base URL: "${config.baseUrl}". Must start with http:// or https://`, 'yellow'));
+    config.baseUrl = 'http://localhost:11434';
+  }
+
+  // Early API key warning for cloud providers
+  const isLocal = config.baseUrl.includes('localhost') || config.baseUrl.includes('127.0.0.1');
+  if (!isLocal && !config.apiKey) {
+    console.log(c(`  ⚠ No API key found for ${config.provider}. Run: codebot --setup`, 'yellow'));
   }
 
   return config;

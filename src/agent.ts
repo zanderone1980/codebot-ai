@@ -76,6 +76,24 @@ function validateToolArgs(args: Record<string, unknown>, schema: Record<string, 
 /** Tools that use shared global state and must not run concurrently */
 const SEQUENTIAL_TOOLS = new Set(['browser']);
 
+/** Max concurrent parallel tool executions */
+const MAX_CONCURRENT_TOOLS = 4;
+
+/** Max tool output size before truncation (50KB) */
+const MAX_TOOL_OUTPUT = 50 * 1024;
+const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
+
+/** Sanitize tool output: strip ANSI codes, truncate if too large */
+function sanitizeToolOutput(output: string): string {
+  let clean = output.replace(ANSI_REGEX, '');
+  if (clean.length > MAX_TOOL_OUTPUT) {
+    const kept = clean.substring(0, MAX_TOOL_OUTPUT);
+    const dropped = clean.length - MAX_TOOL_OUTPUT;
+    clean = `${kept}\n\n... [output truncated: ${dropped} characters omitted. Total was ${clean.length} chars]`;
+  }
+  return clean;
+}
+
 export class Agent {
   private provider: LLMProvider;
   private tools: ToolRegistry;
@@ -504,7 +522,8 @@ export class Agent {
         await this.rateLimiter.throttle(toolName);
 
         try {
-          const output = await prep.tool.execute(prep.args);
+          const rawOutput = await prep.tool.execute(prep.args);
+          const output = sanitizeToolOutput(rawOutput);
 
           // Record tool latency
           const latencyMs = Date.now() - toolStartTime;
@@ -558,12 +577,26 @@ export class Agent {
         }
       };
 
-      // Execute parallel batch concurrently
+      // Execute parallel batch with concurrency limiter (max MAX_CONCURRENT_TOOLS at once)
       if (parallelBatch.length > 0) {
-        const promises = parallelBatch.map(async ({ index, prep }) => {
-          results[index] = await executeTool(prep);
-        });
-        await Promise.allSettled(promises);
+        let running = 0;
+        const queue = [...parallelBatch];
+        const waiters: Array<() => void> = [];
+        const allDone: Promise<void>[] = [];
+
+        for (const item of queue) {
+          if (running >= MAX_CONCURRENT_TOOLS) {
+            await new Promise<void>(resolve => waiters.push(resolve));
+          }
+          running++;
+          const p = executeTool(item.prep).then(result => {
+            results[item.index] = result;
+            running--;
+            if (waiters.length > 0) waiters.shift()!();
+          });
+          allDone.push(p);
+        }
+        await Promise.allSettled(allDone);
       }
 
       // Execute sequential batch one at a time
