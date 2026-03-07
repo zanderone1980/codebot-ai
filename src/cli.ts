@@ -413,6 +413,8 @@ export async function main() {
 
   // ── Dashboard server (--dashboard flag) ──
   if (args.dashboard) {
+    // Dashboard is the user's control plane — terminal permission prompts are useless
+    agent.setAutoApprove(true);
     try {
       const dashStaticDir = require('path').join(__dirname, 'dashboard', 'static');
       const dashHost = typeof args.host === 'string' ? args.host : '127.0.0.1';
