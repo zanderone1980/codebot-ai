@@ -177,6 +177,7 @@ const App = {
     const assistantDiv = this.appendChatMessage('assistant', '');
     const contentEl = assistantDiv.querySelector('.chat-msg-content');
     let fullText = '';
+    let hasError = false;
     try {
       const res = await apiFetch('/api/command/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -212,12 +213,14 @@ const App = {
               this.appendChatToolCall(ev.toolCall.name, ev.toolCall.args);
             }
             else if (ev.type === 'error') {
-              contentEl.innerHTML = App.renderMarkdown(fullText) + '<div class="cmd-error">[Error: ' + App.escapeHtml(ev.text || 'unknown') + ']</div>';
+              hasError = true;
+              var errMsg = ev.text || ev.error || 'unknown error';
+              contentEl.innerHTML = App.renderMarkdown(fullText) + '<div class="cmd-error">' + App.escapeHtml(errMsg) + '</div>';
             }
           } catch(e) {}
         }
       }
-      if (!fullText) contentEl.textContent = '(no response)';
+      if (!fullText && !hasError) contentEl.textContent = '(no response)';
     } catch (err) { contentEl.textContent = 'Error: ' + err.message; }
   },
 

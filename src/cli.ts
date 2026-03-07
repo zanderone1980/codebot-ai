@@ -960,16 +960,20 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
     autoApprove: !!args['auto-approve'] || !!args.autonomous || !!args.auto || !!saved.autoApprove,
   };
 
-  if (!config.baseUrl || !config.apiKey) {
+  // Base URL fallback
+  if (!config.baseUrl) {
     const defaults = PROVIDER_DEFAULTS[config.provider];
-    if (defaults) {
-      if (!config.baseUrl) config.baseUrl = defaults.baseUrl;
-      if (!config.apiKey) config.apiKey = process.env[defaults.envKey] || process.env.CODEBOT_API_KEY || '';
-    }
+    if (defaults) config.baseUrl = defaults.baseUrl;
   }
 
+  // API key priority: CLI arg > saved config > env var
+  // Saved config wins over env vars because the user explicitly set it via --setup
   if (!config.apiKey && saved.apiKey) {
     config.apiKey = saved.apiKey;
+  }
+  if (!config.apiKey) {
+    const defaults = PROVIDER_DEFAULTS[config.provider];
+    if (defaults) config.apiKey = process.env[defaults.envKey] || '';
   }
   if (!config.apiKey) {
     config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || '';

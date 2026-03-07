@@ -366,11 +366,30 @@ export async function runSetup(): Promise<SavedConfig> {
     const defaults = PROVIDER_DEFAULTS[selectedProvider];
     const envKey = defaults?.envKey;
     const existingKey = envKey ? process.env[envKey] : undefined;
+    const savedKey = loadConfig().apiKey;
 
-    if (existingKey) {
-      console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
-      apiKey = existingKey;
-    } else if (envKey) {
+    // Prefer saved config key over env var (user explicitly set it via --setup)
+    if (savedKey) {
+      const valid = await validateApiKey(selectedProvider, defaults?.baseUrl || '', savedKey);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using saved API key from config`, 'green'));
+        apiKey = savedKey;
+      } else {
+        console.log(fmt(`  \u2717 Saved API key is invalid or expired`, 'yellow'));
+      }
+    }
+
+    if (!apiKey && existingKey) {
+      const valid = await validateApiKey(selectedProvider, defaults?.baseUrl || '', existingKey);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
+        apiKey = existingKey;
+      } else {
+        console.log(fmt(`  \u2717 ${envKey} from environment is invalid or expired`, 'yellow'));
+      }
+    }
+
+    if (!apiKey && envKey) {
       const providerName = PROVIDER_DISPLAY[selectedProvider] || selectedProvider;
       const keyUrl = getKeyUrl(selectedProvider);
 
@@ -379,7 +398,12 @@ export async function runSetup(): Promise<SavedConfig> {
 
       apiKey = await ask(rl, fmt('\n  Paste your API key: ', 'cyan'));
 
-      if (!apiKey) {
+      if (apiKey) {
+        const valid = await validateApiKey(selectedProvider, defaults?.baseUrl || '', apiKey);
+        if (!valid) {
+          console.log(fmt(`  \u2717 API key validation failed. Saving anyway — check your key.`, 'yellow'));
+        }
+      } else {
         console.log(fmt(`\n  No key entered. Set it later:`, 'yellow'));
         console.log(fmt(`    export ${envKey}="your-key-here"`, 'dim'));
       }
@@ -418,6 +442,31 @@ export async function runSetup(): Promise<SavedConfig> {
   console.log(fmt(`\nStarting CodeBot...\n`, 'dim'));
 
   return config;
+}
+
+/** Validate an API key by making a lightweight request to the provider */
+async function validateApiKey(provider: string, baseUrl: string, apiKey: string): Promise<boolean> {
+  try {
+    const url = baseUrl || PROVIDER_DEFAULTS[provider]?.baseUrl;
+    if (!url) return true; // can't validate, assume OK
+
+    const headers: Record<string, string> = { 'Authorization': `Bearer ${apiKey}` };
+    // Anthropic uses a different header
+    if (provider === 'anthropic') {
+      headers['x-api-key'] = apiKey;
+      headers['anthropic-version'] = '2023-06-01';
+      delete headers['Authorization'];
+    }
+
+    const res = await fetch(`${url}/models`, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    return res.status !== 401 && res.status !== 403;
+  } catch {
+    return true; // network error = can't validate, assume OK
+  }
 }
 
 /** Get the URL where users can get API keys for each provider */
@@ -637,36 +686,49 @@ export async function runQuickSetup(detected: AutoDetectResult): Promise<SavedCo
     const envKey = defaults?.envKey || '';
     const existingKey = process.env[envKey];
 
-    if (existingKey) {
-      console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
+    // Check saved config key first, then env var, then prompt
+    const savedKey = loadConfig().apiKey;
+    let resolvedKey = '';
+
+    if (savedKey) {
+      const valid = await validateApiKey(prov, defaults?.baseUrl || '', savedKey);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using saved API key from config`, 'green'));
+        resolvedKey = savedKey;
+      } else {
+        console.log(fmt(`  \u2717 Saved API key is invalid`, 'yellow'));
+      }
+    }
+    if (!resolvedKey && existingKey) {
+      const valid = await validateApiKey(prov, defaults?.baseUrl || '', existingKey);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
+        resolvedKey = existingKey;
+      } else {
+        console.log(fmt(`  \u2717 ${envKey} from environment is invalid`, 'yellow'));
+      }
+    }
+    if (!resolvedKey) {
+      const keyUrl = getKeyUrl(prov);
+      console.log(fmt(`\n  Get your API key at: ${keyUrl}`, 'dim'));
+      resolvedKey = await ask(rl, fmt('  Paste your API key: ', 'cyan'));
+    }
+
+    if (resolvedKey) {
       config = {
         model: rec.model,
         provider: prov,
         baseUrl: defaults?.baseUrl,
-        apiKey: existingKey,
+        apiKey: resolvedKey,
         autoApprove: true,
         firstRunComplete: true,
       };
+      console.log(fmt(`  \u2713 Selected: ${rec.name}`, 'green'));
     } else {
-      const keyUrl = getKeyUrl(prov);
-      console.log(fmt(`\n  Get your API key at: ${keyUrl}`, 'dim'));
-      const key = await ask(rl, fmt('  Paste your API key: ', 'cyan'));
-      if (key) {
-        config = {
-          model: rec.model,
-          provider: prov,
-          baseUrl: defaults?.baseUrl,
-          apiKey: key,
-          autoApprove: false,
-          firstRunComplete: true,
-        };
-        console.log(fmt(`  \u2713 Selected: ${rec.name}`, 'green'));
-      } else {
-        console.log(fmt(`\n  No key entered. Set it later:`, 'yellow'));
-        console.log(fmt(`    export ${envKey}="your-key-here"\n`, 'dim'));
-        rl.close();
-        return {};
-      }
+      console.log(fmt(`\n  No key entered. Set it later:`, 'yellow'));
+      console.log(fmt(`    export ${envKey}="your-key-here"\n`, 'dim'));
+      rl.close();
+      return {};
     }
   } else if (choiceNum === 4) {
     // Other providers sub-menu
@@ -692,36 +754,49 @@ export async function runQuickSetup(detected: AutoDetectResult): Promise<SavedCo
     const envKey = defaults?.envKey || '';
     const existingKey = process.env[envKey];
 
-    if (existingKey) {
-      console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
+    // Check saved config key first, then env var, then prompt
+    const savedKey2 = loadConfig().apiKey;
+    let resolvedKey2 = '';
+
+    if (savedKey2) {
+      const valid = await validateApiKey(prov, defaults?.baseUrl || '', savedKey2);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using saved API key from config`, 'green'));
+        resolvedKey2 = savedKey2;
+      } else {
+        console.log(fmt(`  \u2717 Saved API key is invalid`, 'yellow'));
+      }
+    }
+    if (!resolvedKey2 && existingKey) {
+      const valid = await validateApiKey(prov, defaults?.baseUrl || '', existingKey);
+      if (valid) {
+        console.log(fmt(`  \u2713 Using ${envKey} from environment`, 'green'));
+        resolvedKey2 = existingKey;
+      } else {
+        console.log(fmt(`  \u2717 ${envKey} from environment is invalid`, 'yellow'));
+      }
+    }
+    if (!resolvedKey2) {
+      const keyUrl = getKeyUrl(prov);
+      console.log(fmt(`\n  Get your API key at: ${keyUrl}`, 'dim'));
+      resolvedKey2 = await ask(rl, fmt('  Paste your API key: ', 'cyan'));
+    }
+
+    if (resolvedKey2) {
       config = {
         model: rec.model,
         provider: prov,
         baseUrl: defaults?.baseUrl,
-        apiKey: existingKey,
+        apiKey: resolvedKey2,
         autoApprove: true,
         firstRunComplete: true,
       };
+      console.log(fmt(`  \u2713 Selected: ${rec.name}`, 'green'));
     } else {
-      const keyUrl = getKeyUrl(prov);
-      console.log(fmt(`\n  Get your API key at: ${keyUrl}`, 'dim'));
-      const key = await ask(rl, fmt('  Paste your API key: ', 'cyan'));
-      if (key) {
-        config = {
-          model: rec.model,
-          provider: prov,
-          baseUrl: defaults?.baseUrl,
-          apiKey: key,
-          autoApprove: false,
-          firstRunComplete: true,
-        };
-        console.log(fmt(`  \u2713 Selected: ${rec.name}`, 'green'));
-      } else {
-        console.log(fmt(`\n  No key entered. Set it later:`, 'yellow'));
-        console.log(fmt(`    export ${envKey}="your-key-here"\n`, 'dim'));
-        rl.close();
-        return {};
-      }
+      console.log(fmt(`\n  No key entered. Set it later:`, 'yellow'));
+      console.log(fmt(`    export ${envKey}="your-key-here"\n`, 'dim'));
+      rl.close();
+      return {};
     }
   } else {
     // Invalid choice

@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.7.7] — 2026-03-07
+
+### Fixed
+- **Config persistence** — saved config (`~/.codebot/config.json`) now takes priority over environment variables so setup isn't overridden by stale env vars
+- **API key validation** — setup now validates API keys against the provider before saving, catching bad/expired keys immediately
+- **Dashboard error display** — errors from the agent (e.g. 401 auth failures) now show the actual error message instead of "(no response)"
+
 ## [2.7.0] — 2026-03-07
 
 ### Added
