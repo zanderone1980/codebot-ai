@@ -130,6 +130,7 @@ describe('Agent Stability', () => {
       maxIterations: 3,
       autoApprove: false,
       askPermission: async () => false, // Always deny
+      constitutional: { enabled: false }, // Skip CORD for mock-provider tests
     });
 
     const events = [];
