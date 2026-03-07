@@ -478,9 +478,11 @@ export class Agent {
         }
 
         // Permission check: policy override > tool default
-        const needsPermission =
+        // autoApprove bypasses ALL permission levels (autonomous/dashboard mode)
+        const needsPermission = !this.autoApprove && (
           effectivePermission === 'always-ask' ||
-          (effectivePermission === 'prompt' && !this.autoApprove);
+          effectivePermission === 'prompt'
+        );
 
         let denied = false;
         if (needsPermission) {
