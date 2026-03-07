@@ -61,11 +61,13 @@ const App = {
 
     // Fade logo when chat has messages
     const logoArea = document.getElementById('logo-area');
+    const chatMsgs = document.getElementById('chat-messages');
+    const hasMessages = chatMsgs && chatMsgs.children.length > 0;
     if (logoArea) {
-      const chatMsgs = document.getElementById('chat-messages');
-      const hasMessages = chatMsgs && chatMsgs.children.length > 0;
       logoArea.classList.toggle('faded', name === 'chat' && hasMessages);
     }
+    // Expand layout when chat is active with messages
+    document.body.classList.toggle('chat-expanded', name === 'chat' && hasMessages);
 
     // Load data for panels
     switch (name) {
@@ -122,9 +124,10 @@ const App = {
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
 
-      // Fade logo once chat starts
+      // Fade logo + expand layout once chat starts
       const logoArea = document.getElementById('logo-area');
       if (logoArea) logoArea.classList.add('faded');
+      document.body.classList.add('chat-expanded');
     };
 
     sendBtn.addEventListener('click', send);

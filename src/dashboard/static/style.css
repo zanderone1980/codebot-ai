@@ -1163,6 +1163,55 @@ body {
 }
 
 
+/* ── Expanded Chat Mode ── */
+/* Triggered when chat panel is active with messages — fills the viewport */
+
+body.chat-expanded #center-stage {
+  max-width: 960px;
+  transition: max-width 0.3s ease;
+}
+
+body.chat-expanded .chat-messages {
+  max-height: calc(100vh - 180px);
+}
+
+body.chat-expanded #logo-area {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+body.chat-expanded #logo-img {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 0 8px rgba(47, 107, 255, 0.3));
+}
+
+body.chat-expanded #logo-tagline {
+  display: none;
+}
+
+body.chat-expanded .chat-msg {
+  max-width: 90%;
+}
+
+/* Wider on large screens */
+@media (min-width: 1200px) {
+  body.chat-expanded #center-stage {
+    max-width: 1100px;
+  }
+}
+
+/* Full width on small screens */
+@media (max-width: 768px) {
+  body.chat-expanded #center-stage {
+    max-width: 100%;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
+
 /* ── Security Panel (CORD + VIGIL) ── */
 .security-overview { margin-bottom: 1.5rem; }
 .security-stat-grid {
