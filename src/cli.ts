@@ -82,10 +82,9 @@ export async function main() {
     return;
   }
 
-  // Setup wizard
+  // Setup wizard — then continue to normal startup
   if (args.setup) {
     await runSetup();
-    return;
   }
 
   // ── v1.7.0: New standalone commands ──

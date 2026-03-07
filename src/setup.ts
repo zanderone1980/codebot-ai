@@ -415,7 +415,7 @@ export async function runSetup(): Promise<SavedConfig> {
   if (autoApprove) {
     console.log(fmt(`  Mode:     AUTONOMOUS`, 'yellow'));
   }
-  console.log(fmt(`\nRun ${fmt('codebot', 'bold')} to start. Run ${fmt('codebot --setup', 'bold')} to reconfigure.\n`, 'dim'));
+  console.log(fmt(`\nStarting CodeBot...\n`, 'dim'));
 
   return config;
 }
