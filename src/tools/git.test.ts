@@ -183,9 +183,15 @@ describe('GitTool — disallowed actions', () => {
     assert.ok(result.includes('Error: unknown action'));
   });
 
-  it('rejects clone action', async () => {
-    const result = await tool.execute({ action: 'clone' });
-    assert.ok(result.includes('Error: unknown action'));
+  it('restricts clone to safe hosts', async () => {
+    const result = await tool.execute({ action: 'clone', args: 'https://evil.com/repo.git' });
+    assert.ok(result.includes('Error: clone is restricted'));
+  });
+
+  it('allows clone from github.com', async () => {
+    // Will fail at git level (not a real repo) but should pass URL validation
+    const result = await tool.execute({ action: 'clone', args: 'https://github.com/owner/repo' });
+    assert.ok(!result.includes('Error: clone is restricted'));
   });
 });
 

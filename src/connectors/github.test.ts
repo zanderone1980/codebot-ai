@@ -19,8 +19,9 @@ describe('GitHubConnector', () => {
     assert.ok(names.includes('list_issues'));
     assert.ok(names.includes('create_pr'));
     assert.ok(names.includes('list_prs'));
+    assert.ok(names.includes('get_issue'));
     assert.ok(names.includes('get_repo_info'));
-    assert.strictEqual(gh.actions.length, 6);
+    assert.strictEqual(gh.actions.length, 7);
   });
 
   it('create_issue requires owner, repo, and title', async () => {
