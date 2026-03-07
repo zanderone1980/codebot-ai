@@ -3,6 +3,17 @@
  * Vanilla JS, zero dependencies.
  */
 
+/** Authenticated fetch — sends auth token with every /api/ request */
+function apiFetch(path, opts) {
+  opts = opts || {};
+  var headers = opts.headers ? Object.assign({}, opts.headers) : {};
+  var token = window.__CODEBOT_TOKEN;
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  opts.headers = headers;
+  var base = window.location.origin;
+  return window.fetch(base + path, opts);
+}
+
 const App = {
   baseUrl: window.location.origin,
   sessionCount: 0,
@@ -164,7 +175,7 @@ const App = {
     const contentEl = assistantDiv.querySelector('.chat-msg-content');
     let fullText = '';
     try {
-      const res = await window.fetch(this.baseUrl + '/api/command/chat', {
+      const res = await apiFetch('/api/command/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: message }),
       });
@@ -339,7 +350,7 @@ const App = {
     }
 
     try {
-      const res = await window.fetch(this.baseUrl + '/api/command/exec', {
+      const res = await apiFetch('/api/command/exec', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command: cmd }),
       });
@@ -414,7 +425,7 @@ const App = {
     output.textContent = 'Running...';
 
     try {
-      const res = await window.fetch(this.baseUrl + '/api/command/quick-action', {
+      const res = await apiFetch('/api/command/quick-action', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: action }),
       });
@@ -529,7 +540,7 @@ const App = {
     }
 
     try {
-      const res = await window.fetch(this.baseUrl + '/api/command/tool/run', {
+      const res = await apiFetch('/api/command/tool/run', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool: toolName, args: args })
       });
@@ -663,7 +674,7 @@ const App = {
     output.textContent = 'Starting swarm...\n';
 
     try {
-      var res = await window.fetch(this.baseUrl + '/api/command/swarm', {
+      var res = await apiFetch('/api/command/swarm', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -791,7 +802,7 @@ const App = {
   // ===========================================================
 
   async fetch(path) {
-    const res = await window.fetch(this.baseUrl + path);
+    const res = await apiFetch(path);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return res.json();
   },
