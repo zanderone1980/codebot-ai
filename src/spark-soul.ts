@@ -84,6 +84,49 @@ function toolCategory(toolName: string): SparkCategory {
   return TOOL_CATEGORY[toolName] || 'general';
 }
 
+/**
+ * Map CodeBot tool names to SPARK operation verbs.
+ * The SPARK predictor uses operationToCategory() which maps verbs like
+ * 'read', 'list', 'search', 'get', 'delete', 'send' to SPARK categories.
+ * Without this, all operations default to 'general'.
+ */
+const TOOL_OPERATION: Record<string, string> = {
+  read_file: 'read',
+  list_directory: 'list',
+  search_files: 'search',
+  get_file_info: 'get',
+  web_search: 'search',
+  find_by_text: 'search',
+  screenshot: 'get',
+  list_sessions: 'list',
+  read_page: 'read',
+  think: 'read',
+
+  execute: 'execute',
+  write_file: 'write',
+  edit_file: 'edit',
+  batch_edit: 'edit',
+  create_directory: 'create',
+  git_command: 'execute',
+  memory: 'read',
+
+  browser: 'navigate',
+  navigate: 'navigate',
+  click: 'send',
+  type_text: 'send',
+  scroll: 'navigate',
+  hover: 'navigate',
+  press_key: 'send',
+  tab_management: 'navigate',
+
+  delete_file: 'delete',
+  routine: 'create_event',
+};
+
+function toolOperation(toolName: string): string {
+  return TOOL_OPERATION[toolName] || toolName;
+}
+
 // ── SparkSoul ────────────────────────────────────────────────────
 
 export class SparkSoul {
@@ -188,41 +231,39 @@ export class SparkSoul {
 
     try {
       const category = toolCategory(tool);
+      let decision: SafetyDecision = { decision: 'ALLOW' };
 
-      // Get learned weight for this category
+      // Check learned weight for this category (if any exist yet)
       const weight = this.orchestrator.weights.getWeight(category);
-      if (!weight) return { decision: 'ALLOW' };
+      if (weight) {
+        const w = weight.currentWeight ?? 1.0;
 
-      const w = weight.currentWeight ?? 1.0;
-
-      // Very low weight = past failures → challenge
-      if (w < 0.3) {
-        return {
-          decision: 'CHALLENGE',
-          reason: `SPARK learned caution for ${category} (weight: ${w.toFixed(2)})`,
-        };
+        if (w < 0.1) {
+          decision = {
+            decision: 'BLOCK',
+            reason: `SPARK blocks ${category}: too many past failures (weight: ${w.toFixed(2)})`,
+          };
+        } else if (w < 0.3) {
+          decision = {
+            decision: 'CHALLENGE',
+            reason: `SPARK learned caution for ${category} (weight: ${w.toFixed(2)})`,
+          };
+        }
       }
 
-      // Extremely low = near sentinel floor → block
-      if (w < 0.1) {
-        return {
-          decision: 'BLOCK',
-          reason: `SPARK blocks ${category}: too many past failures (weight: ${w.toFixed(2)})`,
-        };
-      }
-
-      // Generate and store prediction for post-outcome learning
+      // Always generate prediction for learning (even on fresh DB)
       try {
+        const operation = toolOperation(tool);
         const prediction = this.orchestrator.predictor.predict(
           `${tool}-${Date.now()}`,
           this.sessionId,
           tool,
-          category,
+          operation,
         );
         this.predictions.set(`${tool}:${JSON.stringify(args)}`, prediction);
       } catch { /* prediction failed — still allow */ }
 
-      return { decision: 'ALLOW' };
+      return decision;
     } catch {
       return { decision: 'ALLOW' };
     }
@@ -244,11 +285,24 @@ export class SparkSoul {
     try {
       const category = toolCategory(tool);
       const predKey = `${tool}:${JSON.stringify(args)}`;
-      const prediction = this.predictions.get(predKey);
+      let prediction = this.predictions.get(predKey);
+      if (prediction) this.predictions.delete(predKey);
 
-      // If we have a prediction, use the full learning pipeline
+      // Generate prediction on the fly if we don't have one
+      if (!prediction) {
+        try {
+          const operation = toolOperation(tool);
+          prediction = this.orchestrator.predictor.predict(
+            `${tool}-${Date.now()}`,
+            this.sessionId,
+            tool,
+            operation,
+          );
+        } catch { /* prediction generation failed */ }
+      }
+
+      // Feed into the full learn + consolidate pipeline
       if (prediction) {
-        this.predictions.delete(predKey);
 
         // Construct an OutcomeSignal
         const outcome = {
