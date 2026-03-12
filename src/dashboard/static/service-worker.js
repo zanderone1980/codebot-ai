@@ -1,7 +1,5 @@
-const CACHE_VERSION = 'codebot-v1';
+const CACHE_VERSION = 'codebot-v2';
 const SHELL_ASSETS = [
-  '/',
-  '/index.html',
   '/style.css',
   '/app.js',
   '/logo.svg',
@@ -30,8 +28,8 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Network-first for API calls and WebSocket upgrades
-  if (url.pathname.startsWith('/api') || e.request.headers.get('upgrade') === 'websocket') {
+  // Network-first for API calls, WebSocket upgrades, and navigation (HTML has injected token)
+  if (url.pathname.startsWith('/api') || e.request.headers.get('upgrade') === 'websocket' || e.request.mode === 'navigate') {
     e.respondWith(
       fetch(e.request).catch(() => caches.match(e.request))
     );

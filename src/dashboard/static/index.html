@@ -7,7 +7,7 @@
   <meta http-equiv="pragma" content="no-cache">
   <meta http-equiv="expires" content="0">
   <title>CodeBot AI — v2</title>
-  <link rel="stylesheet" href="style.css?v=21">
+  <link rel="stylesheet" href="style.css?v=22">
   <link rel="icon" href="favicon.svg?v=20" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#00d4ff">
@@ -58,6 +58,10 @@
           <div class="panel-title-row">
             <h2>Sessions</h2>
             <div id="session-stats" class="panel-stats"></div>
+          </div>
+          <div class="session-search-row">
+            <input type="text" id="session-search" class="session-search-input"
+                   placeholder="Search sessions..." autocomplete="off" />
           </div>
           <div id="sessions-list" class="card-grid"></div>
           <div id="session-detail" class="detail-panel" style="display:none"></div>
@@ -247,7 +251,7 @@
     </nav>
   </div>
 
-  <script src="app.js?v=21"></script>
+  <script src="app.js?v=22"></script>
   <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');</script>
 </body>
 </html>

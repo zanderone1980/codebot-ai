@@ -228,36 +228,62 @@ const App = {
   // SESSIONS
   // ===========================================================
 
-  async loadSessions() {
+  sessionSearchBound: false,
+
+  async loadSessions(searchQuery) {
     const container = document.getElementById('sessions-list');
     const detail = document.getElementById('session-detail');
     const stats = document.getElementById('session-stats');
+    const searchRow = document.querySelector('.session-search-row');
     detail.style.display = 'none';
     container.style.display = '';
+    if (searchRow) searchRow.style.display = '';
     container.innerHTML = this.renderLoading();
 
+    // Wire up search with debounce (once)
+    if (!this.sessionSearchBound) {
+      this.sessionSearchBound = true;
+      var searchInput = document.getElementById('session-search');
+      if (searchInput) {
+        var debounceTimer;
+        searchInput.addEventListener('input', function() {
+          clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(function() {
+            App.loadSessions(searchInput.value.trim());
+          }, 300);
+        });
+      }
+    }
+
     try {
-      const data = await this.fetch('/api/sessions?limit=50');
+      var q = searchQuery ? '&q=' + encodeURIComponent(searchQuery) : '';
+      const data = await this.fetch('/api/sessions?limit=50' + q);
       this.sessionCount = data.total;
 
       stats.innerHTML = '<span class="stat-chip"><strong>' + data.total + '</strong> sessions</span>' +
         (data.hasMore ? '<span class="stat-chip">showing latest 50</span>' : '');
 
       if (data.sessions.length === 0) {
-        container.innerHTML = this.renderEmpty('No sessions yet', 'Start a CodeBot session to see conversations here');
+        container.innerHTML = this.renderEmpty(
+          searchQuery ? 'No matching sessions' : 'No sessions yet',
+          searchQuery ? 'Try a different search term' : 'Start a CodeBot session to see conversations here'
+        );
         return;
       }
 
       container.innerHTML = data.sessions.map(function(s) {
-        const date = s.modifiedAt ? App.relativeTime(s.modifiedAt) : 'Unknown';
-        const fullDate = s.modifiedAt ? new Date(s.modifiedAt).toLocaleString() : '';
-        const shortId = s.id.substring(0, 12);
-        return '<div class="card" onclick="App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')">' +
-          '<div class="card-top">' +
-            '<span class="card-id">' + App.escapeHtml(shortId) + '</span>' +
-            '<span class="card-size">' + App.formatBytes(s.sizeBytes) + '</span>' +
+        var date = s.modifiedAt ? App.relativeTime(s.modifiedAt) : 'Unknown';
+        var fullDate = s.modifiedAt ? new Date(s.modifiedAt).toLocaleString() : '';
+        var title = s.preview || s.id.substring(0, 16) + '...';
+        var modelBadge = s.model ? '<span class="card-model">' + App.escapeHtml(s.model) + '</span>' : '';
+
+        return '<div class="card session-card" onclick="App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')">' +
+          '<div class="card-preview">' + App.escapeHtml(App.truncate(title, 60)) + '</div>' +
+          '<div class="card-meta">' +
+            '<span class="card-msg-count">' + (s.messageCount || 0) + ' msgs</span>' +
+            '<span class="card-date" title="' + App.escapeHtml(fullDate) + '">' + App.escapeHtml(date) + '</span>' +
+            modelBadge +
           '</div>' +
-          '<div class="card-date" title="' + App.escapeHtml(fullDate) + '">' + App.escapeHtml(date) + '</div>' +
         '</div>';
       }).join('');
     } catch {
@@ -267,28 +293,90 @@ const App = {
 
   async loadSessionDetail(id) {
     const container = document.getElementById('sessions-list');
+    const searchRow = document.querySelector('.session-search-row');
     const detail = document.getElementById('session-detail');
     container.style.display = 'none';
+    if (searchRow) searchRow.style.display = 'none';
     detail.style.display = '';
     detail.innerHTML = this.renderLoading();
 
     try {
       const data = await this.fetch('/api/sessions/' + encodeURIComponent(id));
-      const shortId = data.id.substring(0, 16);
+      const title = data.preview || data.id.substring(0, 16) + '...';
 
       detail.innerHTML = '<div class="detail-top"><div>' +
-        '<div class="detail-title">' + this.escapeHtml(shortId) + '...</div>' +
+        '<div class="detail-title">' + this.escapeHtml(this.truncate(title, 80)) + '</div>' +
         '<div class="detail-meta"><span>' + data.messageCount + ' messages</span><span>' + data.toolCallCount + ' tool calls</span></div>' +
-        '</div><button class="btn-back" onclick="App.loadSessions()">Back</button></div>' +
+        '</div><div class="detail-actions">' +
+        '<button class="btn-continue" onclick="App.resumeSession(\'' + this.escapeHtml(id) + '\')">Continue Session</button>' +
+        '<button class="btn-back" onclick="App.loadSessions()">Back</button>' +
+        '</div></div>' +
         '<div class="message-list">' +
           data.messages.map(function(m) {
+            var content = App.extractContent(m);
+            var rendered = m.role === 'assistant'
+              ? App.renderMarkdown(App.truncate(content, 1000))
+              : App.escapeHtml(App.truncate(content, 1000));
             return '<div class="message ' + App.escapeHtml(m.role) + '">' +
               '<div class="message-role">' + App.escapeHtml(m.role) + '</div>' +
-              '<div class="message-content">' + App.escapeHtml(App.truncate(App.extractContent(m), 600)) + '</div></div>';
+              '<div class="message-content">' + rendered + '</div></div>';
           }).join('') +
         '</div>';
     } catch {
       detail.innerHTML = this.renderEmpty('Error loading session', '');
+    }
+  },
+
+  async resumeSession(sessionId) {
+    try {
+      var res = await apiFetch('/api/command/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: sessionId }),
+      });
+
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        alert('Failed to resume: ' + (err.error || 'Unknown error'));
+        return;
+      }
+
+      var data = await res.json();
+
+      // Switch to chat panel
+      window.location.hash = 'chat';
+
+      // Clear current chat and load history
+      var chatContainer = document.getElementById('chat-messages');
+      chatContainer.innerHTML = '';
+
+      var history = await this.fetch('/api/command/history');
+      if (history.messages && history.messages.length > 0) {
+        var showCount = Math.min(history.messages.length, 20);
+        var recentMessages = history.messages.slice(-showCount);
+        for (var i = 0; i < recentMessages.length; i++) {
+          var m = recentMessages[i];
+          this.appendChatMessage(m.role, typeof m.content === 'string' ? m.content : String(m.content));
+        }
+      }
+
+      // Add resume indicator
+      var indicator = document.createElement('div');
+      indicator.className = 'chat-msg system';
+      indicator.innerHTML = '<div class="chat-msg-content" style="color:var(--text-muted);font-size:11px;text-align:center">' +
+        'Session resumed (' + data.messageCount + ' messages loaded). Continue the conversation below.' +
+      '</div>';
+      chatContainer.appendChild(indicator);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+
+      // Expand chat layout
+      this.chatInitialized = false;
+      this.initChat();
+      var logoArea = document.getElementById('logo-area');
+      if (logoArea) logoArea.classList.add('faded');
+      document.body.classList.add('chat-expanded');
+    } catch (err) {
+      alert('Resume failed: ' + err.message);
     }
   },
 

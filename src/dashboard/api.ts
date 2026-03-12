@@ -13,6 +13,8 @@ import * as os from 'os';
 import { DashboardServer } from './server';
 import { VERSION } from '../index';
 import { PROVIDER_DEFAULTS } from '../providers/registry';
+import { SessionManager } from '../history';
+import { decryptLine } from '../encryption';
 
 /** Load API key availability from config + env */
 function detectAvailableProviders(): Record<string, boolean> {
@@ -60,23 +62,29 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     const query = DashboardServer.parseQuery(req.url || '');
     const page = Math.max(1, parseInt(query.page || '1', 10));
     const limit = Math.min(100, Math.max(1, parseInt(query.limit || '20', 10)));
+    const searchTerm = (query.q || '').toLowerCase();
 
-    const sessionsDir = path.join(root, '.codebot', 'sessions');
-    const sessions = listSessionFiles(sessionsDir);
+    let sessions = SessionManager.list(100);
+
+    if (searchTerm) {
+      sessions = sessions.filter(s =>
+        s.preview.toLowerCase().includes(searchTerm) ||
+        s.id.includes(searchTerm) ||
+        s.model.toLowerCase().includes(searchTerm)
+      );
+    }
 
     const start = (page - 1) * limit;
     const paginated = sessions.slice(start, start + limit);
 
-    const items = paginated.map(f => {
-      const id = path.basename(f, '.jsonl');
-      const stat = safeStatSync(f);
-      return {
-        id,
-        createdAt: stat?.birthtime?.toISOString() || null,
-        modifiedAt: stat?.mtime?.toISOString() || null,
-        sizeBytes: stat?.size || 0,
-      };
-    });
+    const items = paginated.map(s => ({
+      id: s.id,
+      preview: s.preview,
+      model: s.model,
+      messageCount: s.messageCount,
+      createdAt: s.created || null,
+      modifiedAt: s.updated || null,
+    }));
 
     DashboardServer.json(res, {
       sessions: items,
@@ -88,7 +96,8 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   });
 
   server.route('GET', '/api/sessions/:id', (_req, res, params) => {
-    const sessionFile = path.join(root, '.codebot', 'sessions', `${params.id}.jsonl`);
+    const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+    const sessionFile = path.join(sessionsDir, `${params.id}.jsonl`);
     if (!fs.existsSync(sessionFile)) {
       DashboardServer.error(res, 404, 'Session not found');
       return;
@@ -96,18 +105,28 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
     const lines = fs.readFileSync(sessionFile, 'utf-8').split('\n').filter(Boolean);
     const messages = lines.map(line => {
-      try { return JSON.parse(line); } catch { return null; }
+      try {
+        const decrypted = decryptLine(line);
+        const obj = JSON.parse(decrypted);
+        delete obj._ts;
+        delete obj._model;
+        delete obj._sig;
+        return obj;
+      } catch { return null; }
     }).filter(Boolean);
 
-    // Extract summary stats
     const toolCalls = messages.filter((m: any) => m.role === 'assistant' && m.tool_calls?.length > 0);
     const stat = safeStatSync(sessionFile);
 
+    const firstUserMsg = messages.find((m: any) => m.role === 'user');
+    const preview = firstUserMsg ? String(firstUserMsg.content || '').substring(0, 120) : '';
+
     DashboardServer.json(res, {
       id: params.id,
+      preview,
       messageCount: messages.length,
       toolCallCount: toolCalls.length,
-      messages: messages.slice(-200), // Last 200 messages
+      messages: messages.slice(-200),
       createdAt: stat?.birthtime?.toISOString() || null,
       modifiedAt: stat?.mtime?.toISOString() || null,
     });

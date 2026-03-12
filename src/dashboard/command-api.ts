@@ -12,6 +12,7 @@ import * as os from 'os';
 import { spawn } from 'child_process';
 import { DashboardServer } from './server';
 import { Agent } from '../agent';
+import { SessionManager } from '../history';
 import { BLOCKED_PATTERNS, FILTERED_ENV_VARS } from '../tools/execute';
 import { SwarmOrchestrator, SwarmStrategyType, ProviderSlot, AgentFactory, SwarmAgent, AgentRunResult } from '../swarm';
 import { AgentRole, buildRoleSystemPrompt } from '../swarm/roles';
@@ -644,6 +645,47 @@ export function registerCommandRoutes(
       agentBusy = false;
       if (!closed) DashboardServer.sseClose(res);
     }
+  });
+
+  // ── POST /api/command/resume ──
+  server.route('POST', '/api/command/resume', async (req, res) => {
+    if (!agent) {
+      DashboardServer.error(res, 503, 'Agent not available');
+      return;
+    }
+    if (agentBusy) {
+      DashboardServer.error(res, 409, 'Agent is busy');
+      return;
+    }
+
+    let body: { sessionId?: string };
+    try {
+      body = (await DashboardServer.parseBody(req)) as typeof body;
+    } catch {
+      DashboardServer.error(res, 400, 'Invalid JSON body');
+      return;
+    }
+
+    if (!body?.sessionId) {
+      DashboardServer.error(res, 400, 'Missing "sessionId" field');
+      return;
+    }
+
+    const sm = new SessionManager('resume', body.sessionId);
+    const messages = sm.load();
+
+    if (messages.length === 0) {
+      DashboardServer.error(res, 404, 'Session not found or empty');
+      return;
+    }
+
+    agent.loadMessages(messages);
+
+    DashboardServer.json(res, {
+      sessionId: body.sessionId,
+      messageCount: messages.length,
+      resumed: true,
+    });
   });
 
   // ── GET /api/command/history ──
