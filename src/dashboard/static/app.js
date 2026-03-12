@@ -309,6 +309,7 @@ const App = {
         '<div class="detail-meta"><span>' + data.messageCount + ' messages</span><span>' + data.toolCallCount + ' tool calls</span></div>' +
         '</div><div class="detail-actions">' +
         '<button class="btn-continue" onclick="App.resumeSession(\'' + this.escapeHtml(id) + '\')">Continue Session</button>' +
+        '<button class="btn-delete" onclick="App.deleteSession(\'' + this.escapeHtml(id) + '\')">Delete</button>' +
         '<button class="btn-back" onclick="App.loadSessions()">Back</button>' +
         '</div></div>' +
         '<div class="message-list">' +
@@ -377,6 +378,24 @@ const App = {
       document.body.classList.add('chat-expanded');
     } catch (err) {
       alert('Resume failed: ' + err.message);
+    }
+  },
+
+  async deleteSession(sessionId) {
+    if (!confirm('Delete this session? This cannot be undone.')) return;
+    try {
+      var res = await apiFetch('/api/sessions/' + encodeURIComponent(sessionId), {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        alert('Delete failed: ' + (err.error || 'Unknown error'));
+        return;
+      }
+      // Go back to session list
+      this.loadSessions();
+    } catch (err) {
+      alert('Delete failed: ' + err.message);
     }
   },
 

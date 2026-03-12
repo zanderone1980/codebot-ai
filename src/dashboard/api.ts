@@ -132,6 +132,30 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     });
   });
 
+  // ── Delete Session ──
+  server.route('DELETE', '/api/sessions/:id', (_req, res, params) => {
+    const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+    const sessionFile = path.join(sessionsDir, `${params.id}.jsonl`);
+    if (!fs.existsSync(sessionFile)) {
+      DashboardServer.error(res, 404, 'Session not found');
+      return;
+    }
+
+    try {
+      fs.unlinkSync(sessionFile);
+
+      // Also remove corresponding audit log if it exists
+      const auditFile = path.join(root, '.codebot', 'audit', `${params.id}.jsonl`);
+      if (fs.existsSync(auditFile)) {
+        fs.unlinkSync(auditFile);
+      }
+
+      DashboardServer.json(res, { deleted: true, id: params.id });
+    } catch (err: any) {
+      DashboardServer.error(res, 500, 'Failed to delete session: ' + (err.message || 'unknown'));
+    }
+  });
+
   // ── Audit ──
   server.route('GET', '/api/audit', (req, res) => {
     const query = DashboardServer.parseQuery(req.url || '');

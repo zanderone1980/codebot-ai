@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'codebot-v2';
+const CACHE_VERSION = 'codebot-v4';
 const SHELL_ASSETS = [
   '/style.css',
   '/app.js',
@@ -36,12 +36,16 @@ self.addEventListener('fetch', (e) => {
     return;
   }
 
-  // Cache-first for static assets
+  // Stale-while-revalidate for static assets — serve cached immediately, update in background
   e.respondWith(
-    caches.match(e.request).then((cached) => cached || fetch(e.request).then((resp) => {
-      const clone = resp.clone();
-      caches.open(CACHE_VERSION).then((cache) => cache.put(e.request, clone));
-      return resp;
-    }))
+    caches.open(CACHE_VERSION).then((cache) =>
+      cache.match(e.request).then((cached) => {
+        const networkFetch = fetch(e.request).then((resp) => {
+          cache.put(e.request, resp.clone());
+          return resp;
+        });
+        return cached || networkFetch;
+      })
+    )
   );
 });

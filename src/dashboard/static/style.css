@@ -520,6 +520,10 @@ body {
   transition: all var(--transition);
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
 }
 
 .card::before {
@@ -545,9 +549,10 @@ body {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-  line-height: 1.5;
-  margin-bottom: 8px;
+  line-height: 1.4;
+  margin-bottom: 6px;
   text-align: center;
+  width: 100%;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -979,6 +984,28 @@ body {
 .btn-continue:hover {
   box-shadow: 0 0 20px rgba(47, 107, 255, 0.4);
   transform: translateY(-1px);
+}
+
+.btn-delete {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.btn-delete:hover {
+  background: var(--danger-glow);
+  border-color: var(--danger);
+  box-shadow: 0 0 12px var(--danger-glow);
 }
 
 .detail-actions {
