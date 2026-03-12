@@ -252,6 +252,16 @@
   </div>
 
   <script src="app.js?v=25"></script>
-  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');</script>
+  <script>
+  // Kill any leftover service workers — they cause more problems than they solve
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then(function(regs) {
+      regs.forEach(function(r) { r.unregister(); });
+    });
+    caches.keys().then(function(keys) {
+      keys.forEach(function(k) { caches.delete(k); });
+    });
+  }
+  </script>
 </body>
 </html>
