@@ -951,23 +951,36 @@ async function resolveConfig(args: Record<string, string | boolean>): Promise<Co
   const model = (args.model as string) || process.env.CODEBOT_MODEL || saved.model || 'qwen2.5-coder:32b';
   const detected = detectProvider(model);
 
+  const explicitProvider = args.provider as string | undefined;
   const config: Config = {
-    provider: (args.provider as string) || process.env.CODEBOT_PROVIDER || saved.provider || detected || 'openai',
+    provider: explicitProvider || process.env.CODEBOT_PROVIDER || saved.provider || detected || 'openai',
     model,
-    baseUrl: (args['base-url'] as string) || process.env.CODEBOT_BASE_URL || saved.baseUrl || '',
+    baseUrl: (args['base-url'] as string) || process.env.CODEBOT_BASE_URL || '',
     apiKey: (args['api-key'] as string) || '',
     maxIterations: Math.max(1, Math.min(parseInt((args['max-iterations'] as string) || String(saved.maxIterations || 50), 10) || 50, 500)),
     autoApprove: !!args['auto-approve'] || !!args.autonomous || !!args.auto || !!saved.autoApprove,
   };
 
-  // Base URL fallback
+  // Base URL: explicit CLI provider → provider defaults; otherwise fall back to saved config
+  if (!config.baseUrl) {
+    if (explicitProvider) {
+      const defaults = PROVIDER_DEFAULTS[config.provider];
+      if (defaults) config.baseUrl = defaults.baseUrl;
+    } else {
+      config.baseUrl = saved.baseUrl || '';
+    }
+  }
   if (!config.baseUrl) {
     const defaults = PROVIDER_DEFAULTS[config.provider];
     if (defaults) config.baseUrl = defaults.baseUrl;
   }
 
-  // API key priority: CLI arg > saved config > env var
-  // Saved config wins over env vars because the user explicitly set it via --setup
+  // API key priority: CLI arg > provider env var (if explicit --provider) > saved config > env var
+  // When --provider is explicit, prefer that provider's env var over saved key (which may be for a different provider)
+  if (!config.apiKey && explicitProvider) {
+    const defaults = PROVIDER_DEFAULTS[config.provider];
+    if (defaults) config.apiKey = process.env[defaults.envKey] || '';
+  }
   if (!config.apiKey && saved.apiKey) {
     config.apiKey = saved.apiKey;
   }
