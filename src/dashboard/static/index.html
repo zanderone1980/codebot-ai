@@ -9,6 +9,12 @@
   <title>CodeBot AI — v2</title>
   <link rel="stylesheet" href="style.css?v=21">
   <link rel="icon" href="favicon.svg?v=20" type="image/svg+xml">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#00d4ff">
+  <meta name="description" content="CodeBot AI Development Console">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="logo.svg">
 </head>
 <body>
   <!-- Main Content -->
@@ -242,5 +248,6 @@
   </div>
 
   <script src="app.js?v=21"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('service-worker.js');</script>
 </body>
 </html>
