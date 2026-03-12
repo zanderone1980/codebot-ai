@@ -261,7 +261,9 @@ const App = {
       this.sessionCount = data.total;
 
       stats.innerHTML = '<span class="stat-chip"><strong>' + data.total + '</strong> sessions</span>' +
-        (data.hasMore ? '<span class="stat-chip">showing latest 50</span>' : '');
+        (data.hasMore ? '<span class="stat-chip">showing latest 50</span>' : '') +
+        (data.sessions.length > 0 ? '<button class="btn-select-mode" onclick="App.toggleSelectMode()">' +
+          (this.selectMode ? 'Cancel' : 'Select') + '</button>' : '');
 
       if (data.sessions.length === 0) {
         container.innerHTML = this.renderEmpty(
@@ -271,15 +273,33 @@ const App = {
         return;
       }
 
-      container.innerHTML = data.sessions.map(function(s) {
+      // Batch action bar (shown in select mode)
+      var batchBar = '';
+      if (this.selectMode) {
+        batchBar = '<div class="batch-bar">' +
+          '<label class="batch-select-all"><input type="checkbox" id="select-all-cb" onchange="App.toggleSelectAll(this.checked)" /> Select All</label>' +
+          '<button class="btn-delete batch-delete-btn" onclick="App.deleteSelected()" disabled id="batch-delete-btn">Delete Selected</button>' +
+        '</div>';
+      }
+
+      container.innerHTML = batchBar + data.sessions.map(function(s) {
         var date = s.modifiedAt ? App.relativeTime(s.modifiedAt) : 'Unknown';
         var fullDate = s.modifiedAt ? new Date(s.modifiedAt).toLocaleString() : '';
         var title = s.preview || s.id.substring(0, 16) + '...';
         var modelBadge = s.model ? '<span class="card-model">' + App.escapeHtml(s.model) + '</span>' : '';
 
-        return '<div class="card session-card">' +
-          '<button class="card-delete-btn" onclick="event.stopPropagation();App.deleteSession(\'' + App.escapeHtml(s.id) + '\')" title="Delete session">&times;</button>' +
-          '<div class="card-body" onclick="App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')">' +
+        var checkbox = App.selectMode
+          ? '<input type="checkbox" class="card-checkbox" data-id="' + App.escapeHtml(s.id) + '" onchange="App.updateBatchCount()" onclick="event.stopPropagation()" />'
+          : '';
+        var deleteBtn = App.selectMode
+          ? ''
+          : '<button class="card-delete-btn" onclick="event.stopPropagation();App.deleteSession(\'' + App.escapeHtml(s.id) + '\')" title="Delete session">&times;</button>';
+
+        return '<div class="card session-card' + (App.selectMode ? ' selectable' : '') + '">' +
+          deleteBtn + checkbox +
+          '<div class="card-body" onclick="' + (App.selectMode
+            ? 'App.toggleCardCheckbox(this.parentElement)'
+            : 'App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')') + '">' +
             '<div class="card-preview">' + App.escapeHtml(App.truncate(title, 60)) + '</div>' +
             '<div class="card-meta">' +
               '<span class="card-msg-count">' + (s.messageCount || 0) + ' msgs</span>' +
@@ -396,9 +416,66 @@ const App = {
         return;
       }
       // Go back to session list
-      this.loadSessions();
+      this.loadSessions(document.getElementById('session-search') ? document.getElementById('session-search').value.trim() : '');
     } catch (err) {
       alert('Delete failed: ' + err.message);
+    }
+  },
+
+  selectMode: false,
+
+  toggleSelectMode() {
+    this.selectMode = !this.selectMode;
+    this.loadSessions(document.getElementById('session-search') ? document.getElementById('session-search').value.trim() : '');
+  },
+
+  toggleCardCheckbox(card) {
+    var cb = card.querySelector('.card-checkbox');
+    if (cb) {
+      cb.checked = !cb.checked;
+      this.updateBatchCount();
+    }
+  },
+
+  toggleSelectAll(checked) {
+    document.querySelectorAll('.card-checkbox').forEach(function(cb) {
+      cb.checked = checked;
+    });
+    this.updateBatchCount();
+  },
+
+  updateBatchCount() {
+    var checked = document.querySelectorAll('.card-checkbox:checked');
+    var btn = document.getElementById('batch-delete-btn');
+    if (btn) {
+      btn.disabled = checked.length === 0;
+      btn.textContent = checked.length > 0 ? 'Delete ' + checked.length + ' Selected' : 'Delete Selected';
+    }
+  },
+
+  async deleteSelected() {
+    var checked = document.querySelectorAll('.card-checkbox:checked');
+    var ids = [];
+    checked.forEach(function(cb) { ids.push(cb.dataset.id); });
+    if (ids.length === 0) return;
+    if (!confirm('Delete ' + ids.length + ' session' + (ids.length > 1 ? 's' : '') + '? This cannot be undone.')) return;
+
+    try {
+      var res = await apiFetch('/api/sessions/batch-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: ids }),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        alert('Batch delete failed: ' + (err.error || 'Unknown error'));
+        return;
+      }
+      var data = await res.json();
+      this.selectMode = false;
+      this.loadSessions(document.getElementById('session-search') ? document.getElementById('session-search').value.trim() : '');
+    } catch (err) {
+      alert('Batch delete failed: ' + err.message);
     }
   },
 

@@ -156,6 +156,42 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     }
   });
 
+  // ── Batch Delete Sessions ──
+  server.route('POST', '/api/sessions/batch-delete', (req, res) => {
+    let body = '';
+    req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+    req.on('end', () => {
+      try {
+        const { ids } = JSON.parse(body);
+        if (!Array.isArray(ids) || ids.length === 0) {
+          DashboardServer.error(res, 400, 'ids must be a non-empty array');
+          return;
+        }
+
+        const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+        let deleted = 0;
+        let failed = 0;
+
+        for (const id of ids) {
+          const sessionFile = path.join(sessionsDir, `${id}.jsonl`);
+          try {
+            if (fs.existsSync(sessionFile)) {
+              fs.unlinkSync(sessionFile);
+              // Also remove corresponding audit log
+              const auditFile = path.join(root, '.codebot', 'audit', `${id}.jsonl`);
+              if (fs.existsSync(auditFile)) fs.unlinkSync(auditFile);
+              deleted++;
+            }
+          } catch { failed++; }
+        }
+
+        DashboardServer.json(res, { deleted, failed, total: ids.length });
+      } catch {
+        DashboardServer.error(res, 400, 'Invalid JSON body');
+      }
+    });
+  });
+
   // ── Audit ──
   server.route('GET', '/api/audit', (req, res) => {
     const query = DashboardServer.parseQuery(req.url || '');

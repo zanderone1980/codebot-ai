@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'codebot-v5';
+const CACHE_VERSION = 'codebot-v6';
 const SHELL_ASSETS = [
   '/style.css',
   '/app.js',
