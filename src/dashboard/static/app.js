@@ -277,12 +277,15 @@ const App = {
         var title = s.preview || s.id.substring(0, 16) + '...';
         var modelBadge = s.model ? '<span class="card-model">' + App.escapeHtml(s.model) + '</span>' : '';
 
-        return '<div class="card session-card" onclick="App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')">' +
-          '<div class="card-preview">' + App.escapeHtml(App.truncate(title, 60)) + '</div>' +
-          '<div class="card-meta">' +
-            '<span class="card-msg-count">' + (s.messageCount || 0) + ' msgs</span>' +
-            '<span class="card-date" title="' + App.escapeHtml(fullDate) + '">' + App.escapeHtml(date) + '</span>' +
-            modelBadge +
+        return '<div class="card session-card">' +
+          '<button class="card-delete-btn" onclick="event.stopPropagation();App.deleteSession(\'' + App.escapeHtml(s.id) + '\')" title="Delete session">&times;</button>' +
+          '<div class="card-body" onclick="App.loadSessionDetail(\'' + App.escapeHtml(s.id) + '\')">' +
+            '<div class="card-preview">' + App.escapeHtml(App.truncate(title, 60)) + '</div>' +
+            '<div class="card-meta">' +
+              '<span class="card-msg-count">' + (s.messageCount || 0) + ' msgs</span>' +
+              '<span class="card-date" title="' + App.escapeHtml(fullDate) + '">' + App.escapeHtml(date) + '</span>' +
+              modelBadge +
+            '</div>' +
           '</div>' +
         '</div>';
       }).join('');
