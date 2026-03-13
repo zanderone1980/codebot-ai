@@ -2,135 +2,77 @@
 
 # CodeBot AI
 
-### The safe, local-first autonomous coding agent
+**Autonomous code execution with built-in governance.**
 
-**Run AI-assisted development entirely on your machine. No API keys required. Policy-governed, audit-trailed, sandboxed — built for teams that take code security seriously.**
+The only AI coding agent that runs locally, works with any LLM, and enforces safety policies on every action it takes.
 
 [![npm version](https://img.shields.io/npm/v/codebot-ai.svg?style=flat-square&color=6366f1)](https://www.npmjs.com/package/codebot-ai)
-[![CI](https://github.com/Ascendral/codebot-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Ascendral/codebot-ai/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/codebot-ai.svg?style=flat-square)](https://github.com/Ascendral/codebot-ai/blob/main/LICENSE)
 ![tests](https://img.shields.io/badge/tests-1217%20passing-22c55e?style=flat-square)
-![tools](https://img.shields.io/badge/tools-31-6366f1?style=flat-square)
-![swarm](https://img.shields.io/badge/swarm-multi--LLM-f59e0b?style=flat-square)
 ![node](https://img.shields.io/node/v/codebot-ai.svg?style=flat-square)
-[![downloads](https://img.shields.io/npm/dw/codebot-ai.svg?style=flat-square)](https://www.npmjs.com/package/codebot-ai)
 
 </div>
 
----
+## The Problem
 
-## Why This Exists
+AI coding agents can write code, run commands, browse the web, and modify your filesystem. Most of them do this with zero oversight — no audit trail, no policy enforcement, no way to prove what happened or why.
 
-Most AI coding tools require sending your code to third-party servers. That's a non-starter for security-sensitive teams, regulated industries, and developers who want to keep their code local.
+That's fine for side projects. It's a dealbreaker for teams shipping production software, companies in regulated industries, and anyone who needs to answer the question: *what did the AI actually do?*
 
-CodeBot AI runs entirely on your machine with local LLMs (Ollama, LM Studio, vLLM) — or connects to any cloud provider when you choose. Every action is policy-governed, risk-scored, and audit-trailed.
+## What CodeBot Does Differently
 
-### Who This Is For
+**Governance-first architecture.** Every tool call passes through a constitutional safety engine ([CORD](https://github.com/Ascendral/artificial-persistent-intelligence)) that risk-scores actions across 14 dimensions before execution. Every action is logged to a SHA-256 hash-chained audit trail with SARIF export. Destructive operations require explicit approval. The agent can't bypass its own safety layer.
 
-- **Security-sensitive teams** — code never leaves your machine unless you opt in
-- **Regulated industries** — finance, healthcare, government teams with compliance requirements
-- **Solo developers** — autonomous coding without subscription fees
-- **Internal platform teams** — extensible agent runtime with plugins, MCP, and API
+**Any LLM, anywhere.** Run fully local with Ollama, LM Studio, or vLLM — zero API keys, code never leaves your machine. Or connect to Anthropic, OpenAI, Google, DeepSeek, Groq, Mistral, or xAI. Switch models mid-session. Mix local and cloud models in the same swarm.
 
----
-
-## Quick Start
+**Zero external dependencies.** The entire agent runtime — HTTP server, policy engine, audit system, tool execution, provider abstraction — is built on Node.js built-ins. No Express, no Axios, no ORM. The dependency tree is the codebase.
 
 ```bash
-# Install
 npm install -g codebot-ai
-
-# Auto-detects Ollama, LM Studio, or cloud providers
-codebot --setup
-
-# Start coding
-codebot "explain what this project does"
-
-# Launch the web dashboard
-codebot --dashboard
+codebot --setup                    # auto-detects local and cloud LLMs
+codebot "refactor auth to use JWT" # single task
+codebot --dashboard                # web UI at localhost:3120
 ```
 
-Local LLM with zero API keys:
-```bash
-ollama pull qwen2.5-coder && codebot --provider ollama --model qwen2.5-coder
+## Architecture
+
+```
+User ──> Agent Loop ──> Tool Router ──> CORD Safety Engine ──> Execution
+              │              │                │                    │
+              │              │           14-dimension          31 tools
+              │              │           risk scoring          (code, shell,
+              │              │           + policy gates         browser, git,
+              │              │           + audit trail          network, DB...)
+              │              │                │
+              │         Permission Model      │
+              │         (auto/prompt/         Audit Logger
+              │          always-ask)     (hash-chained, SARIF)
+              │
+         8 LLM Providers
+         (local + cloud)
 ```
 
----
-
-## Why CodeBot vs. Alternatives?
-
-| | CodeBot AI | GitHub Copilot | Cursor | Claude Code |
-|---|:---:|:---:|:---:|:---:|
-| **Self-hosted** | Yes | No | No | No |
-| **Any LLM** | 8 providers | GPT only | Mixed | Claude only |
-| **Policy engine** | Yes | No | No | No |
-| **Audit trail** | Yes | No | No | No |
-| **Sandboxed execution** | Yes | No | No | No |
-| **Free / MIT** | Yes | $10-39/mo | $20/mo | $20/mo |
-
-[Full comparison →](docs/COMPARISON.md)
-
----
-
-## Built for Safety
-
-Every tool call is risk-scored before execution. Every action is logged to a tamper-evident audit trail.
-
-| Layer | What It Does |
-|-------|-------------|
-| **Policy Engine** | Declarative JSON rules defining what the agent can and cannot do |
-| **Risk Scoring** | 6-factor scoring on every tool call (0-100) with configurable thresholds |
-| **Audit Trail** | SHA-256 hash-chained, tamper-evident logs with SARIF export |
+| Layer | Implementation |
+|-------|---------------|
+| **Constitutional Safety (CORD)** | 14 risk dimensions, 5-phase evaluation pipeline, hard-block rules for injection/drift/impersonation |
+| **Audit Trail** | SHA-256 hash-chained logs, tamper-evident, SARIF export for CI integration |
+| **Policy Engine** | Declarative JSON rules — scope file paths, block network targets, restrict commands |
 | **Sandbox** | Docker-based execution with network/CPU/memory limits |
-| **Permission Model** | Interactive approval for risky operations, auto-approve for safe ones |
 | **Secret Detection** | 15+ patterns (AWS keys, tokens, private keys) blocked before exposure |
 | **SSRF Protection** | Blocks localhost, private IPs, cloud metadata endpoints |
-| **Session Integrity** | HMAC-based tamper detection on session state |
 
-See [SECURITY.md](SECURITY.md) for the full threat model.
+## Capabilities
 
----
+**31 built-in tools** covering code editing, shell execution, Chrome automation (CDP), web search, deep research, Git operations, Docker management, database queries, SSH, scheduled routines, and persistent memory.
 
-## What It Does
+**10 app connectors** — GitHub, Jira, Linear, Slack, Gmail, Google Calendar, Notion, Google Drive, OpenAI Images, Replicate. Credentials stored in AES-256-GCM encrypted vault.
 
-| Capability | How |
-|-----------|-----|
-| **Write & edit code** | Reads your codebase, makes targeted edits, runs tests |
-| **Run commands** | Shell execution with security filtering and sandbox support |
-| **Browse the web** | Controls Chrome via DevTools Protocol — navigate, click, type, screenshot |
-| **Search the internet** | Real-time web search for docs, APIs, current info |
-| **Deep research** | Multi-source research with synthesis across web, docs, and code |
-| **Web dashboard** | Sessions, audit trail, metrics, and Command Center at localhost:3120 |
-| **Schedule routines** | Cron-based recurring tasks — monitoring, reports, automation |
-| **Persistent memory** | Remembers preferences and context across sessions |
-| **Multi-LLM Swarm** | Multiple AI models collaborate using debate, pipeline, fan-out, and more |
-| **App integrations** | GitHub, Jira, Slack, Gmail, Notion, and more via encrypted connector vault |
+**Multi-LLM Swarm** — launch multiple agents that collaborate using 6 strategies: debate, mixture-of-agents, pipeline, fan-out, generator-critic, or auto-routed.
 
----
+**Web dashboard** at localhost:3120 — sessions, audit trail, metrics, security feed, command center, swarm control.
 
-## 8 LLM Providers
-
-| Provider | Models |
-|----------|--------|
-| **Local (Ollama/LM Studio/vLLM)** | qwen2.5-coder, qwen3, deepseek-coder, llama3.x, mistral, phi-4, codellama, starcoder2 |
-| **Anthropic** | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
-| **OpenAI** | gpt-4o, gpt-4.1, o1, o3, o4-mini |
-| **Google** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash |
-| **DeepSeek** | deepseek-chat, deepseek-reasoner |
-| **Groq** | llama-3.3-70b, mixtral-8x7b |
-| **Mistral** | mistral-large, codestral |
-| **xAI** | grok-3, grok-3-mini |
-
-All cloud providers route through OpenAI-compatible APIs. Local providers connect directly via Ollama/LM Studio/vLLM.
-
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."    # or any provider
-codebot --model claude-sonnet-4-6
-```
-
----
-
-## 31 Built-in Tools
+<details>
+<summary><strong>All 31 tools</strong></summary>
 
 | Tool | Permission | Description |
 |------|:----------:|-------------|
@@ -166,84 +108,43 @@ codebot --model claude-sonnet-4-6
 | `app_connector` | prompt | 10 app integrations via encrypted vault |
 | `graphics` | prompt | Image processing: resize, crop, watermark, convert |
 
-**Permission levels:** `auto` = runs silently, `prompt` = asks first (skipped in `--autonomous`), `always-ask` = always confirms.
+`auto` = runs silently. `prompt` = asks first (skipped in `--autonomous`). `always-ask` = always confirms.
 
----
+</details>
 
-## 10 App Connectors
+<details>
+<summary><strong>8 LLM providers</strong></summary>
 
-Connect to external services with OAuth or API keys. Credentials stored in encrypted vault (AES-256-GCM).
+| Provider | Models |
+|----------|--------|
+| **Local (Ollama/LM Studio/vLLM)** | qwen2.5-coder, qwen3, deepseek-coder, llama3.x, mistral, phi-4, codellama, starcoder2 |
+| **Anthropic** | claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5 |
+| **OpenAI** | gpt-4o, gpt-4.1, o1, o3, o4-mini |
+| **Google** | gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash |
+| **DeepSeek** | deepseek-chat, deepseek-reasoner |
+| **Groq** | llama-3.3-70b, mixtral-8x7b |
+| **Mistral** | mistral-large, codestral |
+| **xAI** | grok-3, grok-3-mini |
 
-| Connector | Capabilities |
-|-----------|-------------|
-| **GitHub** | Issues, PRs, repos, code search |
-| **Jira** | Issues, projects, sprints, transitions |
-| **Linear** | Issues, projects, teams, cycles |
-| **Slack** | Messages, channels, users, threads |
-| **Gmail** | Read, send, search, label management |
-| **Google Calendar** | Events, scheduling, availability |
-| **Notion** | Pages, databases, search, content blocks |
-| **Google Drive** | Files, folders, search, sharing |
-| **OpenAI Images** | DALL-E generation, editing, variations |
-| **Replicate** | Run any ML model via API |
+Cloud providers route through OpenAI-compatible APIs. Local providers connect directly.
 
----
+</details>
 
-## Multi-LLM Swarm
+## Comparison
 
-Launch a swarm of AI agents that collaborate on complex tasks. Mix cloud and local models freely.
+| | CodeBot AI | GitHub Copilot | Cursor | Claude Code |
+|---|:---:|:---:|:---:|:---:|
+| **Self-hosted / local LLM** | Yes | No | No | No |
+| **Any LLM provider** | 8 providers | GPT only | Mixed | Claude only |
+| **Constitutional safety engine** | Yes | No | No | No |
+| **Cryptographic audit trail** | Yes | No | No | No |
+| **Sandboxed execution** | Yes | No | No | No |
+| **Multi-agent swarm** | Yes | No | No | No |
+| **Free / MIT** | Yes | $10-39/mo | $20/mo | $20/mo |
 
-```bash
-codebot --dashboard   # open http://localhost:3120, click "Launch Swarm"
-```
+## Extensibility
 
-**6 Strategies:**
-- **Auto** — Router analyzes your task and picks the best strategy
-- **Debate** — Multiple agents propose solutions and vote on the best
-- **Mixture of Agents** — Diverse proposals merged by a synthesizer
-- **Pipeline** — Sequential stages: plan → research → code → review → test
-- **Fan-Out** — Parallel subtasks gathered and synthesized
-- **Generator-Critic** — One agent generates, another critiques, iterate to quality
-
----
-
-## Web Dashboard
-
-Launch with `codebot --dashboard` — opens at `http://localhost:3120`.
-
-**Sessions** — Browse and inspect every conversation with message counts and timestamps.
-
-**Audit Trail** — Cryptographic hash-chained log of every tool execution. One-click chain verification.
-
-**Metrics** — Session counts, audit events, tool usage breakdown, and activity charts.
-
-**Command Center** — Interactive terminal, quick actions, AI chat, and tool runner.
-
-**Security** — Live constitutional AI decision feed, block rate metrics, risk dimension breakdown.
-
----
-
-## Ecosystem
-
-### VS Code Extension
-
-```bash
-code --install-extension codebot-ai-vscode-2.7.7.vsix
-```
-
-Sidebar chat panel, inline diff preview, status bar (tokens, cost, risk level), theme integration.
-
-### GitHub Action
-
-```yaml
-- uses: Ascendral/codebot-ai/actions/codebot@v2
-  with:
-    task: review    # or: fix, scan
-    api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-### Programmatic API
-
+**Programmatic API:**
 ```typescript
 import { Agent, AnthropicProvider } from 'codebot-ai';
 
@@ -261,103 +162,18 @@ for await (const event of agent.run('list all TypeScript files')) {
 }
 ```
 
-### Plugins & MCP
+**Custom tools** — drop `.js` files in `.codebot/plugins/`.
+**MCP servers** — configure in `.codebot/mcp.json`.
+**VS Code extension** — sidebar chat, inline diffs, status bar.
+**GitHub Action** — `uses: Ascendral/codebot-ai/actions/codebot@v2`
 
-**Custom tools:** Drop `.js` files in `.codebot/plugins/`:
+## Testing
 
-```javascript
-module.exports = {
-  name: 'my_tool',
-  description: 'Does something useful',
-  permission: 'prompt',
-  parameters: { type: 'object', properties: { input: { type: 'string' } }, required: ['input'] },
-  execute: async (args) => \`Result: \${args.input}\`,
-};
-```
-
-**MCP servers:** Create `.codebot/mcp.json`:
-
-```json
-{
-  "servers": [{ "name": "my-server", "command": "npx", "args": ["-y", "@my/mcp-server"] }]
-}
-```
-
----
-
-## CLI Reference
+1,217 tests across 232 suites. CI runs on 3 OS (macOS, Linux, Windows) x 3 Node versions (18, 20, 22). Zero network calls in the test suite — all providers mocked. Security tests cover SSRF, path traversal, injection, and secret detection.
 
 ```bash
-codebot                                        # Interactive REPL
-codebot "fix the bug in app.ts"                # Single task
-codebot --autonomous "refactor auth and test"  # Full auto
-codebot --continue                             # Resume last session
-codebot --dashboard                            # Web dashboard
-codebot --tui                                  # Terminal UI (panels)
-codebot --doctor                               # Environment health check
-echo "explain this error" | codebot            # Pipe mode
+npm test
 ```
-
-<details>
-<summary><strong>All CLI flags</strong></summary>
-
-```
---setup              Run the setup wizard
---model <name>       Model to use
---provider <name>    Provider: openai, anthropic, gemini, deepseek, groq, mistral, xai
---base-url <url>     LLM API base URL
---api-key <key>      API key (or use env vars)
---autonomous         Skip all permission prompts
---resume <id>        Resume a session by ID
---continue, -c       Resume the most recent session
---max-iterations <n> Max agent loop iterations (default: 50)
---tui                Full terminal UI mode
---dashboard          Web dashboard on localhost:3120
---doctor             Environment health checks
---theme <name>       Color theme: dark, light, mono
---no-animate         Disable animations
---no-stream          Disable streaming display
---verbose            Debug output
-```
-
-</details>
-
-<details>
-<summary><strong>Interactive commands</strong></summary>
-
-```
-/help       Show commands           /model     Show or change model
-/models     List supported models   /sessions  List saved sessions
-/routines   List routines           /auto      Toggle autonomous mode
-/undo       Undo last edit          /usage     Token usage
-/clear      Clear conversation      /compact   Force context compaction
-/metrics    Session metrics         /risk      Risk assessment history
-/config     Show configuration      /doctor    Health checks
-/toolcost   Per-tool cost breakdown /rate      Rate limit status
-/theme      Switch color theme      /quit      Exit
-```
-
-</details>
-
----
-
-## Testing & Reliability
-
-| Metric | Value |
-|--------|-------|
-| **Tests** | 1,217 passing across 232 suites |
-| **CI Matrix** | 3 OS (macOS, Linux, Windows) × 3 Node versions (18, 20, 22) |
-| **Test types** | Unit, integration, security (SSRF, path traversal, secret detection) |
-| **Deterministic** | No network calls in test suite, all providers mocked |
-| **Run** | `npm test` |
-
-**Stability features:**
-- Auto-retry with exponential backoff on network errors and rate limits
-- Stream recovery — reconnects if the LLM drops mid-response
-- Context compaction — smart summarization when hitting context limits
-- Process resilience — catches unhandled exceptions, keeps the REPL running
-
----
 
 ## Build from Source
 
@@ -372,7 +188,7 @@ npm install && npm run build
 
 <div align="center">
 
-**[npm](https://www.npmjs.com/package/codebot-ai)** · **[GitHub](https://github.com/Ascendral/codebot-ai)** · **[Changelog](CHANGELOG.md)** · **[Docs](docs/)** · **[Security](SECURITY.md)**
+**[npm](https://www.npmjs.com/package/codebot-ai)** · **[GitHub](https://github.com/Ascendral/codebot-ai)** · **[Security](SECURITY.md)** · **[Changelog](CHANGELOG.md)** · **[Docs](docs/)**
 
 MIT — [Ascendral](https://github.com/Ascendral)
 
