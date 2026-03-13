@@ -39,6 +39,11 @@ import { JiraConnector } from '../connectors/jira';
 import { LinearConnector } from '../connectors/linear';
 import { OpenAIImagesConnector } from '../connectors/openai-images';
 import { ReplicateConnector } from '../connectors/replicate';
+import { GmailConnector } from '../connectors/gmail';
+import { GoogleCalendarConnector } from '../connectors/google-calendar';
+import { NotionConnector } from '../connectors/notion';
+import { GoogleDriveConnector } from '../connectors/google-drive';
+import { DeepResearchTool } from './research';
 
 export { EditFileTool } from './edit';
 
@@ -87,8 +92,13 @@ export class ToolRegistry {
       connectorRegistry.register(new LinearConnector());
       connectorRegistry.register(new OpenAIImagesConnector());
       connectorRegistry.register(new ReplicateConnector());
+      connectorRegistry.register(new GmailConnector());
+      connectorRegistry.register(new GoogleCalendarConnector());
+      connectorRegistry.register(new NotionConnector());
+      connectorRegistry.register(new GoogleDriveConnector());
       this.register(new AppConnectorTool(vault, connectorRegistry));
       this.register(new GraphicsTool());
+      this.register(new DeepResearchTool());
     } catch { /* connectors unavailable */ }
   }
 

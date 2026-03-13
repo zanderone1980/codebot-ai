@@ -148,6 +148,73 @@ const BUILTIN_WORKFLOWS: WorkflowDefinition[] = [
     ],
     promptTemplate: 'Write a {{type}} about: {{topic}}. Target length: {{length}}. Audience: {{audience}}. Make it engaging and well-structured with a clear introduction, body, and conclusion.',
   },
+  {
+    name: 'send-email',
+    description: 'Compose and send an email via Gmail',
+    category: 'productivity',
+    icon: 'mail',
+    color: '#22c55e',
+    inputFields: [
+      { name: 'to', label: 'To (email address)', type: 'text', placeholder: 'recipient@example.com', required: true },
+      { name: 'subject', label: 'Subject', type: 'text', placeholder: 'Email subject...', required: true },
+      { name: 'message', label: 'Message or instructions', type: 'textarea', placeholder: 'Write the email body or describe what the email should say...', required: true },
+      { name: 'tone', label: 'Tone', type: 'select', options: ['Professional', 'Casual', 'Friendly', 'Formal'], default: 'Professional' },
+    ],
+    promptTemplate: 'Compose and send an email to {{to}} with subject "{{subject}}". The message or instructions: {{message}}. Use a {{tone}} tone. Use the app gmail.send_email tool to send it.',
+  },
+  {
+    name: 'schedule-meeting',
+    description: 'Schedule a meeting on Google Calendar',
+    category: 'productivity',
+    icon: 'calendar',
+    color: '#22c55e',
+    inputFields: [
+      { name: 'title', label: 'Meeting title', type: 'text', placeholder: 'Team standup...', required: true },
+      { name: 'date', label: 'Date and time', type: 'text', placeholder: 'Tomorrow at 2pm, March 15 at 10am...', required: true },
+      { name: 'duration', label: 'Duration', type: 'select', options: ['30 minutes', '1 hour', '1.5 hours', '2 hours'], default: '1 hour' },
+      { name: 'attendees', label: 'Attendees (emails, comma-separated)', type: 'text', placeholder: 'alice@example.com, bob@example.com' },
+      { name: 'notes', label: 'Meeting notes/agenda', type: 'textarea', placeholder: 'Discussion points...' },
+    ],
+    promptTemplate: 'Schedule a calendar event titled "{{title}}" on {{date}} for {{duration}}. Attendees: {{attendees}}. Notes: {{notes}}. Use the app google_calendar.create_event tool.',
+  },
+  {
+    name: 'deep-research',
+    description: 'Deep multi-source research on any topic',
+    category: 'research',
+    icon: 'search',
+    color: '#8b5cf6',
+    inputFields: [
+      { name: 'topic', label: 'Research topic', type: 'text', placeholder: 'What to research...', required: true },
+      { name: 'depth', label: 'Research depth', type: 'select', options: ['Quick (2-3 sources)', 'Standard (4-5 sources)', 'Deep (6-8 sources)'], default: 'Standard (4-5 sources)' },
+      { name: 'focus', label: 'Focus area (optional)', type: 'text', placeholder: 'e.g., recent developments, market analysis...' },
+    ],
+    promptTemplate: 'Use the deep_research tool to research: {{topic}}. Depth: {{depth}}. Focus: {{focus}}. Present the findings in a clear, organized format with sources.',
+  },
+  {
+    name: 'notion-update',
+    description: 'Create or update a Notion page',
+    category: 'productivity',
+    icon: 'edit',
+    color: '#22c55e',
+    inputFields: [
+      { name: 'action', label: 'Action', type: 'select', options: ['Create new page', 'Update existing page', 'Search pages'], default: 'Create new page' },
+      { name: 'title', label: 'Page title or search query', type: 'text', placeholder: 'Meeting notes, Project plan...', required: true },
+      { name: 'content', label: 'Content', type: 'textarea', placeholder: 'Page content or what to add...' },
+    ],
+    promptTemplate: 'In Notion, {{action}}: "{{title}}". Content: {{content}}. Use the app notion.search or notion.create_page or notion.update_page tool as appropriate.',
+  },
+  {
+    name: 'organize-drive',
+    description: 'Search and organize Google Drive files',
+    category: 'system',
+    icon: 'folder',
+    color: '#6b7280',
+    inputFields: [
+      { name: 'action', label: 'Action', type: 'select', options: ['Search files', 'List recent files', 'Read a document'], default: 'Search files' },
+      { name: 'query', label: 'Search query or file description', type: 'text', placeholder: 'Budget spreadsheet, project proposal...', required: true },
+    ],
+    promptTemplate: '{{action}} on Google Drive: {{query}}. Use the app google_drive.search_files or google_drive.list_files or google_drive.read_file tool as appropriate. Present results clearly.',
+  },
 ];
 
 /**

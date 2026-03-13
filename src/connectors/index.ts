@@ -6,3 +6,7 @@ export { JiraConnector } from './jira';
 export { LinearConnector } from './linear';
 export { OpenAIImagesConnector } from './openai-images';
 export { ReplicateConnector } from './replicate';
+export { GmailConnector } from './gmail';
+export { GoogleCalendarConnector } from './google-calendar';
+export { NotionConnector } from './notion';
+export { GoogleDriveConnector } from './google-drive';
