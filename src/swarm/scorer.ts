@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from '../paths';
 
 import { AgentRole } from './roles';
 
@@ -47,11 +47,7 @@ export interface AgentContribution {
 // ── SwarmScorer ────────────────────────────────────────────────────────────────
 
 export class SwarmScorer {
-  private static readonly SCORE_FILE = path.join(
-    os.homedir(),
-    '.codebot',
-    'swarm-scores.json'
-  );
+  private static readonly SCORE_FILE = codebotPath('swarm-scores.json');
 
   private history: ModelPerformance[];
 

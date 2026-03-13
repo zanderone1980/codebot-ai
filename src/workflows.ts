@@ -9,9 +9,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 
-const WORKFLOWS_DIR = path.join(os.homedir(), '.codebot', 'workflows');
+
 
 export interface WorkflowInputField {
   name: string;
@@ -225,11 +225,11 @@ export function loadWorkflows(): WorkflowDefinition[] {
 
   // Load user-defined workflows
   try {
-    if (fs.existsSync(WORKFLOWS_DIR)) {
-      const files = fs.readdirSync(WORKFLOWS_DIR).filter(f => f.endsWith('.json'));
+    if (fs.existsSync(codebotPath('workflows'))) {
+      const files = fs.readdirSync(codebotPath('workflows')).filter(f => f.endsWith('.json'));
       for (const file of files) {
         try {
-          const raw = fs.readFileSync(path.join(WORKFLOWS_DIR, file), 'utf-8');
+          const raw = fs.readFileSync(path.join(codebotPath('workflows'), file), 'utf-8');
           const wf = JSON.parse(raw) as WorkflowDefinition;
           if (wf.name && wf.promptTemplate) {
             workflows.push(wf);

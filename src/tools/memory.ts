@@ -1,4 +1,5 @@
 import { Tool } from '../types';
+import { codebotPath } from '../paths';
 import { MemoryManager } from '../memory';
 
 export class MemoryTool implements Tool {
@@ -81,9 +82,8 @@ export class MemoryTool implements Tool {
 
   private getMemoryDir(scope: string): string {
     const path = require('path');
-    const os = require('os');
     if (scope === 'global') {
-      return path.join(os.homedir(), '.codebot', 'memory');
+      return codebotPath('memory');
     }
     return path.join(process.cwd(), '.codebot', 'memory');
   }

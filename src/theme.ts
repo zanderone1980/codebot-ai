@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 
 // ── Theme Interface ──
 
@@ -200,7 +200,7 @@ export function loadTheme(name?: string): Theme {
   // Try loading from config
   if (!name) {
     try {
-      const configPath = path.join(os.homedir(), '.codebot', 'config.json');
+      const configPath = codebotPath('config.json');
       if (fs.existsSync(configPath)) {
         const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
         if (config.theme && THEMES[config.theme]) {

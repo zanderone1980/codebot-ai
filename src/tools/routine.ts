@@ -1,7 +1,8 @@
 import { Tool } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from '../paths';
+import { warnNonFatal } from '../warn';
 import * as crypto from 'crypto';
 
 export interface Routine {
@@ -14,7 +15,7 @@ export interface Routine {
   enabled: boolean;
 }
 
-const ROUTINES_FILE = path.join(os.homedir(), '.codebot', 'routines.json');
+
 
 export class RoutineTool implements Tool {
   name = 'routine';
@@ -58,17 +59,17 @@ export class RoutineTool implements Tool {
 
   private loadRoutines(): Routine[] {
     try {
-      if (fs.existsSync(ROUTINES_FILE)) {
-        return JSON.parse(fs.readFileSync(ROUTINES_FILE, 'utf-8'));
+      if (fs.existsSync(codebotPath('routines.json'))) {
+        return JSON.parse(fs.readFileSync(codebotPath('routines.json'), 'utf-8'));
       }
     } catch { /* corrupt file */ }
     return [];
   }
 
   private saveRoutines(routines: Routine[]): void {
-    const dir = path.dirname(ROUTINES_FILE);
+    const dir = path.dirname(codebotPath('routines.json'));
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(ROUTINES_FILE, JSON.stringify(routines, null, 2) + '\n');
+    fs.writeFileSync(codebotPath('routines.json'), JSON.stringify(routines, null, 2) + '\n');
   }
 
   private list(): string {

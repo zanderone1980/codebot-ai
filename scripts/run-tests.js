@@ -8,9 +8,37 @@
  */
 'use strict';
 
-const { readdirSync, statSync } = require('fs');
+const { readdirSync, statSync, existsSync } = require('fs');
 const { join } = require('path');
 const { execSync } = require('child_process');
+
+// ── Stale dist/ detection ──
+function checkDistFreshness() {
+  if (!existsSync('dist') || !existsSync('src')) return;
+  try {
+    const newestSrc = getNewestMtime('src', '.ts');
+    const newestDist = getNewestMtime('dist', '.js');
+    if (newestSrc > newestDist + 5000) {
+      console.error('ERROR: dist/ is stale — src/ has newer files. Run \x60npm run build\x60 first.');
+      process.exit(1);
+    }
+  } catch { /* skip freshness check on error */ }
+}
+
+function getNewestMtime(dir, ext) {
+  let newest = 0;
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      newest = Math.max(newest, getNewestMtime(full, ext));
+    } else if (entry.name.endsWith(ext)) {
+      newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  }
+  return newest;
+}
+
+checkDistFreshness();
 
 function findTestFiles(dir) {
   const files = [];

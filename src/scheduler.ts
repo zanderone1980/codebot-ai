@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { Routine, matchesCron } from './tools/routine';
 import { Agent } from './agent';
 import { AgentEvent } from './types';
 import { getProactiveEngine } from './proactive';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 
-const ROUTINES_FILE = path.join(os.homedir(), '.codebot', 'routines.json');
+
 
 export class Scheduler {
   private agent: Agent;
@@ -116,16 +117,16 @@ export class Scheduler {
 
   private loadRoutines(): Routine[] {
     try {
-      if (fs.existsSync(ROUTINES_FILE)) {
-        return JSON.parse(fs.readFileSync(ROUTINES_FILE, 'utf-8'));
+      if (fs.existsSync(codebotPath('routines.json'))) {
+        return JSON.parse(fs.readFileSync(codebotPath('routines.json'), 'utf-8'));
       }
     } catch { /* corrupt file */ }
     return [];
   }
 
   private saveRoutines(routines: Routine[]): void {
-    const dir = path.dirname(ROUTINES_FILE);
+    const dir = path.dirname(codebotPath('routines.json'));
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(ROUTINES_FILE, JSON.stringify(routines, null, 2) + '\n');
+    fs.writeFileSync(codebotPath('routines.json'), JSON.stringify(routines, null, 2) + '\n');
   }
 }

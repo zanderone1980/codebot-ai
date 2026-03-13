@@ -6,8 +6,9 @@
  */
 
 import * as fs from 'fs';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 import * as path from 'path';
-import * as os from 'os';
 
 // ── Pricing (per 1M tokens, in USD) ──
 
@@ -240,7 +241,7 @@ export class TokenTracker {
   /** Save session usage to ~/.codebot/usage/ for historical tracking */
   saveUsage(): void {
     try {
-      const usageDir = path.join(os.homedir(), '.codebot', 'usage');
+      const usageDir = codebotPath('usage');
       fs.mkdirSync(usageDir, { recursive: true });
 
       const summary = this.getSummary();
@@ -248,8 +249,8 @@ export class TokenTracker {
       const filePath = path.join(usageDir, fileName);
 
       fs.appendFileSync(filePath, JSON.stringify(summary) + '\n', 'utf-8');
-    } catch {
-      // Usage tracking failures are non-fatal
+    } catch (err) {
+      warnNonFatal('telemetry.saveUsage', err);
     }
   }
 
@@ -259,7 +260,7 @@ export class TokenTracker {
   static loadHistory(days?: number): SessionSummary[] {
     const summaries: SessionSummary[] = [];
     try {
-      const usageDir = path.join(os.homedir(), '.codebot', 'usage');
+      const usageDir = codebotPath('usage');
       if (!fs.existsSync(usageDir)) return [];
 
       const files = fs.readdirSync(usageDir)

@@ -9,10 +9,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { execSync } from 'child_process';
 import { AuditLogger } from './audit';
 import { box, UI } from './ui';
+import { codebotHome } from './paths';
 
 export interface HealthCheck {
   name: string;
@@ -28,7 +28,7 @@ export interface DoctorReport {
   failed: number;
 }
 
-const CODEBOT_DIR = path.join(os.homedir(), '.codebot');
+
 
 function check(name: string, fn: () => HealthCheck): HealthCheck {
   try {
@@ -58,7 +58,7 @@ function checkNpmVersion(): HealthCheck {
 }
 
 function checkConfigExists(): HealthCheck {
-  const configPath = path.join(CODEBOT_DIR, 'config.json');
+  const configPath = path.join(codebotHome(), 'config.json');
   if (fs.existsSync(configPath)) {
     try {
       JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -71,7 +71,7 @@ function checkConfigExists(): HealthCheck {
 }
 
 function checkSessionsDir(): HealthCheck {
-  const dir = path.join(CODEBOT_DIR, 'sessions');
+  const dir = path.join(codebotHome(), 'sessions');
   if (!fs.existsSync(dir)) {
     return { name: 'sessionsDir', status: 'warn', message: 'Sessions directory does not exist yet' };
   }
@@ -85,7 +85,7 @@ function checkSessionsDir(): HealthCheck {
 }
 
 function checkAuditDir(): HealthCheck {
-  const dir = path.join(CODEBOT_DIR, 'audit');
+  const dir = path.join(codebotHome(), 'audit');
   if (!fs.existsSync(dir)) {
     return { name: 'auditDir', status: 'warn', message: 'Audit directory does not exist yet' };
   }
@@ -127,7 +127,7 @@ function checkAuditIntegrity(): HealthCheck {
 
 function checkDiskSpace(): HealthCheck {
   try {
-    const stats = fs.statfsSync(CODEBOT_DIR);
+    const stats = fs.statfsSync(codebotHome());
     const freeBytes = stats.bavail * stats.bsize;
     const freeMB = Math.round(freeBytes / (1024 * 1024));
     if (freeMB > 500) {

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { codebotPath } from './paths';
 import * as crypto from 'crypto';
 import { Tool } from './types';
 
@@ -29,10 +30,8 @@ interface PluginManifest {
 
 export function loadPlugins(projectRoot?: string): Tool[] {
   const plugins: Tool[] = [];
-  const os = require('os');
-
   const dirs = [
-    path.join(os.homedir(), '.codebot', 'plugins'),
+    codebotPath('plugins'),
   ];
 
   if (projectRoot) {

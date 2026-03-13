@@ -8,7 +8,7 @@
 import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from '../paths';
 import { spawn } from 'child_process';
 import { DashboardServer } from './server';
 import { Agent } from '../agent';
@@ -29,7 +29,7 @@ function loadApiKeys(): Record<string, string> {
 
   // 1. Read from ~/.codebot/config.json
   try {
-    const configPath = path.join(os.homedir(), '.codebot', 'config.json');
+    const configPath = codebotPath('config.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (config.apiKey && config.provider) {
       const providerInfo = PROVIDER_DEFAULTS[config.provider];

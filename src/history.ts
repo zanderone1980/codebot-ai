@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import * as crypto from 'crypto';
 import { Message } from './types';
 import { deriveSessionKey, signMessage, verifyMessage, verifyMessages, IntegrityResult } from './integrity';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 import { encryptLine, decryptLine } from './encryption';
 
-const SESSIONS_DIR = path.join(os.homedir(), '.codebot', 'sessions');
+
 
 export interface SessionMeta {
   id: string;
@@ -27,8 +28,8 @@ export class SessionManager {
     this.model = model;
     this.sessionId = sessionId || crypto.randomUUID();
     this.integrityKey = deriveSessionKey(this.sessionId);
-    fs.mkdirSync(SESSIONS_DIR, { recursive: true });
-    this.filePath = path.join(SESSIONS_DIR, `${this.sessionId}.jsonl`);
+    fs.mkdirSync(codebotPath('sessions'), { recursive: true });
+    this.filePath = path.join(codebotPath('sessions'), `${this.sessionId}.jsonl`);
   }
 
   getId(): string {
@@ -46,8 +47,8 @@ export class SessionManager {
       record._sig = signMessage(record, this.integrityKey);
       const line = encryptLine(JSON.stringify(record));
       fs.appendFileSync(this.filePath, line + '\n');
-    } catch {
-      // Don't crash on write failure — session persistence is best-effort
+    } catch (err) {
+      warnNonFatal('history.save', err);
     }
   }
 
@@ -66,8 +67,8 @@ export class SessionManager {
       const tmpPath = this.filePath + '.tmp';
       fs.writeFileSync(tmpPath, lines.join('\n') + '\n');
       fs.renameSync(tmpPath, this.filePath);
-    } catch {
-      // Don't crash — session persistence is best-effort
+    } catch (err) {
+      warnNonFatal('history.saveAll', err);
     }
   }
 
@@ -130,12 +131,12 @@ export class SessionManager {
 
   /** List recent sessions */
   static list(limit = 10): SessionMeta[] {
-    if (!fs.existsSync(SESSIONS_DIR)) return [];
+    if (!fs.existsSync(codebotPath('sessions'))) return [];
 
-    const files = fs.readdirSync(SESSIONS_DIR)
+    const files = fs.readdirSync(codebotPath('sessions'))
       .filter(f => f.endsWith('.jsonl'))
       .map(f => {
-        const fullPath = path.join(SESSIONS_DIR, f);
+        const fullPath = path.join(codebotPath('sessions'), f);
         const stat = fs.statSync(fullPath);
         return { name: f, mtime: stat.mtime };
       })
@@ -144,7 +145,7 @@ export class SessionManager {
 
     return files.map(f => {
       const id = f.name.replace('.jsonl', '');
-      const fullPath = path.join(SESSIONS_DIR, f.name);
+      const fullPath = path.join(codebotPath('sessions'), f.name);
       const content = fs.readFileSync(fullPath, 'utf-8').trim();
       const lines = content ? content.split('\n') : [];
       let model = '';

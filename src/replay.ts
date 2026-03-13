@@ -12,7 +12,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 import { Message, ToolCall, LLMProvider, ToolSchema, StreamEvent } from './types';
 
 // ── Replay Provider ──
@@ -71,7 +71,7 @@ export interface SessionReplayData {
  * Returns null if session doesn't exist or is empty.
  */
 export function loadSessionForReplay(sessionId: string): SessionReplayData | null {
-  const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+  const sessionsDir = codebotPath('sessions');
   const filePath = path.join(sessionsDir, `${sessionId}.jsonl`);
 
   if (!fs.existsSync(filePath)) return null;
@@ -154,7 +154,7 @@ export function listReplayableSessions(limit: number = 10): Array<{
   messageCount: number;
   date: string;
 }> {
-  const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+  const sessionsDir = codebotPath('sessions');
   if (!fs.existsSync(sessionsDir)) return [];
 
   const files = fs.readdirSync(sessionsDir)

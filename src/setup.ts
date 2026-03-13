@@ -1,11 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import * as readline from 'readline';
 import { PROVIDER_DEFAULTS, MODEL_REGISTRY, detectProvider, getModelInfo } from './providers/registry';
+import { codebotHome, codebotPath } from './paths';
 
-const CONFIG_DIR = path.join(os.homedir(), '.codebot');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+
 
 export interface SavedConfig {
   model?: string;
@@ -20,8 +19,8 @@ export interface SavedConfig {
 /** Load saved config from ~/.codebot/config.json */
 export function loadConfig(): SavedConfig {
   try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
+    if (fs.existsSync(codebotPath('config.json'))) {
+      return JSON.parse(fs.readFileSync(codebotPath('config.json'), 'utf-8'));
     }
   } catch {
     // corrupt config, ignore
@@ -31,26 +30,26 @@ export function loadConfig(): SavedConfig {
 
 /** Save config to ~/.codebot/config.json (with backup + atomic write) */
 export function saveConfig(config: SavedConfig): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.mkdirSync(codebotHome(), { recursive: true });
   const safe = { ...config };
   const content = JSON.stringify(safe, null, 2) + '\n';
 
   // Create backup of existing config
-  if (fs.existsSync(CONFIG_FILE)) {
+  if (fs.existsSync(codebotPath('config.json'))) {
     try {
-      fs.copyFileSync(CONFIG_FILE, CONFIG_FILE + '.bak');
+      fs.copyFileSync(codebotPath('config.json'), codebotPath('config.json') + '.bak');
     } catch { /* best effort */ }
   }
 
   // Atomic write: write to temp file, then rename
-  const tmpFile = CONFIG_FILE + '.tmp';
+  const tmpFile = codebotPath('config.json') + '.tmp';
   fs.writeFileSync(tmpFile, content);
-  fs.renameSync(tmpFile, CONFIG_FILE);
+  fs.renameSync(tmpFile, codebotPath('config.json'));
 }
 
 /** Check if this is the first run (no config, no env keys) */
 export function isFirstRun(): boolean {
-  if (fs.existsSync(CONFIG_FILE)) return false;
+  if (fs.existsSync(codebotPath('config.json'))) return false;
 
   const envKeys = [
     'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY',

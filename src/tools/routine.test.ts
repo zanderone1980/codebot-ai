@@ -11,15 +11,15 @@ describe('RoutineTool', () => {
   let tmpDir: string;
 
   before(() => {
-    tool = new RoutineTool();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'routine-test-'));
-    // The tool uses ROUTINES_FILE from homedir; we cannot easily override it.
-    // We'll test the cron matching functions directly and test the tool's
-    // input validation and error handling paths.
-    origRoutinesFile = path.join(os.homedir(), '.codebot', 'routines.json');
+    // Redirect all codebotPath() calls to a temp directory for test isolation
+    process.env.CODEBOT_HOME = tmpDir;
+    tool = new RoutineTool();
+    origRoutinesFile = path.join(tmpDir, 'routines.json');
   });
 
   after(() => {
+    delete process.env.CODEBOT_HOME;
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 

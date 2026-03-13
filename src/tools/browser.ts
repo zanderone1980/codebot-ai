@@ -5,12 +5,13 @@ import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 import { PolicyEnforcer } from '../policy';
+import { codebotPath } from '../paths';
 
 // Shared browser instance across tool calls
 let client: CDPClient | null = null;
 const debugPort = 9222;
 let connectingPromise: Promise<CDPClient> | null = null;
-const CHROME_DATA_DIR = path.join(os.homedir(), '.codebot', 'chrome-profile');
+
 
 /** Last screenshot base64 data — picked up by agent for vision-capable LLMs */
 export let lastScreenshotData: string | null = null;
@@ -92,7 +93,7 @@ function killExistingChrome(): void {
       // Graceful: SIGTERM first for Chrome on our debug port — exclude our own PID
       execSync(`lsof -ti:${debugPort} | grep -v "^${myPid}$" | xargs kill -15 2>/dev/null || true`, { stdio: 'ignore' });
       // Also SIGTERM any Chrome using our specific data dir (not user's Chrome)
-      execSync(`pkill -15 -f "chrome.*--user-data-dir=${CHROME_DATA_DIR}" 2>/dev/null || true`, { stdio: 'ignore' });
+      execSync(`pkill -15 -f "chrome.*--user-data-dir=${codebotPath('chrome-profile')}" 2>/dev/null || true`, { stdio: 'ignore' });
       // Brief wait for graceful shutdown
       execSync('sleep 0.5', { stdio: 'ignore' });
       // Force-kill only stragglers still on our port
@@ -198,11 +199,11 @@ async function doConnect(): Promise<CDPClient> {
   let launched = false;
 
   // Create isolated Chrome profile dir so it doesn't conflict with user's running Chrome
-  fs.mkdirSync(CHROME_DATA_DIR, { recursive: true });
+  fs.mkdirSync(codebotPath('chrome-profile'), { recursive: true });
 
   const chromeArgs = [
     `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${CHROME_DATA_DIR}`,
+    `--user-data-dir=${codebotPath('chrome-profile')}`,
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-background-timer-throttling',

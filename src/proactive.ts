@@ -13,9 +13,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 
-const NOTIFICATIONS_FILE = path.join(os.homedir(), '.codebot', 'notifications.json');
+
 const MAX_NOTIFICATIONS = 100;
 
 export type NotificationType = 'routine' | 'reminder' | 'system' | 'milestone' | 'alert' | 'suggestion';
@@ -48,8 +48,8 @@ export class ProactiveEngine {
   /** Load notifications from disk */
   private load(): Notification[] {
     try {
-      if (fs.existsSync(NOTIFICATIONS_FILE)) {
-        const raw = fs.readFileSync(NOTIFICATIONS_FILE, 'utf-8');
+      if (fs.existsSync(codebotPath('notifications.json'))) {
+        const raw = fs.readFileSync(codebotPath('notifications.json'), 'utf-8');
         const data = JSON.parse(raw) as Notification[];
         // Filter out dismissed and keep only recent
         return data.filter(n => !n.dismissed).slice(-MAX_NOTIFICATIONS);
@@ -60,9 +60,9 @@ export class ProactiveEngine {
 
   /** Save notifications to disk */
   private save(): void {
-    const dir = path.dirname(NOTIFICATIONS_FILE);
+    const dir = path.dirname(codebotPath('notifications.json'));
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(NOTIFICATIONS_FILE, JSON.stringify(this.notifications, null, 2));
+    fs.writeFileSync(codebotPath('notifications.json'), JSON.stringify(this.notifications, null, 2));
   }
 
   /** Generate a unique ID */

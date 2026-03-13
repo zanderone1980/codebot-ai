@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { codebotPath } from './paths';
 import { ToolCapabilities, CapabilityChecker } from './capabilities';
 
 // ── Policy Schema ──
@@ -164,7 +165,7 @@ export function loadPolicy(projectRoot?: string): Policy {
   const root = projectRoot || process.cwd();
 
   // Load global policy
-  const globalPath = path.join(os.homedir(), '.codebot', 'policy.json');
+  const globalPath = codebotPath('policy.json');
   const globalPolicy = loadPolicyFile(globalPath);
 
   // Load project policy

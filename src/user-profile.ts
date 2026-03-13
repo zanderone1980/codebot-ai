@@ -10,9 +10,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 
-const PROFILE_PATH = path.join(os.homedir(), '.codebot', 'profile.json');
+
 
 export interface UserPreferences {
   name?: string;
@@ -64,8 +64,8 @@ export class UserProfile {
   /** Load profile from disk */
   private load(): UserProfileData {
     try {
-      if (fs.existsSync(PROFILE_PATH)) {
-        const raw = fs.readFileSync(PROFILE_PATH, 'utf-8');
+      if (fs.existsSync(codebotPath('profile.json'))) {
+        const raw = fs.readFileSync(codebotPath('profile.json'), 'utf-8');
         const parsed = JSON.parse(raw) as UserProfileData;
         // Ensure all fields exist (migration safety)
         return {
@@ -81,9 +81,9 @@ export class UserProfile {
   /** Save profile to disk */
   save(): void {
     this.data.updatedAt = new Date().toISOString();
-    const dir = path.dirname(PROFILE_PATH);
+    const dir = path.dirname(codebotPath('profile.json'));
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PROFILE_PATH, JSON.stringify(this.data, null, 2));
+    fs.writeFileSync(codebotPath('profile.json'), JSON.stringify(this.data, null, 2));
     this.dirty = false;
   }
 

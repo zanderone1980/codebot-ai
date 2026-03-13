@@ -15,9 +15,10 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import { encrypt, decrypt } from './encryption';
+import { codebotHome, codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 
-const VAULT_DIR = path.join(os.homedir(), '.codebot');
-const VAULT_FILE = path.join(VAULT_DIR, 'vault.json');
+
 
 export interface VaultCredential {
   name: string;
@@ -58,8 +59,8 @@ export class VaultManager {
   private load(): VaultData {
     const empty: VaultData = { version: 1, credentials: [] };
     try {
-      if (!fs.existsSync(VAULT_FILE)) return empty;
-      const raw = fs.readFileSync(VAULT_FILE, 'utf-8').trim();
+      if (!fs.existsSync(codebotPath('vault.json'))) return empty;
+      const raw = fs.readFileSync(codebotPath('vault.json'), 'utf-8').trim();
       if (!raw) return empty;
 
       // Try decrypting
@@ -77,13 +78,13 @@ export class VaultManager {
   /** Encrypt and save vault data to disk. */
   private save(data: VaultData): void {
     try {
-      fs.mkdirSync(VAULT_DIR, { recursive: true });
+      fs.mkdirSync(codebotHome(), { recursive: true });
       const json = JSON.stringify(data, null, 2);
       const encrypted = encrypt(json, this.passphrase);
       if (encrypted) {
-        fs.writeFileSync(VAULT_FILE, encrypted, 'utf-8');
+        fs.writeFileSync(codebotPath('vault.json'), encrypted, 'utf-8');
       }
-    } catch { /* silent fail */ }
+    } catch (err) { warnNonFatal('vault.save', err); }
   }
 
   /** Get a credential by name. Returns undefined if not found. */

@@ -9,7 +9,6 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { DashboardServer } from './server';
 import { VERSION } from '../index';
 import { PROVIDER_DEFAULTS } from '../providers/registry';
@@ -18,6 +17,7 @@ import { decryptLine } from '../encryption';
 import { UserProfile } from '../user-profile';
 import { MemoryManager } from '../memory';
 import { loadConfig, saveConfig as saveSetupConfig, isFirstRun, detectLocalServers, SavedConfig } from '../setup';
+import { codebotPath } from '../paths';
 
 /** Load API key availability from config + env */
 function detectAvailableProviders(): Record<string, boolean> {
@@ -26,7 +26,7 @@ function detectAvailableProviders(): Record<string, boolean> {
   // Check ~/.codebot/config.json
   let configProvider = '';
   try {
-    const configPath = path.join(os.homedir(), '.codebot', 'config.json');
+    const configPath = codebotPath('config.json');
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
     if (config.apiKey && config.provider) {
       configProvider = config.provider;
@@ -99,7 +99,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   });
 
   server.route('GET', '/api/sessions/:id', (_req, res, params) => {
-    const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+    const sessionsDir = codebotPath('sessions');
     const sessionFile = path.join(sessionsDir, `${params.id}.jsonl`);
     if (!fs.existsSync(sessionFile)) {
       DashboardServer.error(res, 404, 'Session not found');
@@ -143,7 +143,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
   // ── Delete Session ──
   server.route('DELETE', '/api/sessions/:id', (_req, res, params) => {
-    const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+    const sessionsDir = codebotPath('sessions');
     const sessionFile = path.join(sessionsDir, `${params.id}.jsonl`);
     if (!fs.existsSync(sessionFile)) {
       DashboardServer.error(res, 404, 'Session not found');
@@ -181,7 +181,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
       return;
     }
 
-    const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+    const sessionsDir = codebotPath('sessions');
     let deleted = 0;
     let failed = 0;
 
@@ -309,7 +309,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
     const memDir = scope === 'project'
       ? path.join(root, '.codebot', 'memory')
-      : path.join(os.homedir(), '.codebot', 'memory');
+      : codebotPath('memory');
 
     const filePath = path.join(memDir, file.endsWith('.md') ? file : file + '.md');
 
@@ -351,7 +351,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
     const memDir = scope === 'project'
       ? path.join(root, '.codebot', 'memory')
-      : path.join(os.homedir(), '.codebot', 'memory');
+      : codebotPath('memory');
 
     fs.mkdirSync(memDir, { recursive: true });
     const filePath = path.join(memDir, file.endsWith('.md') ? file : file + '.md');

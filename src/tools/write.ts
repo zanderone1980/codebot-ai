@@ -1,12 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { Tool } from '../types';
 import { isPathSafe } from '../security';
 import { scanForSecrets } from '../secrets';
 import { PolicyEnforcer } from '../policy';
+import { codebotPath } from '../paths';
+import { warnNonFatal } from '../warn';
 
-const UNDO_DIR = path.join(os.homedir(), '.codebot', 'undo');
+
 
 export class WriteFileTool implements Tool {
   name = 'write_file';
@@ -83,8 +84,8 @@ export class WriteFileTool implements Tool {
 
   private saveSnapshot(filePath: string, content: string) {
     try {
-      fs.mkdirSync(UNDO_DIR, { recursive: true });
-      const manifestPath = path.join(UNDO_DIR, 'manifest.json');
+      fs.mkdirSync(codebotPath('undo'), { recursive: true });
+      const manifestPath = path.join(codebotPath('undo'), 'manifest.json');
       let manifest: Array<{ file: string; timestamp: number; snapshotFile: string }> = [];
       try {
         manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
@@ -95,12 +96,12 @@ export class WriteFileTool implements Tool {
         timestamp: Date.now(),
         snapshotFile: `${Date.now()}-${path.basename(filePath)}`,
       };
-      fs.writeFileSync(path.join(UNDO_DIR, entry.snapshotFile), content);
+      fs.writeFileSync(path.join(codebotPath('undo'), entry.snapshotFile), content);
       manifest.push(entry);
 
       while (manifest.length > 50) {
         const old = manifest.shift()!;
-        try { fs.unlinkSync(path.join(UNDO_DIR, old.snapshotFile)); } catch { /* ok */ }
+        try { fs.unlinkSync(path.join(codebotPath('undo'), old.snapshotFile)); } catch { /* ok */ }
       }
 
       fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));

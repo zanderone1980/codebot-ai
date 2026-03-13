@@ -12,10 +12,10 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { Tool } from './types';
+import { codebotPath } from './paths';
 
-const SKILLS_DIR = path.join(os.homedir(), '.codebot', 'skills');
+
 
 export interface SkillStep {
   /** Tool name or 'app.<connector>.<action>' */
@@ -150,11 +150,11 @@ export function loadSkills(): SkillDefinition[] {
 
   // Load user-defined skills
   try {
-    if (fs.existsSync(SKILLS_DIR)) {
-      const files = fs.readdirSync(SKILLS_DIR).filter(f => f.endsWith('.json'));
+    if (fs.existsSync(codebotPath('skills'))) {
+      const files = fs.readdirSync(codebotPath('skills')).filter(f => f.endsWith('.json'));
       for (const file of files) {
         try {
-          const raw = fs.readFileSync(path.join(SKILLS_DIR, file), 'utf-8');
+          const raw = fs.readFileSync(path.join(codebotPath('skills'), file), 'utf-8');
           const skill = JSON.parse(raw) as SkillDefinition;
           if (skill.name && skill.steps?.length) {
             skills.push(skill);

@@ -10,8 +10,9 @@
  */
 
 import * as fs from 'fs';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 import * as path from 'path';
-import * as os from 'os';
 import * as http from 'http';
 import * as https from 'https';
 import * as crypto from 'crypto';
@@ -181,7 +182,7 @@ export class MetricsCollector {
   /** Persist snapshot to ~/.codebot/telemetry/metrics-YYYY-MM-DD.jsonl */
   save(sessionId?: string): void {
     try {
-      const telemetryDir = path.join(os.homedir(), '.codebot', 'telemetry');
+      const telemetryDir = codebotPath('telemetry');
       fs.mkdirSync(telemetryDir, { recursive: true });
 
       const snap = this.snapshot();
@@ -190,8 +191,8 @@ export class MetricsCollector {
       const date = new Date().toISOString().split('T')[0];
       const filePath = path.join(telemetryDir, `metrics-${date}.jsonl`);
       fs.appendFileSync(filePath, JSON.stringify(snap) + '\n', 'utf-8');
-    } catch {
-      // Telemetry failures are non-fatal
+    } catch (err) {
+      warnNonFatal('metrics.save', err);
     }
   }
 

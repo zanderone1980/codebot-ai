@@ -1,9 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import * as crypto from 'crypto';
 import { maskSecretsInString } from './secrets';
 import { encryptLine, decryptLine } from './encryption';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 
 /**
  * Audit logger for CodeBot v1.7.0
@@ -50,12 +51,12 @@ export class AuditLogger {
   private prevHash: string = GENESIS_HASH;
 
   constructor(logDir?: string) {
-    this.logDir = logDir || path.join(os.homedir(), '.codebot', 'audit');
+    this.logDir = logDir || codebotPath('audit');
     this.sessionId = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
     try {
       fs.mkdirSync(this.logDir, { recursive: true });
-    } catch {
-      // Can't create dir — logging will be disabled
+    } catch (err) {
+      warnNonFatal('audit.init', err);
     }
   }
 

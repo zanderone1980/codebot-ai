@@ -1,13 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { Tool } from '../types';
 import { isPathSafe } from '../security';
 import { scanForSecrets } from '../secrets';
 import { PolicyEnforcer } from '../policy';
+import { codebotPath } from '../paths';
+import { warnNonFatal } from '../warn';
 
 // Undo snapshot directory
-const UNDO_DIR = path.join(os.homedir(), '.codebot', 'undo');
+
 const MAX_UNDO = 50;
 
 export class EditFileTool implements Tool {
@@ -139,7 +140,7 @@ export class EditFileTool implements Tool {
   /** Save a snapshot for undo */
   private saveSnapshot(filePath: string, content: string) {
     try {
-      fs.mkdirSync(UNDO_DIR, { recursive: true });
+      fs.mkdirSync(codebotPath('undo'), { recursive: true });
 
       const manifest = this.loadManifest();
       const entry = {
@@ -149,17 +150,17 @@ export class EditFileTool implements Tool {
       };
 
       // Write snapshot content
-      fs.writeFileSync(path.join(UNDO_DIR, entry.snapshotFile), content);
+      fs.writeFileSync(path.join(codebotPath('undo'), entry.snapshotFile), content);
 
       manifest.push(entry);
 
       // Prune old snapshots
       while (manifest.length > MAX_UNDO) {
         const old = manifest.shift()!;
-        try { fs.unlinkSync(path.join(UNDO_DIR, old.snapshotFile)); } catch { /* ok */ }
+        try { fs.unlinkSync(path.join(codebotPath('undo'), old.snapshotFile)); } catch { /* ok */ }
       }
 
-      fs.writeFileSync(path.join(UNDO_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2));
+      fs.writeFileSync(path.join(codebotPath('undo'), 'manifest.json'), JSON.stringify(manifest, null, 2));
     } catch {
       // Best-effort, don't fail the edit
     }
@@ -167,7 +168,7 @@ export class EditFileTool implements Tool {
 
   private loadManifest(): Array<{ file: string; timestamp: number; snapshotFile: string }> {
     try {
-      const raw = fs.readFileSync(path.join(UNDO_DIR, 'manifest.json'), 'utf-8');
+      const raw = fs.readFileSync(path.join(codebotPath('undo'), 'manifest.json'), 'utf-8');
       return JSON.parse(raw);
     } catch {
       return [];
@@ -177,7 +178,7 @@ export class EditFileTool implements Tool {
   /** Undo the last edit to a file. Returns result message. */
   static undo(filePath?: string): string {
     try {
-      const manifestPath = path.join(UNDO_DIR, 'manifest.json');
+      const manifestPath = path.join(codebotPath('undo'), 'manifest.json');
       if (!fs.existsSync(manifestPath)) return 'No undo history available.';
 
       const manifest: Array<{ file: string; timestamp: number; snapshotFile: string }> =
@@ -201,7 +202,7 @@ export class EditFileTool implements Tool {
       }
 
       // Restore the snapshot
-      const snapshotPath = path.join(UNDO_DIR, entry.snapshotFile);
+      const snapshotPath = path.join(codebotPath('undo'), entry.snapshotFile);
       if (!fs.existsSync(snapshotPath)) return 'Snapshot file missing.';
 
       const content = fs.readFileSync(snapshotPath, 'utf-8');

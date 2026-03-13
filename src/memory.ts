@@ -1,10 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { encryptContent, decryptContent } from './encryption';
+import { codebotPath } from './paths';
 
-const MEMORY_DIR = path.join(os.homedir(), '.codebot', 'memory');
-const GLOBAL_MEMORY = path.join(MEMORY_DIR, 'MEMORY.md');
+
 
 /** Maximum size per memory file (8KB) */
 const MAX_FILE_SIZE = 8192;
@@ -70,7 +69,7 @@ export class MemoryManager {
     this.projectDir = projectRoot
       ? path.join(projectRoot, '.codebot', 'memory')
       : '';
-    this.globalDir = MEMORY_DIR;
+    this.globalDir = codebotPath('memory');
     fs.mkdirSync(this.globalDir, { recursive: true });
     if (this.projectDir) {
       fs.mkdirSync(this.projectDir, { recursive: true });
@@ -79,8 +78,8 @@ export class MemoryManager {
 
   /** Read the global memory file */
   readGlobal(): string {
-    if (fs.existsSync(GLOBAL_MEMORY)) {
-      return decryptContent(fs.readFileSync(GLOBAL_MEMORY, 'utf-8'));
+    if (fs.existsSync(codebotPath('memory', 'MEMORY.md'))) {
+      return decryptContent(fs.readFileSync(codebotPath('memory', 'MEMORY.md'), 'utf-8'));
     }
     return '';
   }
@@ -98,7 +97,7 @@ export class MemoryManager {
   /** Write to global memory */
   writeGlobal(content: string): void {
     const safe = truncateToSize(content, MAX_FILE_SIZE);
-    fs.writeFileSync(GLOBAL_MEMORY, encryptContent(safe));
+    fs.writeFileSync(codebotPath('memory', 'MEMORY.md'), encryptContent(safe));
   }
 
   /** Write to project memory */

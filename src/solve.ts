@@ -8,7 +8,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
+import { warnNonFatal } from './warn';
 import { execFileSync } from 'child_process';
 import { Agent } from './agent';
 import { AgentEvent, LLMProvider } from './types';
@@ -87,7 +88,7 @@ export interface SolveResult {
 
 const GITHUB_API = 'https://api.github.com';
 const GITHUB_TIMEOUT = 15_000;
-const DEFAULT_WORKSPACE = path.join(os.homedir(), '.codebot', 'workspaces');
+const DEFAULT_WORKSPACE = codebotPath('workspaces');
 
 // ── Helpers ──
 
@@ -870,10 +871,10 @@ export class SolveCommand {
 
   private saveSession(result: SolveResult): void {
     try {
-      const sessionsDir = path.join(os.homedir(), '.codebot', 'sessions');
+      const sessionsDir = codebotPath('sessions');
       if (!fs.existsSync(sessionsDir)) fs.mkdirSync(sessionsDir, { recursive: true });
       const filename = `solve-${result.issue.number}-${Date.now()}.json`;
       fs.writeFileSync(path.join(sessionsDir, filename), JSON.stringify(result, null, 2), 'utf-8');
-    } catch { /* ignore session save failure */ }
+    } catch (err) { warnNonFatal('solve.saveSession', err); }
   }
 }

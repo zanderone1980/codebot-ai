@@ -2,7 +2,7 @@ import { Tool } from './types';
 import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
+import { codebotPath } from './paths';
 
 /**
  * MCP (Model Context Protocol) client.
@@ -191,7 +191,7 @@ export async function loadMCPTools(projectRoot?: string): Promise<{ tools: Tool[
   const connections: MCPConnection[] = [];
 
   const configPaths = [
-    path.join(os.homedir(), '.codebot', 'mcp.json'),
+    codebotPath('mcp.json'),
   ];
   if (projectRoot) {
     configPaths.push(path.join(projectRoot, '.codebot', 'mcp.json'));
