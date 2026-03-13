@@ -374,6 +374,6 @@ npm install && npm run build
 
 **[npm](https://www.npmjs.com/package/codebot-ai)** · **[GitHub](https://github.com/Ascendral/codebot-ai)** · **[Changelog](CHANGELOG.md)** · **[Docs](docs/)** · **[Security](SECURITY.md)**
 
-MIT — [Ascendral Software Development & Innovation](https://github.com/AscendralSoftware)
+MIT — [Ascendral](https://github.com/Ascendral)
 
 </div>
