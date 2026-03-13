@@ -20,6 +20,7 @@ import { PROVIDER_DEFAULTS } from '../providers/registry';
 import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
 import { LLMProvider, Message } from '../types';
+import { loadWorkflows, getWorkflow, resolveWorkflowPrompt, WORKFLOW_CATEGORIES } from '../workflows';
 
 /** Load API keys from ~/.codebot/config.json + environment */
 function loadApiKeys(): Record<string, string> {
@@ -641,6 +642,98 @@ export function registerCommandRoutes(
         DashboardServer.sseSend(res, { type: 'done' });
       }
     } catch (err: unknown) {
+      if (!closed) {
+        DashboardServer.sseSend(res, {
+          type: 'error',
+          text: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      agentBusy = false;
+      if (!closed) DashboardServer.sseClose(res);
+    }
+  });
+
+  // ── GET /api/workflows ──
+  server.route('GET', '/api/workflows', (_req, res) => {
+    const workflows = loadWorkflows();
+    DashboardServer.json(res, {
+      workflows: workflows.map(w => ({
+        name: w.name,
+        description: w.description,
+        category: w.category,
+        icon: w.icon,
+        color: w.color,
+        inputFields: w.inputFields,
+      })),
+      categories: WORKFLOW_CATEGORIES,
+    });
+  });
+
+  // ── GET /api/workflows/:name ──
+  server.route('GET', '/api/workflows/', (req, res) => {
+    const url = new URL(req.url || '', 'http://localhost');
+    const parts = url.pathname.split('/');
+    const name = parts[parts.length - 1];
+    if (!name) {
+      DashboardServer.error(res, 400, 'Missing workflow name');
+      return;
+    }
+    const workflow = getWorkflow(name);
+    if (!workflow) {
+      DashboardServer.error(res, 404, 'Workflow "' + name + '" not found');
+      return;
+    }
+    DashboardServer.json(res, { workflow });
+  });
+
+  // ── POST /api/workflows/:name/run (SSE stream) ──
+  server.route('POST', '/api/workflows/', async (req, res) => {
+    if (!agent) {
+      DashboardServer.error(res, 503, 'Agent not available');
+      return;
+    }
+
+    // Extract workflow name from URL path
+    const url = new URL(req.url || '', 'http://localhost');
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    // Expected: api, workflows, <name>, run
+    const name = pathParts.length >= 3 ? pathParts[2] : '';
+
+    const workflow = getWorkflow(name);
+    if (!workflow) {
+      DashboardServer.error(res, 404, 'Workflow "' + name + '" not found');
+      return;
+    }
+
+    let body: Record<string, string>;
+    try {
+      body = (await DashboardServer.parseBody(req)) as Record<string, string>;
+    } catch {
+      DashboardServer.error(res, 400, 'Invalid JSON body');
+      return;
+    }
+
+    if (agentBusy) {
+      DashboardServer.error(res, 409, 'Agent is busy processing another request');
+      return;
+    }
+
+    const prompt = resolveWorkflowPrompt(workflow, body || {});
+
+    agentBusy = true;
+    DashboardServer.sseHeaders(res);
+
+    let closed = false;
+    res.on('close', () => { closed = true; });
+
+    try {
+      for await (const event of agent.run(prompt)) {
+        if (closed) break;
+        DashboardServer.sseSend(res, event);
+        if (event.type === 'done' || event.type === 'error') break;
+      }
+    } catch (err) {
       if (!closed) {
         DashboardServer.sseSend(res, {
           type: 'error',

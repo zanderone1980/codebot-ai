@@ -92,6 +92,7 @@ const App = {
       case 'terminal': this.initTerminal(); break;
       case 'tools': this.initTools(); break;
       // metrics removed
+      case 'workflows': this.initWorkflows(); break;
       case 'swarm': this.initSwarm(); break;
     }
   },
@@ -256,6 +257,218 @@ const App = {
       }
       if (!fullText && !hasError) contentEl.textContent = '(no response)';
     } catch (err) { contentEl.textContent = 'Error: ' + err.message; }
+  },
+
+  // ===========================================================
+  // WORKFLOWS
+  // ===========================================================
+
+  workflowsLoaded: false,
+  workflowsData: null,
+  currentWorkflow: null,
+
+  async initWorkflows() {
+    if (this.workflowsLoaded) return;
+    this.workflowsLoaded = true;
+    await this.loadWorkflows();
+  },
+
+  async loadWorkflows() {
+    var grid = document.getElementById('workflow-grid');
+    var cats = document.getElementById('workflow-categories');
+    grid.innerHTML = this.renderLoading();
+
+    try {
+      var data = await this.fetch('/api/workflows');
+      this.workflowsData = data.workflows;
+
+      // Category filter chips
+      var catHtml = '<button class="category-chip active" data-cat="all" onclick="App.filterWorkflows('all')">All</button>';
+      var seenCats = {};
+      for (var i = 0; i < data.workflows.length; i++) {
+        var cat = data.workflows[i].category;
+        if (!seenCats[cat] && data.categories[cat]) {
+          seenCats[cat] = true;
+          catHtml += '<button class="category-chip" data-cat="' + App.escapeHtml(cat) + '" onclick="App.filterWorkflows('' + App.escapeHtml(cat) + '')">' + App.escapeHtml(data.categories[cat].label) + '</button>';
+        }
+      }
+      cats.innerHTML = catHtml;
+
+      this.renderWorkflowGrid(data.workflows);
+    } catch (err) {
+      grid.innerHTML = this.renderEmpty('Error loading workflows', err.message || 'Check server');
+    }
+  },
+
+  renderWorkflowGrid(workflows) {
+    var grid = document.getElementById('workflow-grid');
+    if (!workflows || workflows.length === 0) {
+      grid.innerHTML = this.renderEmpty('No workflows', 'Add workflows in ~/.codebot/workflows/');
+      return;
+    }
+
+    var icons = {
+      send: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
+      list: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>',
+      search: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+      image: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>',
+      git: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" y1="9" x2="6" y2="21"/></svg>',
+      globe: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+      clipboard: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>',
+      edit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+    };
+
+    grid.innerHTML = workflows.map(function(wf) {
+      var icon = icons[wf.icon] || icons.clipboard;
+      return '<div class="workflow-card" data-category="' + App.escapeHtml(wf.category) + '" onclick="App.openWorkflowRunner('' + App.escapeHtml(wf.name) + '')" style="--wf-color: ' + App.escapeHtml(wf.color) + '">' +
+        '<div class="workflow-card-icon">' + icon + '</div>' +
+        '<div class="workflow-card-name">' + App.escapeHtml(wf.description) + '</div>' +
+        '<span class="workflow-card-cat">' + App.escapeHtml(wf.category) + '</span>' +
+      '</div>';
+    }).join('');
+  },
+
+  filterWorkflows(cat) {
+    // Update active chip
+    document.querySelectorAll('.category-chip').forEach(function(c) {
+      c.classList.toggle('active', c.getAttribute('data-cat') === cat);
+    });
+
+    if (cat === 'all') {
+      this.renderWorkflowGrid(this.workflowsData);
+      return;
+    }
+
+    var filtered = (this.workflowsData || []).filter(function(wf) { return wf.category === cat; });
+    this.renderWorkflowGrid(filtered);
+  },
+
+  openWorkflowRunner(name) {
+    var wf = (this.workflowsData || []).find(function(w) { return w.name === name; });
+    if (!wf) return;
+
+    this.currentWorkflow = wf;
+
+    var grid = document.getElementById('workflow-grid');
+    var cats = document.getElementById('workflow-categories');
+    var runner = document.getElementById('workflow-runner');
+    var output = document.getElementById('workflow-output');
+
+    grid.style.display = 'none';
+    cats.style.display = 'none';
+    runner.style.display = '';
+    output.textContent = '';
+
+    document.getElementById('workflow-runner-title').textContent = wf.description;
+    document.getElementById('workflow-runner-desc').textContent = 'Category: ' + wf.category;
+
+    var fieldsEl = document.getElementById('workflow-fields');
+
+    if (!wf.inputFields || wf.inputFields.length === 0) {
+      fieldsEl.innerHTML = '<p class="workflow-no-fields">This workflow has no input fields. Click Run to execute.</p>';
+      return;
+    }
+
+    fieldsEl.innerHTML = wf.inputFields.map(function(f) {
+      var inputHtml;
+      if (f.type === 'textarea') {
+        inputHtml = '<textarea class="tool-input workflow-input" name="' + App.escapeHtml(f.name) + '" placeholder="' + App.escapeHtml(f.placeholder || '') + '" ' + (f.required ? 'required' : '') + '>' + App.escapeHtml(f.default || '') + '</textarea>';
+      } else if (f.type === 'select') {
+        var opts = (f.options || []).map(function(o) {
+          var sel = o === f.default ? ' selected' : '';
+          return '<option value="' + App.escapeHtml(o) + '"' + sel + '>' + App.escapeHtml(o) + '</option>';
+        }).join('');
+        inputHtml = '<select class="tool-select workflow-input" name="' + App.escapeHtml(f.name) + '">' + opts + '</select>';
+      } else {
+        inputHtml = '<input type="' + (f.type === 'number' ? 'number' : 'text') + '" class="tool-input workflow-input" name="' + App.escapeHtml(f.name) + '" placeholder="' + App.escapeHtml(f.placeholder || '') + '" value="' + App.escapeHtml(f.default || '') + '" ' + (f.required ? 'required' : '') + ' />';
+      }
+      return '<div class="tool-field">' +
+        '<label class="tool-label">' + App.escapeHtml(f.label) + (f.required ? ' *' : '') + '</label>' +
+        inputHtml +
+      '</div>';
+    }).join('');
+  },
+
+  closeWorkflowRunner() {
+    var grid = document.getElementById('workflow-grid');
+    var cats = document.getElementById('workflow-categories');
+    var runner = document.getElementById('workflow-runner');
+    grid.style.display = '';
+    cats.style.display = '';
+    runner.style.display = 'none';
+    this.currentWorkflow = null;
+  },
+
+  async submitWorkflow(e) {
+    e.preventDefault();
+    if (!this.currentWorkflow) return;
+
+    var inputs = {};
+    var fields = document.querySelectorAll('#workflow-fields .workflow-input');
+    for (var i = 0; i < fields.length; i++) {
+      inputs[fields[i].name] = fields[i].value;
+    }
+
+    var output = document.getElementById('workflow-output');
+    var runBtn = document.getElementById('workflow-run-btn');
+    output.textContent = 'Running...';
+    runBtn.disabled = true;
+
+    try {
+      var res = await apiFetch('/api/workflows/' + encodeURIComponent(this.currentWorkflow.name) + '/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(inputs),
+      });
+
+      if (!res.ok) {
+        var errData = await res.json().catch(function() { return {}; });
+        output.innerHTML = '<span class="cmd-error">' + App.escapeHtml(errData.error || 'HTTP ' + res.status) + '</span>';
+        runBtn.disabled = false;
+        return;
+      }
+
+      // Stream SSE output
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      var fullText = '';
+      output.textContent = '';
+
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (var j = 0; j < lines.length; j++) {
+          var line = lines[j];
+          if (!line.startsWith('data: ')) continue;
+          var payload = line.slice(6);
+          if (payload === '[DONE]') break;
+          try {
+            var ev = JSON.parse(payload);
+            if (ev.type === 'text') {
+              fullText += ev.text || '';
+              output.innerHTML = App.renderMarkdown(fullText);
+              output.scrollTop = output.scrollHeight;
+            } else if (ev.type === 'tool_call' && ev.toolCall) {
+              fullText += '\n[Tool: ' + ev.toolCall.name + ']\n';
+              output.innerHTML = App.renderMarkdown(fullText);
+            } else if (ev.type === 'error') {
+              fullText += '\n**Error:** ' + (ev.text || ev.error || 'unknown') + '\n';
+              output.innerHTML = App.renderMarkdown(fullText);
+            }
+          } catch (parseErr) {}
+        }
+      }
+
+      if (!fullText) output.textContent = '(no output)';
+    } catch (err) {
+      output.innerHTML = '<span class="cmd-error">Error: ' + App.escapeHtml(err.message) + '</span>';
+    } finally {
+      runBtn.disabled = false;
+    }
   },
 
   // ===========================================================
