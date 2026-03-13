@@ -7,7 +7,7 @@
   <meta http-equiv="pragma" content="no-cache">
   <meta http-equiv="expires" content="0">
   <title>CodeBot AI — v2</title>
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=29">
   <link rel="icon" href="favicon.svg?v=20" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#00d4ff">
@@ -38,6 +38,10 @@
 
         <!-- Chat Panel (default) -->
         <div id="panel-chat" class="panel active">
+          <button id="new-chat-btn" class="new-chat-btn" style="display:none" onclick="App.newChat()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Chat
+          </button>
           <div id="chat-messages" class="chat-messages"></div>
           <!-- Suggestion Chips (shown when chat is empty) -->
           <div id="chat-suggestions" class="chat-suggestions">
@@ -98,6 +102,33 @@
               <button type="submit" class="btn-continue" id="workflow-run-btn">Run Workflow</button>
             </form>
             <div id="workflow-output" class="cmd-output"></div>
+          </div>
+        </div>
+
+        <!-- Memory Panel -->
+        <div id="panel-memory" class="panel">
+          <div class="panel-title-row">
+            <h2>Memory & Profile</h2>
+          </div>
+          <!-- Profile Section -->
+          <div class="memory-section">
+            <h3 class="memory-heading">User Profile</h3>
+            <div id="profile-editor" class="profile-editor"></div>
+          </div>
+          <!-- Memory Files Section -->
+          <div class="memory-section">
+            <h3 class="memory-heading">Memory Files</h3>
+            <div id="memory-files" class="memory-files"></div>
+          </div>
+          <!-- Memory Editor (shown when editing a file) -->
+          <div id="memory-editor" class="memory-editor" style="display:none">
+            <div class="workflow-runner-header">
+              <button class="btn-back" onclick="App.closeMemoryEditor()">&larr; Back</button>
+              <h3 id="memory-editor-title"></h3>
+            </div>
+            <textarea id="memory-editor-content" class="memory-textarea"></textarea>
+            <button class="btn-continue" onclick="App.saveMemoryFile()">Save</button>
+            <div id="memory-editor-status" class="memory-status"></div>
           </div>
         </div>
 
@@ -270,6 +301,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
         <span>Workflows</span>
       </button>
+      <button class="nav-pill" data-panel="memory">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        <span>Memory</span>
+      </button>
       <button class="nav-pill" data-panel="terminal">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
         <span>Terminal</span>
@@ -289,7 +324,7 @@
     </nav>
   </div>
 
-  <script src="app.js?v=28"></script>
+  <script src="app.js?v=29"></script>
   <script>
   // Kill any leftover service workers — they cause more problems than they solve
   if ('serviceWorker' in navigator) {

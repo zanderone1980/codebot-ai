@@ -1511,6 +1511,31 @@ body.chat-expanded .chat-msg {
 .security-entry .entry-time { color: #666; font-size: 0.65rem; min-width: 50px; text-align: right; }
 
 
+/* ── New Chat Button ── */
+.new-chat-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 16px;
+  color: var(--accent-light);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+  align-self: flex-start;
+  margin-bottom: 4px;
+}
+
+.new-chat-btn:hover {
+  background: rgba(59, 130, 246, 0.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
 /* ── Suggestion Chips ── */
 .chat-suggestions {
   text-align: center;
@@ -1710,4 +1735,115 @@ body.chat-expanded .chat-msg {
 
 @media (max-width: 480px) {
   .workflow-grid { grid-template-columns: 1fr; }
+}
+
+
+/* ── Memory & Profile Panel ── */
+#panel-memory {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.memory-section {
+  margin-bottom: 20px;
+}
+
+.memory-heading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.profile-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.profile-stats {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.memory-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.memory-file-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.memory-file-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+  transform: translateY(-1px);
+}
+
+.memory-file-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.memory-file-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.memory-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition);
+  margin-bottom: 10px;
+}
+
+.memory-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+
+.memory-status {
+  font-size: 12px;
+  margin-top: 6px;
+  min-height: 18px;
+}
+
+.memory-status.success { color: var(--success); }
+.memory-status.error { color: var(--danger); }
+
+.memory-editor {
+  animation: fadeIn 0.25s ease;
 }

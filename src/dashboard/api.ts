@@ -15,6 +15,8 @@ import { VERSION } from '../index';
 import { PROVIDER_DEFAULTS } from '../providers/registry';
 import { SessionManager } from '../history';
 import { decryptLine } from '../encryption';
+import { UserProfile } from '../user-profile';
+import { MemoryManager } from '../memory';
 
 /** Load API key availability from config + env */
 function detectAvailableProviders(): Record<string, boolean> {
@@ -195,6 +197,110 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     }
 
     DashboardServer.json(res, { deleted, failed, total: ids.length });
+  });
+
+  // ── User Profile ──
+  const userProfile = new UserProfile();
+
+  server.route('GET', '/api/profile', (_req, res) => {
+    DashboardServer.json(res, { profile: userProfile.getData() });
+  });
+
+  server.route('POST', '/api/profile', async (req, res) => {
+    let body: Record<string, unknown>;
+    try {
+      body = (await DashboardServer.parseBody(req)) as Record<string, unknown>;
+    } catch {
+      DashboardServer.error(res, 400, 'Invalid JSON body');
+      return;
+    }
+
+    if (body.preferences) {
+      userProfile.updatePreferences(body.preferences as Record<string, string>);
+    }
+
+    DashboardServer.json(res, { updated: true, profile: userProfile.getData() });
+  });
+
+  // ── Memory ──
+  const memoryManager = new MemoryManager(root);
+
+  server.route('GET', '/api/memory', (_req, res) => {
+    const files = memoryManager.list();
+    DashboardServer.json(res, {
+      files,
+      global: memoryManager.readGlobal(),
+      project: memoryManager.readProject(),
+    });
+  });
+
+  server.route('GET', '/api/memory/', (req, res) => {
+    const url = new URL(req.url || '', 'http://localhost');
+    const parts = url.pathname.split('/').filter(Boolean);
+    // api/memory/<scope>/<file>
+    const scope = parts[2] || '';
+    const file = parts[3] || '';
+
+    if (!scope || !file) {
+      DashboardServer.error(res, 400, 'Missing scope or file');
+      return;
+    }
+
+    const memDir = scope === 'project'
+      ? path.join(root, '.codebot', 'memory')
+      : path.join(os.homedir(), '.codebot', 'memory');
+
+    const filePath = path.join(memDir, file.endsWith('.md') ? file : file + '.md');
+
+    try {
+      if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf-8');
+        DashboardServer.json(res, { scope, file, content });
+      } else {
+        DashboardServer.error(res, 404, 'Memory file not found');
+      }
+    } catch (err) {
+      DashboardServer.error(res, 500, 'Failed to read memory file');
+    }
+  });
+
+  server.route('POST', '/api/memory/', async (req, res) => {
+    const url = new URL(req.url || '', 'http://localhost');
+    const parts = url.pathname.split('/').filter(Boolean);
+    const scope = parts[2] || '';
+    const file = parts[3] || '';
+
+    if (!scope || !file) {
+      DashboardServer.error(res, 400, 'Missing scope or file');
+      return;
+    }
+
+    let body: { content?: string };
+    try {
+      body = (await DashboardServer.parseBody(req)) as typeof body;
+    } catch {
+      DashboardServer.error(res, 400, 'Invalid JSON body');
+      return;
+    }
+
+    if (typeof body?.content !== 'string') {
+      DashboardServer.error(res, 400, 'Missing "content" field');
+      return;
+    }
+
+    const memDir = scope === 'project'
+      ? path.join(root, '.codebot', 'memory')
+      : path.join(os.homedir(), '.codebot', 'memory');
+
+    fs.mkdirSync(memDir, { recursive: true });
+    const filePath = path.join(memDir, file.endsWith('.md') ? file : file + '.md');
+
+    try {
+      fs.writeFileSync(filePath, body.content);
+      DashboardServer.json(res, { saved: true, scope, file });
+    } catch (err) {
+      DashboardServer.error(res, 500, 'Failed to write memory file');
+    }
   });
 
   // ── Audit ──

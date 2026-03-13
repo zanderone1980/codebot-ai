@@ -6,10 +6,10 @@ import { encryptContent, decryptContent } from './encryption';
 const MEMORY_DIR = path.join(os.homedir(), '.codebot', 'memory');
 const GLOBAL_MEMORY = path.join(MEMORY_DIR, 'MEMORY.md');
 
-/** Maximum size per memory file (2KB) */
-const MAX_FILE_SIZE = 2048;
-/** Maximum total memory size across all files (10KB) */
-const MAX_TOTAL_SIZE = 10240;
+/** Maximum size per memory file (8KB) */
+const MAX_FILE_SIZE = 8192;
+/** Maximum total memory size across all files (32KB) */
+const MAX_TOTAL_SIZE = 32768;
 
 /** Patterns that indicate potential prompt injection in memory content */
 const INJECTION_PATTERNS = [
@@ -60,7 +60,7 @@ export interface MemoryEntry {
  * Memory is injected into the system prompt so the model always has context.
  *
  * Security: content is sanitized before injection to prevent prompt injection.
- * Size limits: 2KB per file, 10KB total.
+ * Size limits: 8KB per file, 32KB total.
  */
 export class MemoryManager {
   private projectDir: string;

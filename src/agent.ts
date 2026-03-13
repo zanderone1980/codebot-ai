@@ -20,6 +20,7 @@ import { RiskScorer, RiskAssessment } from './risk';
 import { ConstitutionalLayer, ConstitutionalResult } from './constitutional';
 import { SparkSoul } from './spark-soul';
 import { isLikelyDeveloper } from './intent';
+import { UserProfile } from './user-profile';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -123,6 +124,8 @@ export class Agent {
   private riskScorer: RiskScorer;
   private constitutional: ConstitutionalLayer | null = null;
   private sparkSoul: SparkSoul | null = null;
+  private userProfile: UserProfile;
+
   private projectRoot: string;
   private branchCreated: boolean = false;
   private lastExecutedTools: string[] = [];
@@ -171,6 +174,8 @@ export class Agent {
         this.constitutional.start();
       } catch { /* cord-engine not available — continue without constitutional layer */ }
     }
+
+    this.userProfile = new UserProfile();
 
     // Initialize SPARK soul
     try {
@@ -982,7 +987,7 @@ Skills:
 - Email: navigate to Gmail/email, compose and send messages through the browser interface.
 - Routines: use the routine tool to schedule recurring tasks (daily posts, email checks, etc.).
 
-${repoMap}${memoryBlock}${sparkBlock}`;
+${repoMap}${memoryBlock}${sparkBlock}${this.userProfile.getPromptBlock()}`;
 
     // Adaptive persona: detect user sophistication from message history
     if (!isLikelyDeveloper(this.messages as Array<{ role: string; content: string | unknown }>)) {

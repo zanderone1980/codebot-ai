@@ -93,6 +93,7 @@ const App = {
       case 'tools': this.initTools(); break;
       // metrics removed
       case 'workflows': this.initWorkflows(); break;
+      case 'memory': this.initMemory(); break;
       case 'swarm': this.initSwarm(); break;
     }
   },
@@ -141,9 +142,11 @@ const App = {
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
 
-      // Hide suggestion chips once chat starts
+      // Hide suggestion chips, show new chat button
       var suggestions = document.getElementById('chat-suggestions');
       if (suggestions) suggestions.style.display = 'none';
+      var newChatBtn = document.getElementById('new-chat-btn');
+      if (newChatBtn) newChatBtn.style.display = '';
 
       // Fade logo + expand layout once chat starts
       const logoArea = document.getElementById('logo-area');
@@ -257,6 +260,195 @@ const App = {
       }
       if (!fullText && !hasError) contentEl.textContent = '(no response)';
     } catch (err) { contentEl.textContent = 'Error: ' + err.message; }
+  },
+
+  newChat() {
+    // Clear chat messages and reset to initial state
+    var container = document.getElementById('chat-messages');
+    if (container) container.innerHTML = '';
+
+    // Show suggestion chips again
+    var suggestions = document.getElementById('chat-suggestions');
+    if (suggestions) suggestions.style.display = '';
+
+    // Hide new chat button
+    var newChatBtn = document.getElementById('new-chat-btn');
+    if (newChatBtn) newChatBtn.style.display = 'none';
+
+    // Reset logo and layout
+    var logoArea = document.getElementById('logo-area');
+    if (logoArea) logoArea.classList.remove('faded');
+    document.body.classList.remove('chat-expanded');
+
+    // Focus input
+    var input = document.getElementById('chat-input');
+    if (input) { input.value = ''; input.focus(); }
+  },
+
+  // ===========================================================
+  // MEMORY & PROFILE
+  // ===========================================================
+
+  memoryLoaded: false,
+  currentMemoryFile: null,
+
+  async initMemory() {
+    if (this.memoryLoaded) return;
+    this.memoryLoaded = true;
+    await this.loadProfile();
+    await this.loadMemoryFiles();
+  },
+
+  async loadProfile() {
+    var editor = document.getElementById('profile-editor');
+    try {
+      var data = await this.fetch('/api/profile');
+      var p = data.profile;
+      var prefs = p.preferences || {};
+
+      var fields = [
+        { key: 'name', label: 'Name', value: prefs.name || '', type: 'text' },
+        { key: 'timezone', label: 'Timezone', value: prefs.timezone || '', type: 'text', placeholder: 'e.g., America/New_York' },
+        { key: 'writingStyle', label: 'Writing Style', value: prefs.writingStyle || '', type: 'select', options: ['', 'formal', 'casual', 'professional', 'friendly'] },
+        { key: 'verbosity', label: 'Verbosity', value: prefs.verbosity || '', type: 'select', options: ['', 'concise', 'normal', 'detailed'] },
+        { key: 'language', label: 'Language', value: prefs.language || '', type: 'text', placeholder: 'e.g., English' },
+        { key: 'interests', label: 'Interests', value: (prefs.interests || []).join(', '), type: 'text', placeholder: 'comma-separated' },
+      ];
+
+      var html = fields.map(function(f) {
+        var input;
+        if (f.type === 'select') {
+          var opts = f.options.map(function(o) {
+            return '<option value="' + App.escapeHtml(o) + '"' + (o === f.value ? ' selected' : '') + '>' + App.escapeHtml(o || '(auto)') + '</option>';
+          }).join('');
+          input = '<select class="tool-select profile-input" data-key="' + f.key + '">' + opts + '</select>';
+        } else {
+          input = '<input type="text" class="tool-input profile-input" data-key="' + f.key + '" value="' + App.escapeHtml(f.value) + '" placeholder="' + App.escapeHtml(f.placeholder || '') + '" />';
+        }
+        return '<div class="profile-field"><label class="tool-label">' + App.escapeHtml(f.label) + '</label>' + input + '</div>';
+      }).join('');
+
+      html += '<button class="btn-action" style="margin-top:10px" onclick="App.saveProfile()">Save Profile</button>';
+      html += '<div id="profile-status" class="memory-status"></div>';
+
+      // Show stats
+      var actions = Object.entries(p.commonActions || {}).sort(function(a, b) { return b[1] - a[1]; }).slice(0, 5);
+      if (actions.length > 0) {
+        html += '<div class="profile-stats"><span class="memory-heading" style="margin-top:12px;display:block">Activity</span>';
+        html += actions.map(function(a) {
+          return '<span class="stat-chip"><strong>' + a[1] + '</strong> ' + App.escapeHtml(a[0]) + '</span>';
+        }).join(' ');
+        html += '</div>';
+      }
+
+      if (p.connectedServices && p.connectedServices.length > 0) {
+        html += '<div class="profile-stats"><span class="memory-heading" style="margin-top:8px;display:block">Connected Services</span>';
+        html += p.connectedServices.map(function(s) {
+          return '<span class="stat-chip">' + App.escapeHtml(s) + '</span>';
+        }).join(' ');
+        html += '</div>';
+      }
+
+      editor.innerHTML = html;
+    } catch (err) {
+      editor.innerHTML = '<span class="cmd-error">Error loading profile: ' + App.escapeHtml(err.message) + '</span>';
+    }
+  },
+
+  async saveProfile() {
+    var inputs = document.querySelectorAll('.profile-input');
+    var prefs = {};
+    for (var i = 0; i < inputs.length; i++) {
+      var key = inputs[i].getAttribute('data-key');
+      var val = inputs[i].value.trim();
+      if (key === 'interests' && val) {
+        prefs[key] = val.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+      } else if (val) {
+        prefs[key] = val;
+      }
+    }
+
+    var status = document.getElementById('profile-status');
+    try {
+      await apiFetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ preferences: prefs }),
+      });
+      status.textContent = 'Profile saved!';
+      status.className = 'memory-status success';
+      setTimeout(function() { status.textContent = ''; }, 2000);
+    } catch (err) {
+      status.textContent = 'Error: ' + err.message;
+      status.className = 'memory-status error';
+    }
+  },
+
+  async loadMemoryFiles() {
+    var container = document.getElementById('memory-files');
+    try {
+      var data = await this.fetch('/api/memory');
+      if (!data.files || data.files.length === 0) {
+        container.innerHTML = '<p class="workflow-no-fields">No memory files yet. Memory is created automatically as you use CodeBot.</p>';
+        return;
+      }
+
+      container.innerHTML = data.files.map(function(f) {
+        var sizeStr = f.size > 1024 ? (f.size / 1024).toFixed(1) + ' KB' : f.size + ' B';
+        return '<div class="memory-file-card" onclick="App.openMemoryEditor(&#39;' + App.escapeHtml(f.scope) + '&#39;, &#39;' + App.escapeHtml(f.file) + '&#39;)">' +
+          '<span class="memory-file-name">' + App.escapeHtml(f.file) + '</span>' +
+          '<span class="memory-file-meta">' + App.escapeHtml(f.scope) + ' &middot; ' + sizeStr + '</span>' +
+        '</div>';
+      }).join('');
+    } catch (err) {
+      container.innerHTML = '<span class="cmd-error">Error: ' + App.escapeHtml(err.message) + '</span>';
+    }
+  },
+
+  async openMemoryEditor(scope, file) {
+    var sections = document.querySelectorAll('#panel-memory .memory-section');
+    var editor = document.getElementById('memory-editor');
+    for (var i = 0; i < sections.length; i++) sections[i].style.display = 'none';
+    editor.style.display = '';
+
+    document.getElementById('memory-editor-title').textContent = file + ' (' + scope + ')';
+    document.getElementById('memory-editor-content').value = 'Loading...';
+    this.currentMemoryFile = { scope: scope, file: file };
+
+    try {
+      var data = await this.fetch('/api/memory/' + encodeURIComponent(scope) + '/' + encodeURIComponent(file));
+      document.getElementById('memory-editor-content').value = data.content || '';
+    } catch (err) {
+      document.getElementById('memory-editor-content').value = 'Error: ' + err.message;
+    }
+  },
+
+  closeMemoryEditor() {
+    var sections = document.querySelectorAll('#panel-memory .memory-section');
+    var editor = document.getElementById('memory-editor');
+    for (var i = 0; i < sections.length; i++) sections[i].style.display = '';
+    editor.style.display = 'none';
+    this.currentMemoryFile = null;
+  },
+
+  async saveMemoryFile() {
+    if (!this.currentMemoryFile) return;
+    var content = document.getElementById('memory-editor-content').value;
+    var status = document.getElementById('memory-editor-status');
+
+    try {
+      await apiFetch('/api/memory/' + encodeURIComponent(this.currentMemoryFile.scope) + '/' + encodeURIComponent(this.currentMemoryFile.file), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content }),
+      });
+      status.textContent = 'Saved!';
+      status.className = 'memory-status success';
+      setTimeout(function() { status.textContent = ''; }, 2000);
+    } catch (err) {
+      status.textContent = 'Error: ' + err.message;
+      status.className = 'memory-status error';
+    }
   },
 
   // ===========================================================
