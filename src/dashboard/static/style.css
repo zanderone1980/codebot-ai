@@ -1509,3 +1509,43 @@ body.chat-expanded .chat-msg {
 .security-entry .entry-explain { color: #999; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .security-entry .entry-score { color: #888; font-size: 0.7rem; }
 .security-entry .entry-time { color: #666; font-size: 0.65rem; min-width: 50px; text-align: right; }
+
+
+/* ── Suggestion Chips ── */
+.chat-suggestions {
+  text-align: center;
+  padding: 8px 16px 12px;
+}
+.suggestion-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.suggestion-chip {
+  background: rgba(0, 212, 255, 0.08);
+  border: 1px solid rgba(0, 212, 255, 0.2);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  color: var(--accent);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+.suggestion-chip:hover {
+  background: rgba(0, 212, 255, 0.18);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(0, 212, 255, 0.15);
+  transform: translateY(-1px);
+}
+.suggestion-chip:active {
+  transform: translateY(0);
+}

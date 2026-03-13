@@ -395,7 +395,7 @@ export function registerCommandRoutes(
       return;
     }
 
-    let body: { message?: string };
+    let body: { message?: string; mode?: 'simple' | 'detailed' };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
     } catch {
@@ -413,6 +413,12 @@ export function registerCommandRoutes(
       return;
     }
 
+    // Simple mode: prepend plain-language instruction for non-technical users
+    let userMessage = body.message;
+    if (body.mode === 'simple') {
+      userMessage = '[Respond in plain, simple language suitable for someone who is not a programmer. Be concise and friendly. Focus on results, not technical details.]\n\n' + userMessage;
+    }
+
     agentBusy = true;
     DashboardServer.sseHeaders(res);
 
@@ -420,7 +426,7 @@ export function registerCommandRoutes(
     res.on('close', () => { closed = true; });
 
     try {
-      for await (const event of agent.run(body.message)) {
+      for await (const event of agent.run(userMessage)) {
         if (closed) break;
         DashboardServer.sseSend(res, event);
         if (event.type === 'done' || event.type === 'error') break;

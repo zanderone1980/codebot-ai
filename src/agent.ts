@@ -19,6 +19,7 @@ import { MetricsCollector } from './metrics';
 import { RiskScorer, RiskAssessment } from './risk';
 import { ConstitutionalLayer, ConstitutionalResult } from './constitutional';
 import { SparkSoul } from './spark-soul';
+import { isLikelyDeveloper } from './intent';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -982,6 +983,17 @@ Skills:
 - Routines: use the routine tool to schedule recurring tasks (daily posts, email checks, etc.).
 
 ${repoMap}${memoryBlock}${sparkBlock}`;
+
+    // Adaptive persona: detect user sophistication from message history
+    if (!isLikelyDeveloper(this.messages as Array<{ role: string; content: string | unknown }>)) {
+      prompt += `\n\nIMPORTANT — NON-TECHNICAL USER DETECTED:
+- Use plain, friendly language. Avoid jargon and technical terms.
+- When you use tools, explain what you're doing in simple terms (e.g., "I'm looking that up for you" not "Executing web_search with query params").
+- If something fails, explain the problem simply and suggest alternatives.
+- Proactively confirm before taking actions that might be confusing.
+- Focus on RESULTS, not process. The user cares about what happened, not which tools you used.
+`;
+    }
 
     if (!supportsTools) {
       prompt += `

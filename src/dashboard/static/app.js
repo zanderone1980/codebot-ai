@@ -140,11 +140,29 @@ const App = {
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
 
+      // Hide suggestion chips once chat starts
+      var suggestions = document.getElementById('chat-suggestions');
+      if (suggestions) suggestions.style.display = 'none';
+
       // Fade logo + expand layout once chat starts
       const logoArea = document.getElementById('logo-area');
       if (logoArea) logoArea.classList.add('faded');
       document.body.classList.add('chat-expanded');
     };
+
+    // Suggestion chip click handlers
+    var chips = document.querySelectorAll('.suggestion-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener('click', function() {
+        var msg = this.getAttribute('data-msg');
+        input.value = msg;
+        input.focus();
+        // If message doesn't end with space (complete action), send immediately
+        if (msg && msg.charAt(msg.length - 1) !== ' ') {
+          send();
+        }
+      });
+    }
 
     sendBtn.addEventListener('click', send);
     input.addEventListener('keydown', (e) => {
