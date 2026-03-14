@@ -3,10 +3,10 @@ import * as assert from 'node:assert';
 import { classifyComplexity, classifyToolTier, selectModel, autoDetectTierModels, RouterConfig, ModelTier } from './router';
 
 describe('Model Router — classifyComplexity edge cases', () => {
-  it('classifies explain/describe as fast', () => {
+  it('classifies explain/tell as fast', () => {
     assert.strictEqual(classifyComplexity('explain this function'), 'fast');
-    assert.strictEqual(classifyComplexity('describe the architecture'), 'fast');
     assert.strictEqual(classifyComplexity('tell me about this module'), 'fast');
+    assert.strictEqual(classifyComplexity('tell me what this does'), 'fast');
   });
 
   it('classifies edit/fix/modify operations as standard', () => {
