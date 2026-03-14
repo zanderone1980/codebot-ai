@@ -323,6 +323,39 @@ export function registerCommandRoutes(
   agent: Agent | null,
 ): void {
   let agentBusy = false;
+  const messageQueue: Array<{ message: string; mode?: 'simple' | 'detailed'; resolve: (v: unknown) => void }> = [];
+  const statusClients: Set<http.ServerResponse> = new Set();
+
+  /** Broadcast agent status to all SSE clients */
+  function broadcastStatus(status: 'idle' | 'working' | 'done' | 'queued', extra?: Record<string, unknown>) {
+    const data = { status, queueLength: messageQueue.length, ...extra };
+    for (const client of statusClients) {
+      try { DashboardServer.sseSend(client, data); } catch { statusClients.delete(client); }
+    }
+  }
+
+  /** Process next queued message */
+  async function processQueue() {
+    if (agentBusy || messageQueue.length === 0 || !agent) return;
+    const next = messageQueue.shift()!;
+    broadcastStatus('working', { message: next.message });
+    agentBusy = true;
+    try {
+      let result = '';
+      for await (const event of agent.run(next.message)) {
+        if (event.type === 'text') result += (event as any).text || '';
+        if (event.type === 'done' || event.type === 'error') break;
+      }
+      next.resolve({ result });
+    } catch (err: unknown) {
+      next.resolve({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      agentBusy = false;
+      broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
+      // Process next in queue
+      if (messageQueue.length > 0) setTimeout(processQueue, 100);
+    }
+  }
 
   // ── GET /api/command/status ──
   server.route('GET', '/api/command/status', (_req, res) => {
@@ -390,6 +423,14 @@ export function registerCommandRoutes(
     }
   });
 
+  // ── GET /api/command/agent-status (SSE) ──
+  server.route('GET', '/api/command/agent-status', (_req, res) => {
+    DashboardServer.sseHeaders(res);
+    statusClients.add(res);
+    res.on('close', () => { statusClients.delete(res); });
+    DashboardServer.sseSend(res, { status: agentBusy ? 'working' : 'idle', queueLength: messageQueue.length });
+  });
+
   // ── POST /api/command/chat (agent only) ──
   server.route('POST', '/api/command/chat', async (req, res) => {
     if (!agent) {
@@ -411,7 +452,18 @@ export function registerCommandRoutes(
     }
 
     if (agentBusy) {
-      DashboardServer.error(res, 409, 'Agent is busy processing another request');
+      // Queue the message instead of rejecting
+      const queuePromise = new Promise((resolve) => {
+        messageQueue.push({ message: body.message, mode: body.mode, resolve });
+      });
+      broadcastStatus('queued', { position: messageQueue.length });
+      DashboardServer.json(res, {
+        queued: true,
+        position: messageQueue.length,
+        message: 'Message queued — agent will process it next',
+      });
+      // Process when agent is free
+      queuePromise.then(() => processQueue());
       return;
     }
 
@@ -422,6 +474,7 @@ export function registerCommandRoutes(
     }
 
     agentBusy = true;
+    broadcastStatus('working', { message: body.message });
     DashboardServer.sseHeaders(res);
 
     let closed = false;
@@ -442,7 +495,10 @@ export function registerCommandRoutes(
       }
     } finally {
       agentBusy = false;
+      broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
       if (!closed) DashboardServer.sseClose(res);
+      // Process any queued messages
+      if (messageQueue.length > 0) setTimeout(processQueue, 100);
     }
   });
 

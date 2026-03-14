@@ -2229,3 +2229,71 @@ body.chat-expanded .card-grid {
 .codeagi-trace-steps { display: flex; gap: 0.2rem; flex-wrap: wrap; }
 .codeagi-trace-step-dot { width: 10px; height: 10px; border-radius: 50%; }
 @media (max-width: 600px) { .codeagi-task-fields { grid-template-columns: 1fr; } }
+
+/* ═══ Agent Status Indicator ═══ */
+.agent-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-family: var(--font-mono);
+  transition: all 0.3s ease;
+  margin: 0 20px;
+}
+.agent-status.idle {
+  background: rgba(0, 255, 65, 0.08);
+  border: 1px solid rgba(0, 255, 65, 0.15);
+  color: #00ff41;
+}
+.agent-status.working {
+  background: rgba(0, 170, 255, 0.08);
+  border: 1px solid rgba(0, 170, 255, 0.25);
+  color: #00aaff;
+}
+.agent-status.queued {
+  background: rgba(255, 170, 0, 0.08);
+  border: 1px solid rgba(255, 170, 0, 0.2);
+  color: #ffaa00;
+}
+.agent-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.agent-status-dot.idle {
+  background: #00ff41;
+  box-shadow: 0 0 6px #00ff41;
+}
+.agent-status-dot.working {
+  background: #00aaff;
+  box-shadow: 0 0 6px #00aaff;
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+.agent-status-dot.queued {
+  background: #ffaa00;
+  box-shadow: 0 0 6px #ffaa00;
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.8); }
+}
+.agent-status-timer {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  min-width: 30px;
+}
+.chat-queued {
+  padding: 12px 16px;
+  background: rgba(255, 170, 0, 0.1);
+  border: 1px solid rgba(255, 170, 0, 0.2);
+  border-radius: 8px;
+  color: #ffaa00;
+  font-size: 14px;
+}
+.queue-icon {
+  margin-right: 6px;
+}

@@ -38,6 +38,9 @@ const App = {
   terminalHistoryIndex: -1,
   cmdInitialized: false,
   agentConnected: false,
+  agentStatus: 'idle',
+  agentStatusTimer: null,
+  agentStartTime: null,
 
   // -- Init --
   init() {
@@ -47,6 +50,7 @@ const App = {
     this.navigateToHash();
     window.addEventListener('hashchange', () => this.navigateToHash());
     setInterval(() => this.checkHealth(), 30000);
+    this.connectAgentStatus();
     this.pollNotifications();
     setInterval(() => this.pollNotifications(), 30000);
   },
@@ -352,8 +356,21 @@ const App = {
       });
       if (!res.ok) {
         const errD = await res.json().catch(() => ({}));
+        if (res.status === 409 || errD.queued) {
+          contentEl.innerHTML = '<div class="chat-queued"><span class="queue-icon">📋</span> Message queued — position #' + (errD.position || '?') + '. Agent will process it when ready.</div>';
+          return;
+        }
         contentEl.textContent = 'Error: ' + (errD.error || 'HTTP ' + res.status);
         return;
+      }
+      // Handle queued response (200 with queued flag)
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const jsonData = await res.json();
+        if (jsonData.queued) {
+          contentEl.innerHTML = '<div class="chat-queued"><span class="queue-icon">📋</span> Message queued — position #' + (jsonData.position || '?') + '. Agent will process it when ready.</div>';
+          return;
+        }
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -432,6 +449,52 @@ const App = {
       }
     } catch (err) {
       // silently fail
+    }
+  },
+
+  connectAgentStatus() {
+    try {
+      const token = window.__CODEBOT_TOKEN;
+      const url = this.baseUrl + '/api/command/agent-status';
+      const es = new EventSource(url);
+      es.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.updateAgentStatus(data.status, data);
+        } catch(err) {}
+      };
+      es.onerror = () => {
+        es.close();
+        setTimeout(() => this.connectAgentStatus(), 5000);
+      };
+    } catch(err) {}
+  },
+
+  updateAgentStatus(status, data) {
+    this.agentStatus = status;
+    const indicator = document.getElementById('agent-status-indicator');
+    if (!indicator) return;
+
+    if (status === 'working') {
+      if (!this.agentStartTime) this.agentStartTime = Date.now();
+      indicator.className = 'agent-status working';
+      indicator.innerHTML = '<span class="agent-status-dot working"></span><span class="agent-status-text">Working...</span><span class="agent-status-timer" id="agent-timer">0s</span>';
+      if (this.agentStatusTimer) clearInterval(this.agentStatusTimer);
+      this.agentStatusTimer = setInterval(() => {
+        const el = document.getElementById('agent-timer');
+        if (el && this.agentStartTime) {
+          const secs = Math.floor((Date.now() - this.agentStartTime) / 1000);
+          el.textContent = secs < 60 ? secs + 's' : Math.floor(secs/60) + 'm ' + (secs%60) + 's';
+        }
+      }, 1000);
+    } else if (status === 'queued') {
+      indicator.className = 'agent-status queued';
+      indicator.innerHTML = '<span class="agent-status-dot queued"></span><span class="agent-status-text">Queued (' + (data?.queueLength || 1) + ' pending)</span>';
+    } else {
+      this.agentStartTime = null;
+      if (this.agentStatusTimer) { clearInterval(this.agentStatusTimer); this.agentStatusTimer = null; }
+      indicator.className = 'agent-status idle';
+      indicator.innerHTML = '<span class="agent-status-dot idle"></span><span class="agent-status-text">Ready</span>';
     }
   },
 
