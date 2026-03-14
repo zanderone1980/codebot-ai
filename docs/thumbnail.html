@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 1280px;
+    height: 720px;
+    background: #0a0a14;
+    font-family: 'Inter', -apple-system, sans-serif;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .bg-glow {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 35% 45%, rgba(47,107,255,0.12) 0%, transparent 60%),
+      radial-gradient(ellipse 40% 60% at 75% 50%, rgba(0,210,255,0.1) 0%, transparent 50%);
+  }
+
+  .layout {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    padding: 40px 60px;
+    gap: 40px;
+  }
+
+  /* ---- LEFT SIDE: Logo + info ---- */
+  .left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 28px;
+  }
+
+  .logo-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+  }
+
+  .logo-wrap svg {
+    width: 260px;
+    height: 260px;
+    filter: drop-shadow(0 0 30px rgba(47,107,255,0.3));
+  }
+
+  .tagline {
+    font-size: 28px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: -0.5px;
+  }
+
+  /* Platform chips */
+  .platforms {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .platform {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 10px 20px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .platform svg {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+  }
+
+  .platform .sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.35);
+    margin-left: -4px;
+  }
+
+  /* Install bar */
+  .cmd {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 18px;
+    color: #00d2ff;
+    background: rgba(0,210,255,0.06);
+    border: 1px solid rgba(0,210,255,0.18);
+    border-radius: 10px;
+    padding: 8px 20px;
+    margin-top: 4px;
+  }
+  .cmd .dollar { color: rgba(255,255,255,0.2); }
+
+  /* ---- RIGHT SIDE: Swarm diagram ---- */
+  .right {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .swarm-diagram {
+    position: relative;
+    width: 480px;
+    height: 480px;
+  }
+
+  .swarm-diagram svg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* Center swarm hub */
+  .swarm-hub {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2F6BFF, #00D2FF);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 50px rgba(47,107,255,0.4), 0 0 100px rgba(0,210,255,0.15);
+    z-index: 2;
+  }
+
+  .swarm-hub svg {
+    position: static;
+    width: 48px;
+    height: 48px;
+  }
+
+  /* Orbiting agent nodes */
+  .agent-node {
+    position: absolute;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    z-index: 2;
+    box-shadow: 0 0 25px rgba(0,0,0,0.4);
+  }
+
+  .agent-node .agent-icon {
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  .agent-node .agent-label {
+    font-size: 10px;
+    opacity: 0.8;
+    font-weight: 500;
+    margin-top: 2px;
+  }
+
+  /* Node positions — hexagon around center */
+  .node-gpt     { background: linear-gradient(135deg, #10a37f, #0d8c6c); top: 20px;  left: 50%; transform: translateX(-50%); }
+  .node-claude  { background: linear-gradient(135deg, #d97706, #b45309); top: 110px; left: 24px; }
+  .node-gemini  { background: linear-gradient(135deg, #4285f4, #1a73e8); top: 110px; right: 24px; }
+  .node-ollama  { background: linear-gradient(135deg, #6366f1, #4f46e5); bottom: 110px; left: 24px; }
+  .node-deepseek{ background: linear-gradient(135deg, #0ea5e9, #0284c7); bottom: 110px; right: 24px; }
+  .node-groq    { background: linear-gradient(135deg, #f97316, #ea580c); bottom: 20px; left: 50%; transform: translateX(-50%); }
+
+  /* Pulsing ring on hub */
+  .pulse-ring {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,210,255,0.4);
+    animation: pulse 2.5s ease-out infinite;
+    z-index: 1;
+  }
+  .pulse-ring:nth-child(2) { animation-delay: 0.8s; }
+  .pulse-ring:nth-child(3) { animation-delay: 1.6s; }
+
+  @keyframes pulse {
+    0%   { width: 100px; height: 100px; opacity: 0.6; }
+    100% { width: 240px; height: 240px; opacity: 0; }
+  }
+
+  /* Animated dots on connection lines */
+  @keyframes flowDot {
+    0%   { offset-distance: 0%; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { offset-distance: 100%; opacity: 0; }
+  }
+</style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <div class="layout">
+    <!-- LEFT: Logo + platforms -->
+    <div class="left">
+      <div class="logo-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="CodeBot logo">
+          <defs>
+            <linearGradient id="cb-grad" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#2F6BFF"/>
+              <stop offset="100%" stop-color="#00D2FF"/>
+            </linearGradient>
+          </defs>
+          <g>
+            <rect x="332" y="232" width="360" height="220" rx="72" fill="none" stroke="url(#cb-grad)" stroke-width="22"/>
+            <rect x="304" y="298" width="44" height="88" rx="18" fill="none" stroke="url(#cb-grad)" stroke-width="22"/>
+            <rect x="676" y="298" width="44" height="88" rx="18" fill="none" stroke="url(#cb-grad)" stroke-width="22"/>
+            <g fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M452 302 L520 342 L452 382"/>
+              <path d="M556 384 H612"/>
+            </g>
+          </g>
+          <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial" font-weight="700" font-size="132">
+            <text x="512" y="650" text-anchor="middle">
+              <tspan fill="#FFFFFF">Code</tspan><tspan fill="url(#cb-grad)">Bot</tspan>
+            </text>
+          </g>
+          <rect x="456" y="704" width="112" height="10" rx="5" fill="url(#cb-grad)" opacity="0.9"/>
+        </svg>
+      </div>
+
+      <div class="tagline">Autonomous AI Coding Agent</div>
+
+      <div class="platforms">
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="#CB3837"><path d="M0 7.334v8h6.666v1.332H12v-1.332h12v-8H0zm6.666 6.664H5.334v-4H3.999v4H1.335V8.667h5.331v5.331zm4 0h-2.666V8.667h2.666v5.331zm12 0h-2.666v-4h-1.334v4h-1.335v-4h-1.334v4h-2.666V8.667h9.335v5.331zM11.332 8.667h2.666v4h-1.333v-2.667h-1.333v2.667z"/></svg>
+          npm
+          <span class="sub">install -g</span>
+        </div>
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="#fff"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+          <span class="sub">open source</span>
+        </div>
+        <div class="platform">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M8 12h8M12 8v8"/></svg>
+          Any LLM
+          <span class="sub">local or cloud</span>
+        </div>
+      </div>
+
+      <div class="cmd"><span class="dollar">$ </span>npm i -g codebot-ai</div>
+    </div>
+
+    <!-- RIGHT: Swarm diagram -->
+    <div class="right">
+      <div class="swarm-diagram">
+        <!-- Connection lines from agents to center hub -->
+        <svg viewBox="0 0 480 480" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Lines to center (240,240) -->
+          <line x1="240" y1="56"  x2="240" y2="190" stroke="rgba(16,163,127,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+          <line x1="60"  y1="146" x2="195" y2="215" stroke="rgba(217,119,6,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+          <line x1="420" y1="146" x2="285" y2="215" stroke="rgba(66,133,244,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+          <line x1="60"  y1="334" x2="195" y2="265" stroke="rgba(99,102,241,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+          <line x1="420" y1="334" x2="285" y2="265" stroke="rgba(14,165,233,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+          <line x1="240" y1="424" x2="240" y2="290" stroke="rgba(249,115,22,0.35)" stroke-width="2" stroke-dasharray="5 4"/>
+
+          <!-- Animated flowing dots -->
+          <circle r="4" fill="#10a37f">
+            <animateMotion dur="2s" repeatCount="indefinite" path="M240,56 L240,190"/>
+          </circle>
+          <circle r="4" fill="#d97706">
+            <animateMotion dur="2.4s" repeatCount="indefinite" path="M60,146 L195,215"/>
+          </circle>
+          <circle r="4" fill="#4285f4">
+            <animateMotion dur="2.2s" repeatCount="indefinite" path="M420,146 L285,215"/>
+          </circle>
+          <circle r="4" fill="#6366f1">
+            <animateMotion dur="2.6s" repeatCount="indefinite" path="M60,334 L195,265"/>
+          </circle>
+          <circle r="4" fill="#0ea5e9">
+            <animateMotion dur="2.1s" repeatCount="indefinite" path="M420,334 L285,265"/>
+          </circle>
+          <circle r="4" fill="#f97316">
+            <animateMotion dur="2.3s" repeatCount="indefinite" path="M240,424 L240,290"/>
+          </circle>
+        </svg>
+
+        <!-- Pulse rings -->
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+        <div class="pulse-ring"></div>
+
+        <!-- Center hub — swarm icon -->
+        <div class="swarm-hub">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="3"/>
+            <circle cx="5" cy="6" r="2"/>
+            <circle cx="19" cy="6" r="2"/>
+            <circle cx="5" cy="18" r="2"/>
+            <circle cx="19" cy="18" r="2"/>
+            <line x1="9.5" y1="10.5" x2="6.5" y2="7.5"/>
+            <line x1="14.5" y1="10.5" x2="17.5" y2="7.5"/>
+            <line x1="9.5" y1="13.5" x2="6.5" y2="16.5"/>
+            <line x1="14.5" y1="13.5" x2="17.5" y2="16.5"/>
+          </svg>
+        </div>
+
+        <!-- Agent nodes -->
+        <div class="agent-node node-gpt">
+          <span class="agent-icon">🧠</span>
+          <span class="agent-label">GPT-4o</span>
+        </div>
+        <div class="agent-node node-claude">
+          <span class="agent-icon">⚡</span>
+          <span class="agent-label">Claude</span>
+        </div>
+        <div class="agent-node node-gemini">
+          <span class="agent-icon">✦</span>
+          <span class="agent-label">Gemini</span>
+        </div>
+        <div class="agent-node node-ollama">
+          <span class="agent-icon">🦙</span>
+          <span class="agent-label">Ollama</span>
+        </div>
+        <div class="agent-node node-deepseek">
+          <span class="agent-icon">🔍</span>
+          <span class="agent-label">DeepSeek</span>
+        </div>
+        <div class="agent-node node-groq">
+          <span class="agent-icon">⚡</span>
+          <span class="agent-label">Groq</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
