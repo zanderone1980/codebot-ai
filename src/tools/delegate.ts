@@ -2,16 +2,14 @@
  * Delegate Tool for CodeBot
  *
  * Allows the parent agent to spawn child agents for parallel work.
- * Supports both legacy (simple parallel) and swarm (multi-LLM collaboration) modes.
  */
 
 import { Tool } from '../types';
 import { Orchestrator, AgentTask, AgentResult, generateTaskId } from '../orchestrator';
-import { SwarmOrchestrator, SwarmStrategyType, SwarmTaskContext, AgentContribution } from '../swarm';
 
 export class DelegateTool implements Tool {
   name = 'delegate';
-  description = 'Spawn child agent(s) to handle subtasks. Supports two modes: "legacy" (simple parallel delegation) and "swarm" (multi-LLM collaboration with strategies like debate, mixture-of-agents, pipeline, fan-out, or generator-critic).';
+  description = 'Spawn child agent(s) to handle subtasks.';
   permission: Tool['permission'] = 'prompt';
   parameters = {
     type: 'object',
@@ -37,75 +35,18 @@ export class DelegateTool implements Tool {
         },
         description: 'Multiple tasks to run in parallel (use for batch delegation)',
       },
-      mode: {
-        type: 'string',
-        description: 'Orchestration mode: "legacy" (simple parallel) or "swarm" (multi-LLM collaboration). Default: legacy.',
-      },
-      strategy: {
-        type: 'string',
-        description: 'Swarm strategy: debate, moa, pipeline, fan-out, generator-critic, auto. Only used in swarm mode. Default: auto.',
-      },
     },
   };
 
   private orchestrator: Orchestrator | null = null;
-  private swarmOrchestrator: SwarmOrchestrator | null = null;
 
   /** Set the legacy orchestrator instance (injected by Agent) */
   setOrchestrator(orchestrator: Orchestrator): void {
     this.orchestrator = orchestrator;
   }
 
-  /** Set the swarm orchestrator instance (injected by Agent) */
-  setSwarmOrchestrator(swarm: SwarmOrchestrator): void {
-    this.swarmOrchestrator = swarm;
-  }
-
   async execute(args: Record<string, unknown>): Promise<string> {
-    const mode = (args.mode as string) || 'legacy';
-
-    // ── Swarm Mode ──
-    if (mode === 'swarm') {
-      if (!this.swarmOrchestrator) {
-        return 'Error: Swarm orchestration is not enabled. Configure providers in swarm config.';
-      }
-
-      const task = args.task as string;
-      if (!task) {
-        return 'Error: Provide a "task" string for swarm mode.';
-      }
-
-      const strategy = (args.strategy as SwarmStrategyType) || 'auto';
-      const files = args.files as string[] | undefined;
-
-      const contributions: AgentContribution[] = [];
-      const events: string[] = [];
-
-      try {
-        for await (const event of this.swarmOrchestrator.execute(task, {
-          files,
-          preferredStrategy: strategy,
-        })) {
-          if (event.type === 'agent_complete' && event.data) {
-            const data = event.data as AgentContribution;
-            contributions.push(data);
-          }
-          if (event.type === 'strategy_selected') {
-            events.push('Strategy: ' + (event.strategy || 'auto'));
-          }
-          if (event.type === 'swarm_complete') {
-            events.push('Swarm complete');
-          }
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return 'Swarm error: ' + msg;
-      }
-
-      return this.formatSwarmResults(contributions, events);
-    }
-
-    // ── Legacy Mode ──
+    // ── Delegation ──
     if (!this.orchestrator) {
       return 'Error: Multi-agent orchestration is not enabled. Start with --router or configure orchestration in policy.';
     }
@@ -177,31 +118,4 @@ export class DelegateTool implements Tool {
     return output;
   }
 
-  private formatSwarmResults(contributions: AgentContribution[], events: string[]): string {
-    const lines: string[] = [];
-    lines.push('## Swarm Results (' + contributions.length + ' agents)\n');
-
-    if (events.length > 0) {
-      lines.push(events.join(' | ') + '\n');
-    }
-
-    for (const c of contributions) {
-      lines.push('### [' + c.role.toUpperCase() + '] ' + c.model);
-      lines.push('Round: ' + c.round + ' | Duration: ' + c.durationMs + 'ms');
-
-      if (c.toolCalls.length > 0) {
-        lines.push('Tools: ' + c.toolCalls.join(', '));
-      }
-      if (c.filesModified.length > 0) {
-        lines.push('Files: ' + c.filesModified.join(', '));
-      }
-      if (c.content) {
-        const truncated = c.content.length > 500 ? c.content.slice(0, 500) + '...' : c.content;
-        lines.push('Output: ' + truncated);
-      }
-      lines.push('');
-    }
-
-    return lines.join('\n');
-  }
 }

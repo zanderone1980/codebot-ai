@@ -61,7 +61,6 @@ describe('Dashboard Frontend — index.html structure', () => {
     assert.ok(html.includes('data-panel="sessions"'));
     assert.ok(html.includes('data-panel="terminal"'));
     assert.ok(html.includes('data-panel="tools"'));
-    assert.ok(html.includes('data-panel="swarm"'));
   });
 
   it('has panel sections', () => {
@@ -71,7 +70,6 @@ describe('Dashboard Frontend — index.html structure', () => {
     assert.ok(html.includes('panel-sessions'));
     assert.ok(html.includes('panel-terminal'));
     assert.ok(html.includes('panel-tools'));
-    assert.ok(html.includes('panel-swarm'));
   });
 });
 

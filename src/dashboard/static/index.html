@@ -84,11 +84,6 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
             </button>
           </div>
-          <!-- Big Swarm Button -->
-          <button id="swarm-launch-btn" class="swarm-launch-btn" onclick="window.location.hash='swarm'">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
-            <span>Launch Swarm</span>
-          </button>
         </div>
 
         <!-- Sessions Panel -->
@@ -223,36 +218,6 @@
           </div>
         </div>
 
-
-        <!-- Swarm Panel -->
-        <div id="panel-swarm" class="panel">
-          <div class="panel-title-row">
-            <h2>Swarm</h2>
-            <div id="swarm-status" class="panel-stats"></div>
-          </div>
-          <div id="swarm-setup-hint" class="swarm-hint" style="display:none">
-            <strong>No providers detected.</strong> Set API keys as environment variables and restart:
-            <code>export OPENAI_API_KEY=sk-...</code>
-            <code>export ANTHROPIC_API_KEY=sk-ant-...</code>
-            <span class="hint-muted">Supports: Anthropic, OpenAI, Gemini, DeepSeek, Groq, Mistral, xAI</span>
-          </div>
-          <div class="swarm-section">
-            <h3 class="swarm-heading">Providers <span class="hint-muted">(click to select)</span></h3>
-            <div id="swarm-providers" class="swarm-grid"></div>
-          </div>
-          <div class="swarm-section">
-            <h3 class="swarm-heading">Strategy</h3>
-            <div id="swarm-strategies" class="swarm-grid"></div>
-          </div>
-          <div class="swarm-input-row">
-            <input type="text" id="swarm-task" class="chat-input"
-                   placeholder="Describe the task for the swarm..." autocomplete="off" />
-            <button id="swarm-run" class="btn-send" disabled>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            </button>
-          </div>
-          <div id="swarm-output" class="cmd-output"></div>
-        </div>
 
 
 
@@ -535,10 +500,6 @@
       <button class="nav-pill" data-panel="tools">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
         <span>Tools</span>
-      </button>
-      <button class="nav-pill" data-panel="swarm">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
-        <span>Swarm</span>
       </button>
       <button class="nav-pill" data-panel="codeagi">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>

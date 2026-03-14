@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert';
-import { Orchestrator, AgentTask, AgentResult, generateTaskId, OrchestratorConfig, createOrchestrator } from './orchestrator';
+import { Orchestrator, AgentTask, AgentResult, generateTaskId, OrchestratorConfig } from './orchestrator';
 import { MetricsCollector } from './metrics';
 import { PolicyEnforcer } from './policy';
 
@@ -74,29 +74,6 @@ describe('Orchestrator — generateTaskId uniqueness', () => {
   });
 });
 
-describe('Orchestrator — createOrchestrator factory', () => {
-  it('creates legacy orchestrator by default', () => {
-    const orch = createOrchestrator(new PolicyEnforcer(), new MetricsCollector('t'));
-    assert.ok(orch instanceof Orchestrator);
-  });
-
-  it('creates legacy orchestrator when mode is legacy', () => {
-    const orch = createOrchestrator(new PolicyEnforcer(), new MetricsCollector('t'), 'legacy');
-    assert.ok(orch instanceof Orchestrator);
-  });
-
-  it('creates swarm orchestrator when mode is swarm', () => {
-    const orch = createOrchestrator(new PolicyEnforcer(), new MetricsCollector('t'), 'swarm');
-    // SwarmOrchestrator is not instanceof Orchestrator
-    assert.ok(orch !== null);
-    assert.ok('execute' in orch);
-  });
-
-  it('passes swarm config when creating swarm orchestrator', () => {
-    const orch = createOrchestrator(new PolicyEnforcer(), new MetricsCollector('t'), 'swarm', { maxTotalAgents: 10 });
-    assert.ok(orch !== null);
-  });
-});
 
 describe('Orchestrator — config immutability', () => {
   it('getConfig returns a copy that cannot mutate internal state', () => {

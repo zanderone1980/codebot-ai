@@ -54,8 +54,6 @@
     "sarif",
     "policy-engine",
     "mcp",
-    "swarm",
-    "multi-agent",
     "multi-llm"
   ],
   "author": "Ascendral",

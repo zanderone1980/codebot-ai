@@ -293,26 +293,3 @@ export function generateTaskId(): string {
   return `task_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 }
 
-
-// -- Swarm Integration --
-
-import { SwarmOrchestrator, SwarmConfig } from './swarm';
-
-/**
- * Create either a legacy Orchestrator or a SwarmOrchestrator based on mode.
- * The swarm mode is opt-in: enabled by --swarm flag or policy config.
- */
-export function createOrchestrator(
-  policyEnforcer: PolicyEnforcer,
-  metrics: MetricsCollector,
-  mode: 'legacy' | 'swarm' = 'legacy',
-  swarmConfig?: Partial<SwarmConfig>,
-  depth = 0,
-): Orchestrator | SwarmOrchestrator {
-  if (mode === 'swarm') {
-    return new SwarmOrchestrator(policyEnforcer, metrics, swarmConfig || {}, depth);
-  }
-  return new Orchestrator(policyEnforcer, metrics, undefined, depth);
-}
-
-export { SwarmOrchestrator, SwarmConfig };
