@@ -20,6 +20,7 @@ import { DashboardServer } from './dashboard/server';
 import { registerApiRoutes } from './dashboard/api';
 import { registerCommandRoutes } from './dashboard/command-api';
 import { registerCodeAGIRoutes } from './dashboard/codeagi-api';
+import { registerModelRoutes } from './dashboard/models-api';
 import { VERSION } from './index';
 import { SolveCommand } from './solve';
 
@@ -311,6 +312,7 @@ export async function main() {
       registerApiRoutes(dashServer, os.homedir());
       registerCommandRoutes(dashServer, agent);
       registerCodeAGIRoutes(dashServer);
+      registerModelRoutes(dashServer);
       const dashInfo = await dashServer.start();
       console.log(c(`   Dashboard: ${dashInfo.url}`, 'cyan'));
       // Write PID file so stale processes can be identified
