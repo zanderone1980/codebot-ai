@@ -223,6 +223,7 @@ const App = {
       case 'memory': this.initMemory(); break;
       case 'swarm': this.initSwarm(); break;
       case 'risk': this.loadRisk(); break;
+      case 'codeagi': this.initPanelCodeagi(); break;
     }
   },
 
