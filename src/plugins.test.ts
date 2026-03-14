@@ -45,9 +45,11 @@ describe('loadPlugins', () => {
 
   it('loads valid plugin with correct manifest', () => {
     const pluginCode = 'module.exports = { name: "valid_plugin", description: "A valid plugin", permission: "prompt", parameters: { type: "object", properties: {} }, execute: async () => "result" };';
-    const hash = crypto.createHash('sha256').update(pluginCode).digest('hex');
+    const pluginPath = path.join(pluginsDir, 'valid.js');
+    fs.writeFileSync(pluginPath, pluginCode);
+    // Compute hash from the file on disk (Buffer) to match how loadPlugins does it
+    const hash = crypto.createHash('sha256').update(fs.readFileSync(pluginPath)).digest('hex');
     const manifest = { name: "valid_plugin", version: "1.0.0", hash: "sha256:" + hash };
-    fs.writeFileSync(path.join(pluginsDir, 'valid.js'), pluginCode);
     fs.writeFileSync(path.join(pluginsDir, 'plugin.json'), JSON.stringify(manifest));
     const plugins = loadPlugins(tmpDir);
     const found = plugins.find(p => p.name === 'valid_plugin');
