@@ -7,7 +7,7 @@
   <meta http-equiv="pragma" content="no-cache">
   <meta http-equiv="expires" content="0">
   <title>CodeBot AI — v2</title>
-  <link rel="stylesheet" href="style.css?v=32">
+  <link rel="stylesheet" href="style.css?v=33">
   <link rel="icon" href="favicon.svg?v=20" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#00d4ff">
@@ -256,6 +256,69 @@
 
 
 
+
+        <!-- CodeAGI Panel -->
+        <div id="panel-codeagi" class="panel">
+          <div class="panel-title-row">
+            <h2>CodeAGI</h2>
+            <div id="codeagi-status" class="panel-stats"></div>
+          </div>
+          <div class="codeagi-section">
+            <h3>Create Mission</h3>
+            <div class="codeagi-create-row">
+              <input type="text" id="codeagi-mission-input" class="chat-input" placeholder="Describe the mission goal..." autocomplete="off" />
+              <button id="codeagi-create-btn" class="btn-send">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="codeagi-task-creator" class="codeagi-section" style="display:none">
+            <h3>Add Task <span id="codeagi-task-mission-id" class="hint-muted"></span></h3>
+            <input type="text" id="codeagi-task-desc" class="chat-input" placeholder="Task description..." />
+            <div class="codeagi-task-fields">
+              <select id="codeagi-task-kind"><option value="">Action type...</option><option value="write_file">Write File</option><option value="read_file">Read File</option><option value="search_files">Search Files</option><option value="run_command">Run Command</option><option value="apply_patch">Apply Patch</option><option value="list_dir">List Directory</option><option value="analyze">Analyze</option></select>
+              <input type="text" id="codeagi-task-path" class="chat-input" placeholder="File path (optional)" />
+              <input type="text" id="codeagi-task-cmd" class="chat-input" placeholder="Command (optional)" />
+            </div>
+            <button id="codeagi-add-task-btn" class="btn-primary">Add Task</button>
+          </div>
+          <div class="codeagi-section">
+            <div class="codeagi-run-row">
+              <button id="codeagi-run-btn" class="btn-primary codeagi-run-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Cycle</button>
+              <button id="codeagi-refresh-btn" class="btn-secondary">Refresh</button>
+            </div>
+          </div>
+          <div class="codeagi-section">
+            <h3>Missions</h3>
+            <div id="codeagi-missions" class="codeagi-missions"></div>
+          </div>
+          <div id="codeagi-cycle-output" class="codeagi-section" style="display:none">
+            <h3>Cycle Output</h3>
+            <div id="codeagi-cycle-steps" class="codeagi-cycle-steps"></div>
+          </div>
+          <div class="codeagi-tabs">
+            <button class="codeagi-tab active" data-tab="workspace">Workspace</button>
+            <button class="codeagi-tab" data-tab="memory">Memory</button>
+            <button class="codeagi-tab" data-tab="traces">Traces</button>
+          </div>
+          <div id="codeagi-tab-workspace" class="codeagi-tab-content active">
+            <div id="codeagi-workspace-path" class="codeagi-breadcrumb">/</div>
+            <div id="codeagi-workspace-files" class="codeagi-file-list"></div>
+            <pre id="codeagi-file-preview" class="codeagi-file-preview" style="display:none"></pre>
+          </div>
+          <div id="codeagi-tab-memory" class="codeagi-tab-content" style="display:none">
+            <div class="codeagi-memory-tabs">
+              <button class="codeagi-mem-tab active" data-mem="reflections">Reflections</button>
+              <button class="codeagi-mem-tab" data-mem="semantic">Semantic</button>
+              <button class="codeagi-mem-tab" data-mem="procedures">Procedures</button>
+            </div>
+            <div id="codeagi-memory-content" class="codeagi-memory-content"></div>
+          </div>
+          <div id="codeagi-tab-traces" class="codeagi-tab-content" style="display:none">
+            <div id="codeagi-traces" class="codeagi-traces"></div>
+          </div>
+        </div>
+
         <!-- Risk Panel -->
         <div id="panel-risk" class="panel">
           <div class="panel-title-row">
@@ -389,6 +452,10 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="5" y2="17"/><line x1="12" y1="7" x2="19" y2="17"/><line x1="7" y1="19" x2="17" y2="19"/></svg>
         <span>Swarm</span>
       </button>
+      <button class="nav-pill" data-panel="codeagi">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        <span>CodeAGI</span>
+      </button>
       <button class="nav-pill" data-panel="risk">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         <span>Risk</span>
@@ -400,7 +467,7 @@
     </nav>
   </div>
 
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
   <script>
   // Kill any leftover service workers — they cause more problems than they solve
   if ('serviceWorker' in navigator) {

@@ -1760,6 +1760,257 @@ const App = {
       console.warn('Risk history error:', err);
     }
   },
+
+  initPanelCodeagi() {
+    this.codeagiSelectedMission = null;
+    this.codeagiCurrentMemTab = 'reflections';
+    this.loadCodeAGIMissions();
+    this.loadCodeAGIWorkspace();
+    this.setupCodeAGIListeners();
+  },
+
+  setupCodeAGIListeners() {
+    var self = this;
+    var createBtn = document.getElementById('codeagi-create-btn');
+    var missionInput = document.getElementById('codeagi-mission-input');
+    if (createBtn) {
+      createBtn.onclick = function() { self.createCodeAGIMission(); };
+      missionInput.addEventListener('keydown', function(e) { if (e.key === 'Enter') self.createCodeAGIMission(); });
+    }
+    var addTaskBtn = document.getElementById('codeagi-add-task-btn');
+    if (addTaskBtn) addTaskBtn.onclick = function() { self.addCodeAGITask(); };
+    var runBtn = document.getElementById('codeagi-run-btn');
+    if (runBtn) runBtn.onclick = function() { self.runCodeAGICycle(); };
+    var refreshBtn = document.getElementById('codeagi-refresh-btn');
+    if (refreshBtn) refreshBtn.onclick = function() { self.loadCodeAGIMissions(); self.loadCodeAGIWorkspace(); };
+    document.querySelectorAll('.codeagi-tab').forEach(function(tab) {
+      tab.onclick = function() {
+        document.querySelectorAll('.codeagi-tab').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        document.querySelectorAll('.codeagi-tab-content').forEach(function(c) { c.style.display = 'none'; c.classList.remove('active'); });
+        var target = document.getElementById('codeagi-tab-' + tab.dataset.tab);
+        if (target) { target.style.display = 'block'; target.classList.add('active'); }
+        if (tab.dataset.tab === 'memory') self.loadCodeAGIMemory(self.codeagiCurrentMemTab);
+        if (tab.dataset.tab === 'traces') self.loadCodeAGITraces();
+      };
+    });
+    document.querySelectorAll('.codeagi-mem-tab').forEach(function(tab) {
+      tab.onclick = function() {
+        document.querySelectorAll('.codeagi-mem-tab').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        self.codeagiCurrentMemTab = tab.dataset.mem;
+        self.loadCodeAGIMemory(tab.dataset.mem);
+      };
+    });
+  },
+
+  async createCodeAGIMission() {
+    var input = document.getElementById('codeagi-mission-input');
+    var desc = input.value.trim();
+    if (!desc) return;
+    input.value = '';
+    try {
+      var res = await apiFetch('/api/codeagi/missions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ description: desc }) });
+      var data = await res.json();
+      this.loadCodeAGIMissions();
+      if (data && data.id) this.codeagiSelectedMission = data.id;
+    } catch (err) { console.error('Failed to create mission:', err); }
+  },
+
+  async addCodeAGITask() {
+    if (!this.codeagiSelectedMission) return;
+    var desc = document.getElementById('codeagi-task-desc').value.trim();
+    if (!desc) return;
+    var body = { mission_id: this.codeagiSelectedMission, description: desc, action_kind: document.getElementById('codeagi-task-kind').value || undefined, path: document.getElementById('codeagi-task-path').value || undefined, command: document.getElementById('codeagi-task-cmd').value || undefined };
+    try {
+      await apiFetch('/api/codeagi/tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      document.getElementById('codeagi-task-desc').value = '';
+      document.getElementById('codeagi-task-path').value = '';
+      document.getElementById('codeagi-task-cmd').value = '';
+      this.loadCodeAGIMissions();
+    } catch (err) { console.error('Failed to create task:', err); }
+  },
+
+  async loadCodeAGIMissions() {
+    var container = document.getElementById('codeagi-missions');
+    if (!container) return;
+    try {
+      var res = await apiFetch('/api/codeagi/missions');
+      var data = await res.json();
+      var missions = Array.isArray(data.missions) ? data.missions : [];
+      var tasks = Array.isArray(data.tasks) ? data.tasks : [];
+      var self = this;
+      if (missions.length === 0) { container.innerHTML = '<div class="hint-muted" style="padding:1rem;text-align:center">No missions yet. Create one above!</div>'; return; }
+      missions.sort(function(a, b) { if (a.status === 'active' && b.status !== 'active') return -1; if (b.status === 'active' && a.status !== 'active') return 1; return (b.created_at || '').localeCompare(a.created_at || ''); });
+      container.innerHTML = missions.map(function(m) {
+        var mTasks = tasks.filter(function(t) { return t.mission_id === m.id; });
+        var selected = self.codeagiSelectedMission === m.id ? ' selected' : '';
+        return '<div class="codeagi-mission-card' + selected + '" data-mission-id="' + m.id + '">' +
+          '<div class="codeagi-mission-header"><span class="codeagi-mission-id">' + m.id + '</span><span class="codeagi-mission-status ' + m.status + '">' + m.status + '</span></div>' +
+          '<div class="codeagi-mission-desc">' + self.escapeHtml(m.description) + '</div>' +
+          (mTasks.length > 0 ? '<div class="codeagi-mission-tasks">' + mTasks.map(function(t) {
+            return '<div class="codeagi-task-item"><span class="codeagi-task-dot ' + t.status + '"></span><span>' + self.escapeHtml(t.description) + '</span>' + (t.action_kind ? '<span class="hint-muted">(' + t.action_kind + ')</span>' : '') + '</div>';
+          }).join('') + '</div>' : '') + '</div>';
+      }).join('');
+      container.querySelectorAll('.codeagi-mission-card').forEach(function(card) {
+        card.onclick = function() {
+          self.codeagiSelectedMission = card.dataset.missionId;
+          container.querySelectorAll('.codeagi-mission-card').forEach(function(c) { c.classList.remove('selected'); });
+          card.classList.add('selected');
+          var creator = document.getElementById('codeagi-task-creator');
+          var label = document.getElementById('codeagi-task-mission-id');
+          if (creator) creator.style.display = 'block';
+          if (label) label.textContent = '(' + card.dataset.missionId + ')';
+        };
+      });
+      var statusEl = document.getElementById('codeagi-status');
+      if (statusEl) {
+        var active = missions.filter(function(m) { return m.status === 'active'; }).length;
+        var completed = missions.filter(function(m) { return m.status === 'completed'; }).length;
+        statusEl.textContent = active + ' active \u00B7 ' + completed + ' completed \u00B7 ' + tasks.length + ' tasks';
+      }
+    } catch (err) { container.innerHTML = '<div class="hint-muted" style="padding:1rem">CodeAGI not available: ' + err.message + '</div>'; }
+  },
+
+  async runCodeAGICycle() {
+    var runBtn = document.getElementById('codeagi-run-btn');
+    var outputSection = document.getElementById('codeagi-cycle-output');
+    var stepsEl = document.getElementById('codeagi-cycle-steps');
+    if (!outputSection || !stepsEl) return;
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg> Running...';
+    outputSection.style.display = 'block';
+    stepsEl.innerHTML = '';
+    var self = this;
+    try {
+      var res = await apiFetch('/api/codeagi/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_cycles: 1 }) });
+      var reader = res.body.getReader();
+      var decoder = new TextDecoder();
+      var buffer = '';
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        var lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (var i = 0; i < lines.length; i++) {
+          if (!lines[i].startsWith('data: ')) continue;
+          var payload = lines[i].slice(6);
+          if (payload === '[DONE]') break;
+          try { self.appendCodeAGIStep(stepsEl, JSON.parse(payload)); } catch(e) {}
+        }
+      }
+    } catch (err) { self.appendCodeAGIStep(stepsEl, { type: 'error', text: err.message }); }
+    finally {
+      runBtn.disabled = false;
+      runBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Cycle';
+      self.loadCodeAGIMissions();
+      self.loadCodeAGIWorkspace();
+    }
+  },
+
+  appendCodeAGIStep(container, ev) {
+    var step = document.createElement('div');
+    if (ev.type === 'cycle_data' && ev.data) {
+      var d = ev.data;
+      if (d.plan) { var s = document.createElement('div'); s.className = 'codeagi-step plan'; s.innerHTML = '<div class="codeagi-step-label">Plan</div><div>' + this.escapeHtml(JSON.stringify(d.plan.steps || d.plan, null, 1).substring(0, 300)) + '</div>'; container.appendChild(s); }
+      if (d.verification) { var s = document.createElement('div'); s.className = 'codeagi-step verify'; s.innerHTML = '<div class="codeagi-step-label">Verify</div><div>' + this.escapeHtml(JSON.stringify(d.verification).substring(0, 200)) + '</div>'; container.appendChild(s); }
+      if (d.critique) { var s = document.createElement('div'); s.className = 'codeagi-step critique'; s.innerHTML = '<div class="codeagi-step-label">Critique</div><div>' + this.escapeHtml(JSON.stringify(d.critique).substring(0, 200)) + '</div>'; container.appendChild(s); }
+      if (d.action_outcome) { var s = document.createElement('div'); s.className = 'codeagi-step execute'; s.innerHTML = '<div class="codeagi-step-label">Execute</div><div>' + this.escapeHtml(d.action_outcome.summary || JSON.stringify(d.action_outcome).substring(0, 200)) + '</div>'; container.appendChild(s); }
+      if (d.reflection) { var s = document.createElement('div'); s.className = 'codeagi-step reflect'; s.innerHTML = '<div class="codeagi-step-label">Reflect</div><div>' + this.escapeHtml(d.reflection.summary || JSON.stringify(d.reflection).substring(0, 200)) + '</div>'; container.appendChild(s); }
+      if (d.status === 'idle' || (d.cycle_trace && d.cycle_trace.stop_reason)) { var s = document.createElement('div'); s.className = 'codeagi-step complete'; s.innerHTML = '<div class="codeagi-step-label">Done</div><div>' + this.escapeHtml(d.cycle_trace ? d.cycle_trace.stop_reason : d.status) + '</div>'; container.appendChild(s); }
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+    if (ev.type === 'text' || ev.type === 'log') { step.className = 'codeagi-step'; step.textContent = ev.text || ''; }
+    else if (ev.type === 'status') { step.className = 'codeagi-step'; step.innerHTML = '<div class="codeagi-step-label">Status</div><div>' + this.escapeHtml(ev.text || '') + '</div>'; }
+    else if (ev.type === 'complete') { step.className = 'codeagi-step complete'; step.innerHTML = '<div class="codeagi-step-label">Complete</div><div>' + this.escapeHtml(ev.text || '') + '</div>'; }
+    else if (ev.type === 'error') { step.className = 'codeagi-step error'; step.innerHTML = '<div class="codeagi-step-label">Error</div><div>' + this.escapeHtml(ev.text || '') + '</div>'; }
+    else { step.className = 'codeagi-step'; step.textContent = JSON.stringify(ev); }
+    container.appendChild(step);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  async loadCodeAGIWorkspace(subdir) {
+    var filesEl = document.getElementById('codeagi-workspace-files');
+    var breadcrumb = document.getElementById('codeagi-workspace-path');
+    var preview = document.getElementById('codeagi-file-preview');
+    if (!filesEl) return;
+    if (preview) preview.style.display = 'none';
+    var p = subdir || '';
+    if (breadcrumb) breadcrumb.textContent = '/' + p;
+    try {
+      var url = '/api/codeagi/workspace' + (p ? '?path=' + encodeURIComponent(p) : '');
+      var res = await apiFetch(url);
+      var data = await res.json();
+      var files = data.files || [];
+      var self = this;
+      if (files.length === 0) { filesEl.innerHTML = '<div class="hint-muted" style="padding:0.5rem">Empty</div>'; return; }
+      files.sort(function(a, b) { if (a.type === 'directory' && b.type !== 'directory') return -1; if (b.type === 'directory' && a.type !== 'directory') return 1; return a.name.localeCompare(b.name); });
+      var entries = '';
+      if (p) { var parent = p.split('/').slice(0, -1).join('/'); entries += '<div class="codeagi-file-item" data-action="dir" data-path="' + parent + '"><span class="codeagi-file-icon">&#11014;</span><span>..</span></div>'; }
+      entries += files.map(function(f) {
+        var icon = f.type === 'directory' ? '&#128193;' : '&#128196;';
+        var fullPath = p ? p + '/' + f.name : f.name;
+        var size = f.size != null ? self.formatFileSize(f.size) : '';
+        return '<div class="codeagi-file-item" data-action="' + (f.type === 'directory' ? 'dir' : 'file') + '" data-path="' + fullPath + '"><span class="codeagi-file-icon">' + icon + '</span><span>' + f.name + '</span>' + (size ? '<span class="codeagi-file-size">' + size + '</span>' : '') + '</div>';
+      }).join('');
+      filesEl.innerHTML = entries;
+      filesEl.querySelectorAll('.codeagi-file-item').forEach(function(item) {
+        item.onclick = function() { item.dataset.action === 'dir' ? self.loadCodeAGIWorkspace(item.dataset.path) : self.previewCodeAGIFile(item.dataset.path); };
+      });
+    } catch (err) { filesEl.innerHTML = '<div class="hint-muted">Workspace not available</div>'; }
+  },
+
+  async previewCodeAGIFile(filePath) {
+    var preview = document.getElementById('codeagi-file-preview');
+    if (!preview) return;
+    try {
+      var res = await apiFetch('/api/codeagi/workspace/file?path=' + encodeURIComponent(filePath));
+      var data = await res.json();
+      preview.textContent = data.error ? 'Error: ' + data.error : (data.content || '(empty)');
+      preview.style.display = 'block';
+    } catch (err) { preview.textContent = 'Failed to load'; preview.style.display = 'block'; }
+  },
+
+  async loadCodeAGIMemory(type) {
+    var container = document.getElementById('codeagi-memory-content');
+    if (!container) return;
+    try {
+      var res = await apiFetch('/api/codeagi/memory/' + type);
+      var items = await res.json();
+      if (!Array.isArray(items) || items.length === 0) { container.innerHTML = '<div class="hint-muted" style="padding:1rem;text-align:center">No ' + type + ' yet</div>'; return; }
+      items = items.slice().reverse().slice(0, 20);
+      if (type === 'reflections') {
+        container.innerHTML = items.map(function(r) { return '<div class="codeagi-memory-item"><div class="codeagi-memory-item-title">' + (r.summary || r.next_action || 'Reflection') + '</div>' + (r.lessons && r.lessons.length ? '<div class="codeagi-memory-item-body">Lessons: ' + r.lessons.join(', ') + '</div>' : '') + '<div class="codeagi-memory-item-meta">' + (r.mission_id || '') + ' \u00B7 ' + (r.created_at || '') + '</div></div>'; }).join('');
+      } else if (type === 'semantic') {
+        container.innerHTML = items.map(function(f) { return '<div class="codeagi-memory-item"><div class="codeagi-memory-item-title">' + (f.content || f.fact || JSON.stringify(f).substring(0, 100)) + '</div>' + (f.tags ? '<div class="codeagi-memory-item-body">Tags: ' + (Array.isArray(f.tags) ? f.tags.join(', ') : f.tags) + '</div>' : '') + '<div class="codeagi-memory-item-meta">Confidence: ' + (f.confidence || '?') + '</div></div>'; }).join('');
+      } else if (type === 'procedures') {
+        container.innerHTML = items.map(function(p) { return '<div class="codeagi-memory-item"><div class="codeagi-memory-item-title">' + (p.title || 'Procedure') + '</div><div class="codeagi-memory-item-body">Trigger: ' + (p.trigger || '?') + '</div>' + (p.steps ? '<div class="codeagi-memory-item-body">' + p.steps.join(' \u2192 ') + '</div>' : '') + '<div class="codeagi-memory-item-meta">Uses: ' + (p.use_count || 0) + '</div></div>'; }).join('');
+      }
+    } catch (err) { container.innerHTML = '<div class="hint-muted">Failed to load: ' + err.message + '</div>'; }
+  },
+
+  async loadCodeAGITraces() {
+    var container = document.getElementById('codeagi-traces');
+    if (!container) return;
+    try {
+      var res = await apiFetch('/api/codeagi/traces');
+      var traces = await res.json();
+      if (!Array.isArray(traces) || traces.length === 0) { container.innerHTML = '<div class="hint-muted" style="padding:1rem;text-align:center">No traces yet</div>'; return; }
+      traces = traces.slice().reverse().slice(0, 20);
+      container.innerHTML = traces.map(function(t) {
+        var steps = t.step_count || (t.steps ? t.steps.length : 0);
+        return '<div class="codeagi-trace-card"><div class="codeagi-trace-header"><span>' + (t.mission_id || '?') + '</span><span class="hint-muted">' + steps + ' steps \u00B7 ' + (t.stop_reason || '?') + '</span></div>' +
+          (t.steps ? '<div class="codeagi-trace-steps">' + t.steps.map(function(s) { var c = s.action_outcome && s.action_outcome.ok ? '#00ff41' : '#ff3c3c'; return '<div class="codeagi-trace-step-dot" style="background:' + c + '"></div>'; }).join('') + '</div>' : '') + '</div>';
+      }).join('');
+    } catch (err) { container.innerHTML = '<div class="hint-muted">Failed to load traces</div>'; }
+  },
+
+  formatFileSize(bytes) { if (bytes < 1024) return bytes + 'B'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB'; return (bytes / 1048576).toFixed(1) + 'MB'; },
+
+  escapeHtml(text) { if (!text) return ''; return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); },
+
 };
 
 document.addEventListener('DOMContentLoaded', () => App.init());
