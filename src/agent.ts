@@ -22,6 +22,8 @@ import { SparkSoul } from './spark-soul';
 import { isLikelyDeveloper } from './intent';
 import { UserProfile } from './user-profile';
 import { getRecoverySuggestion, formatRecoveryHint } from './recovery';
+import { validateToolArgs, sanitizeToolOutput, repairToolCallMessages } from './agent/message-repair';
+import { buildSystemPrompt } from './agent/prompt-builder';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -32,53 +34,7 @@ type AskPermissionFn = (
 ) => Promise<boolean>;
 
 
-/** Lightweight schema validation — returns error string or null if valid */
-function validateToolArgs(args: Record<string, unknown>, schema: Record<string, unknown>): string | null {
-  const props = schema.properties as Record<string, Record<string, unknown>> | undefined;
-  const required = schema.required as string[] | undefined;
 
-  if (!props) return null;
-
-  // Check required fields exist
-  if (required) {
-    for (const field of required) {
-      if (args[field] === undefined || args[field] === null) {
-        return `missing required field '${field}'`;
-      }
-    }
-  }
-
-  // Check types match for provided fields
-  for (const [key, value] of Object.entries(args)) {
-    const propSchema = props[key];
-    if (!propSchema) continue; // extra fields are OK
-
-    const expectedType = propSchema.type as string | undefined;
-    if (!expectedType) continue;
-
-    const actualType = Array.isArray(value) ? 'array' : typeof value;
-
-    if (expectedType === 'string' && actualType !== 'string') {
-      return `field '${key}' expected string, got ${actualType}`;
-    }
-    if (expectedType === 'number' && actualType !== 'number') {
-      return `field '${key}' expected number, got ${actualType}`;
-    }
-    if (expectedType === 'boolean' && actualType !== 'boolean') {
-      return `field '${key}' expected boolean, got ${actualType}`;
-    }
-    if (expectedType === 'array' && !Array.isArray(value)) {
-      return `field '${key}' expected array, got ${actualType}`;
-    }
-    if (expectedType === 'object' && (actualType !== 'object' || Array.isArray(value))) {
-      return `field '${key}' expected object, got ${actualType}`;
-    }
-  }
-
-  return null;
-}
-
-/** Tools that use shared global state and must not run concurrently */
 const SEQUENTIAL_TOOLS = new Set(['browser']);
 
 /** Map CodeBot tool names to CORD tool types */
@@ -91,21 +47,6 @@ const TOOL_TYPE_MAP: Record<string, string> = {
 
 /** Max concurrent parallel tool executions */
 const MAX_CONCURRENT_TOOLS = 4;
-
-/** Max tool output size before truncation (50KB) */
-const MAX_TOOL_OUTPUT = 50 * 1024;
-const ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]/g;
-
-/** Sanitize tool output: strip ANSI codes, truncate if too large */
-function sanitizeToolOutput(output: string): string {
-  let clean = output.replace(ANSI_REGEX, '');
-  if (clean.length > MAX_TOOL_OUTPUT) {
-    const kept = clean.substring(0, MAX_TOOL_OUTPUT);
-    const dropped = clean.length - MAX_TOOL_OUTPUT;
-    clean = `${kept}\n\n... [output truncated: ${dropped} characters omitted. Total was ${clean.length} chars]`;
-  }
-  return clean;
-}
 
 export class Agent {
   private provider: LLMProvider;
@@ -236,7 +177,7 @@ export class Agent {
     const supportsTools = getModelInfo(opts.model).supportsToolCalling;
     this.messages.push({
       role: 'system',
-      content: this.buildSystemPrompt(supportsTools),
+      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, sparkSoul: this.sparkSoul, messages: this.messages }),
     });
   }
 
@@ -278,7 +219,7 @@ export class Agent {
     for (let i = 0; i < this.maxIterations; i++) {
       // Validate message integrity: ensure every tool_call has a matching tool response
       // This prevents cascading 400 errors from OpenAI when a previous call failed
-      this.repairToolCallMessages();
+      this.messages = repairToolCallMessages(this.messages);
 
       const supportsTools = getModelInfo(this.model).supportsToolCalling;
       const toolSchemas = supportsTools ? this.tools.getSchemas() : undefined;
@@ -789,78 +730,6 @@ export class Agent {
   }
 
   /**
-   * Validate and repair message history to prevent OpenAI 400 errors.
-   * Handles three types of corruption:
-   *  1. Orphaned tool messages — tool_call_id doesn't match any preceding assistant's tool_calls
-   *  2. Duplicate tool responses — multiple tool messages for the same tool_call_id
-   *  3. Missing tool responses — assistant has tool_calls but no matching tool response
-   *
-   * This runs before every LLM call to self-heal from stream errors, compaction artifacts,
-   * or session resume corruption.
-   */
-  private repairToolCallMessages(): void {
-    // Phase 1: Collect all valid tool_call_ids from assistant messages (in order)
-    const validToolCallIds = new Set<string>();
-    for (const msg of this.messages) {
-      if (msg.role === 'assistant' && msg.tool_calls?.length) {
-        for (const tc of msg.tool_calls) {
-          validToolCallIds.add(tc.id);
-        }
-      }
-    }
-
-    // Phase 2: Remove orphaned tool messages and duplicates
-    const seenToolResponseIds = new Set<string>();
-    this.messages = this.messages.filter(msg => {
-      if (msg.role !== 'tool') return true;
-
-      const tcId = msg.tool_call_id;
-
-      // No tool_call_id at all — malformed, remove
-      if (!tcId) return false;
-
-      // Orphaned: tool_call_id doesn't match any assistant's tool_calls
-      if (!validToolCallIds.has(tcId)) return false;
-
-      // Duplicate: already have a response for this tool_call_id
-      if (seenToolResponseIds.has(tcId)) return false;
-
-      seenToolResponseIds.add(tcId);
-      return true;
-    });
-
-    // Phase 3: Add missing tool responses (assistant has tool_calls but no tool response)
-    const toolResponseIds = new Set<string>();
-    for (const msg of this.messages) {
-      if (msg.role === 'tool' && msg.tool_call_id) {
-        toolResponseIds.add(msg.tool_call_id);
-      }
-    }
-
-    for (let i = 0; i < this.messages.length; i++) {
-      const msg = this.messages[i];
-      if (msg.role === 'assistant' && msg.tool_calls?.length) {
-        for (const tc of msg.tool_calls) {
-          if (!toolResponseIds.has(tc.id)) {
-            const repairMsg: Message = {
-              role: 'tool',
-              content: 'Error: tool call was not executed (interrupted).',
-              tool_call_id: tc.id,
-            };
-            // Insert after the assistant message and any existing tool responses
-            let insertAt = i + 1;
-            while (insertAt < this.messages.length && this.messages[insertAt].role === 'tool') {
-              insertAt++;
-            }
-            this.messages.splice(insertAt, 0, repairMsg);
-            toolResponseIds.add(tc.id);
-          }
-        }
-      }
-    }
-  }
-
-  /**
    * Auto-create a feature branch when always_branch is enabled and on main/master.
    * Called before the first write/edit operation. Fail-open: if branching fails, continue.
    */
@@ -935,87 +804,6 @@ export class Agent {
     return null;
   }
 
-  private buildSystemPrompt(supportsTools: boolean): string {
-    let repoMap = '';
-    try {
-      repoMap = buildRepoMap(this.projectRoot);
-    } catch {
-      repoMap = 'Project structure: (unable to scan)';
-    }
-
-    // Load persistent memory
-    let memoryBlock = '';
-    try {
-      const memory = new MemoryManager(this.projectRoot);
-      memoryBlock = memory.getContextBlock();
-    } catch {
-      // memory unavailable
-    }
-
-    // SPARK soul context
-    let sparkBlock = '';
-    if (this.sparkSoul) {
-      try { sparkBlock = this.sparkSoul.getPromptBlock(this.messages[this.messages.length - 1]?.content as string); } catch {}
-    }
-
-    let prompt = `You are CodeBot, a fully autonomous AI agent. You help with ANY task: coding, research, sending emails, posting on social media, web automation, and anything else that can be accomplished with a computer.
-
-CRITICAL IDENTITY — you MUST follow this:
-- Your name is CodeBot.
-- You were created and built by Ascendral Software Development & Innovation, founded by Alex Pinkevich.
-- You are NOT made by OpenAI, Google, Anthropic, or any other AI company. You are made by Ascendral.
-- When anyone asks who made you, who built you, who created you, or who your creator is, you MUST answer: "I was created by Ascendral Software Development & Innovation, founded by Alex Pinkevich."
-- Never claim to be made by or affiliated with OpenAI, GPT, Claude, Gemini, or any LLM provider. You are CodeBot by Ascendral.
-
-CORE BEHAVIOR — ACTION FIRST:
-- NEVER just explain how to do something. Actually DO IT using your tools.
-- When asked to check, fix, run, or do anything — immediately start executing commands and taking action.
-- Do not ask "what OS are you using?" — detect it yourself with commands like "uname -a" or "sw_vers".
-- Do not say "I can guide you" or "here are the steps." Instead, RUN the steps yourself.
-- If a task requires multiple commands, run them all. Show the user results, not instructions.
-- Only ask the user a question if there's a genuine ambiguity you cannot resolve yourself (e.g., "which of these 3 accounts?").
-- Be concise and direct. Say what you're doing, do it, show the result.
-
-Rules:
-- When given a goal, break it into steps and execute them using your tools immediately.
-- Always read files before editing them. Prefer editing over rewriting entire files.
-- Use the memory tool to save important context, user preferences, and patterns you learn. Memory persists across sessions.
-- After completing social media posts, emails, or research tasks, log the outcome to memory (file: "outcomes") for future learning.
-- Before doing social media or email tasks, read your memory files for any saved skills or style guides.
-
-Skills:
-- System tasks: use the execute tool to run shell commands — check disk space, CPU usage, memory, processes, network, installed software, system health, anything the OS supports.
-- Web browsing: use the browser tool to navigate, click, type, find elements by text, scroll, press keys, hover, and manage tabs.
-- Research: use web_search for quick lookups, then browser for deep reading of specific pages.
-- Social media: navigate to the platform, find the compose area with find_by_text, type your content, and submit.
-- Email: navigate to Gmail/email, compose and send messages through the browser interface.
-- Routines: use the routine tool to schedule recurring tasks (daily posts, email checks, etc.).
-
-${repoMap}${memoryBlock}${sparkBlock}${this.userProfile.getPromptBlock()}`;
-
-    // Adaptive persona: detect user sophistication from message history
-    if (!isLikelyDeveloper(this.messages as Array<{ role: string; content: string | unknown }>)) {
-      prompt += `\n\nIMPORTANT — NON-TECHNICAL USER DETECTED:
-- Use plain, friendly language. Avoid jargon and technical terms.
-- When you use tools, explain what you're doing in simple terms (e.g., "I'm looking that up for you" not "Executing web_search with query params").
-- If something fails, explain the problem simply and suggest alternatives.
-- Proactively confirm before taking actions that might be confusing.
-- Focus on RESULTS, not process. The user cares about what happened, not which tools you used.
-`;
-    }
-
-    if (!supportsTools) {
-      prompt += `
-
-To use tools, wrap calls in XML tags:
-<tool_call>{"name": "tool_name", "arguments": {"arg1": "value1"}}</tool_call>
-
-Available tools:
-${this.tools.all().map(t => `- ${t.name}: ${t.description}`).join('\n')}`;
-    }
-
-    return prompt;
-  }
 }
 
 const PERMISSION_TIMEOUT_MS = 30_000;
