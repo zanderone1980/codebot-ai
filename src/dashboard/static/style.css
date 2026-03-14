@@ -505,11 +505,11 @@ body {
 
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 10px;
   overflow-y: auto;
   flex: 1;
-  max-width: 640px;
+  max-width: 580px;
   margin: 0 auto;
 }
 
@@ -517,7 +517,7 @@ body {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 10px 14px;
+  padding: 8px 12px;
   cursor: pointer;
   transition: all var(--transition);
   position: relative;
@@ -1420,6 +1420,12 @@ body.chat-expanded #logo-tagline {
 
 body.chat-expanded .chat-msg {
   max-width: 90%;
+}
+
+/* Keep session cards compact even when chat-expanded widens center-stage */
+body.chat-expanded .card-grid {
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  max-width: 580px;
 }
 
 /* Wider on large screens */
