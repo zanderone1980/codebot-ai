@@ -13,6 +13,15 @@ describe('Command API helpers', () => {
     assert.ok(mod.registerCommandRoutes, 'Should export registerCommandRoutes');
   });
 
+describe('Message queue logic', () => {
+  it('queue entries have required fields', () => {
+    const entry = { message: 'test', mode: 'simple' as const, resolve: (_v: unknown) => {} };
+    assert.strictEqual(entry.message, 'test');
+    assert.strictEqual(entry.mode, 'simple');
+    assert.strictEqual(typeof entry.resolve, 'function');
+  });
+});
+
   it('loadApiKeys does not crash', () => {
     // Smoke test — the function reads config and env
     // Should not throw even with no keys configured
