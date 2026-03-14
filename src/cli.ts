@@ -68,7 +68,15 @@ export async function main() {
   };
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  process.on('SIGHUP', () => gracefulShutdown('SIGHUP'));
+  // SIGHUP = terminal hangup. In dashboard mode, ignore it — the dashboard
+  // should survive terminal disconnects. Only kill on explicit SIGINT/SIGTERM.
+  process.on('SIGHUP', () => {
+    if (parseArgs(process.argv.slice(2)).dashboard) {
+      console.log('\x1b[2mTerminal disconnected — dashboard stays alive.\x1b[0m');
+    } else {
+      gracefulShutdown('SIGHUP');
+    }
+  });
 
   const args = parseArgs(process.argv.slice(2));
 
@@ -315,19 +323,22 @@ export async function main() {
       console.log(c(`   Dashboard failed: ${err instanceof Error ? err.message : String(err)}`, 'yellow'));
     }
 
-    // Watchdog: if parent process dies, shut down cleanly
-    // Check every 30s if parent PID is still alive (PPID=1 means orphaned)
-    const watchdog = setInterval(() => {
-      try {
-        const ppid = process.ppid;
-        if (ppid === undefined || ppid <= 1) {
-          console.log(c('   Dashboard: parent process gone, shutting down cleanly.', 'dim'));
-          clearInterval(watchdog);
-          gracefulShutdown('orphan-detected');
-        }
-      } catch { /* ignore */ }
-    }, 30_000);
-    watchdog.unref(); // Don't prevent exit
+    // In dashboard mode, DO NOT run orphan watchdog — the dashboard is the
+    // primary process and should survive independently. Only non-dashboard
+    // mode needs orphan detection (e.g., piped/scripted usage).
+    if (!args.dashboard) {
+      const watchdog = setInterval(() => {
+        try {
+          const ppid = process.ppid;
+          if (ppid === undefined || ppid <= 1) {
+            console.log(c('   Parent process gone, shutting down cleanly.', 'dim'));
+            clearInterval(watchdog);
+            gracefulShutdown('orphan-detected');
+          }
+        } catch { /* ignore */ }
+      }, 30_000);
+      watchdog.unref();
+    }
   }
 
   if (typeof args.message === 'string') { await runOnce(agent, args.message); printSessionSummary(agent); return; }
@@ -335,7 +346,7 @@ export async function main() {
 
   const scheduler = new Scheduler(agent, (text) => process.stdout.write(text));
   scheduler.start();
-  await repl(agent, config, session);
+  await repl(agent, config, session, !!args.dashboard);
   scheduler.stop();
 }
 
@@ -385,7 +396,7 @@ function printSessionSummary(agent: Agent) {
   metrics.exportOtel();
 }
 
-async function repl(agent: Agent, config: Config, session?: SessionManager) {
+async function repl(agent: Agent, config: Config, session?: SessionManager, isDashboard: boolean = false) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout, prompt: c('> ', 'cyan') });
   rl.prompt();
   rl.on('line', async (line: string) => {
@@ -397,7 +408,16 @@ async function repl(agent: Agent, config: Config, session?: SessionManager) {
     console.log();
     rl.prompt();
   });
-  rl.on('close', () => { printSessionSummary(agent); console.log(formatReaction('session_end')); process.exit(0); });
+  rl.on('close', () => {
+    printSessionSummary(agent);
+    console.log(formatReaction('session_end'));
+    // In dashboard mode, keep process alive — dashboard serves independently
+    if (isDashboard) {
+      console.log(c('   REPL closed — dashboard still running on port 3120.', 'dim'));
+    } else {
+      process.exit(0);
+    }
+  });
 }
 
 async function runOnce(agent: Agent, message: string) {
