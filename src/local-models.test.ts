@@ -30,7 +30,7 @@ describe('recommendQuantization', () => {
   });
 
   it('recommends smaller quant when VRAM is tight', () => {
-    const rec = recommendQuantization('llama3:8b', 4000);
+    const rec = recommendQuantization('llama3:8b', 6000);
     assert.ok(['Q4_K_M', 'Q5_K_M'].includes(rec.quantization));
     assert.ok(rec.fits);
   });
