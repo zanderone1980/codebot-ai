@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.9.0] — 2026-03-14
+
+### Added
+- **Offline fallback cache** for web_fetch (1h TTL) and web_search (2h TTL) — serves cached results when network fails
+- **Plugin schema validation** — JSON Schema validation for tool parameters (type checking, enum, required cross-referencing)
+- **Risk Scoring dashboard panel** — distribution bars, per-tool risk scores, block rate metrics, high-risk action feed
+
+### Changed
+- **Agent decomposition complete** — agent.ts reduced from 837 to 677 lines; tool-executor.ts (216 lines) extracted with cache, rate limiting, metrics, audit, SPARK, and concurrency-limited batching
+- Browser decomposition already complete from prior work (3-file split)
+
 ## [2.8.0] — 2026-03-14
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@codebot-ai/action",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "CodeBot AI GitHub Action — safe, local-first autonomous coding agent for code review, auto-fix, and security scan",
   "main": "dist/index.js",
   "scripts": {

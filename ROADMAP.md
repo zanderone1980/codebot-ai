@@ -4,11 +4,11 @@
 
 ---
 
-## Current State (v2.8.0) — SHIPPED
+## Current State (v2.9.0) — SHIPPED
 
 | Metric | Value |
 |--------|-------|
-| Version | 2.8.0 |
+| Version | 2.9.0 |
 | Tests | 1,265 passing (242 suites) |
 | Tools | 31 built-in + MCP + plugins |
 | Connectors | 10 app integrations |
@@ -16,7 +16,7 @@
 | Security | 8-layer stack: policy, RBAC, capabilities, risk scoring, path safety, secret detection, SSRF, sandbox |
 | Platforms | CLI, VS Code extension, GitHub Action, Web Dashboard |
 | CI | 3 OS (macOS, Linux, Windows) x 3 Node versions (18, 20, 22) |
-| npm | [codebot-ai@2.8.0](https://www.npmjs.com/package/codebot-ai) |
+| npm | [codebot-ai@2.9.0](https://www.npmjs.com/package/codebot-ai) |
 
 ### Completed Milestones
 
@@ -39,24 +39,11 @@
 | v2.7.0 | Safety | Constitutional AI (CORD engine, VIGIL patrol), security dashboard | 1,168 | Shipped |
 | v2.7.7 | Hardening | Centralized CODEBOT_HOME paths, warnNonFatal, cli decomposition | 1,217 | Shipped |
 | v2.8.0 | Operational | Dashboard models panel, CodeAGI continuous mode, doc overhaul | 1,265 | Shipped |
+| v2.9.0 | Trust | Agent decomposition, offline cache, plugin validation, risk dashboard | 1,265 | Shipped |
 
 ---
 
-## Next: v2.9.0 — Operational Trust
-
-**Theme:** From "technically impressive" to "boringly reliable."
-
-### Planned
-- Agent decomposition (tool executor, prompt builder, message repair extracted)
-- Browser decomposition (connection, actions, dispatch separated)
-- Error recovery suggestions (pattern-match common errors to actionable fixes)
-- Plugin schema validation (JSON Schema for manifests)
-- Risk scoring dashboard (configurable thresholds, history visualization)
-- Offline fallback cache for web tools
-
----
-
-## v3.0.0 — Teams and Ecosystem
+## Next: v3.0.0 — Teams and Ecosystem
 
 **Theme:** Scale beyond a single developer.
 

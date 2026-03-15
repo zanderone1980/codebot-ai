@@ -1,6 +1,6 @@
 {
   "name": "codebot-ai",
-  "version": "2.8.0",
+  "version": "2.9.0",
   "description": "Safe, local-first autonomous coding agent. Policy-governed, audit-trailed, sandboxed. Works with any LLM — Ollama, Claude, GPT, Gemini, DeepSeek, Groq, Mistral, Grok.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
