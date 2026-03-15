@@ -159,9 +159,11 @@ describe('CrossSessionLearning', () => {
 
   describe('buildPromptBlock', () => {
     it('returns empty string when no patterns', () => {
-      process.env.CODEBOT_HOME = tmpDir;
+      const cleanDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-prompt-'));
+      process.env.CODEBOT_HOME = cleanDir;
       const fresh = new CrossSessionLearning();
       assert.strictEqual(fresh.buildPromptBlock(), '');
+      fs.rmSync(cleanDir, { recursive: true, force: true });
     });
 
     it('includes effective patterns', () => {
@@ -213,10 +215,13 @@ describe('CrossSessionLearning', () => {
     });
 
     it('includes episode count', () => {
-      process.env.CODEBOT_HOME = tmpDir;
-      learning.recordEpisode(makeEpisode({ sessionId: 'sum1' }));
-      learning.recordEpisode(makeEpisode({ sessionId: 'sum2' }));
-      assert.ok(learning.summarize().includes('2 episodes'), 'should mention 2 episodes');
+      const sumDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-sumcount-'));
+      process.env.CODEBOT_HOME = sumDir;
+      const sl = new CrossSessionLearning();
+      sl.recordEpisode(makeEpisode({ sessionId: 'sum1' }));
+      sl.recordEpisode(makeEpisode({ sessionId: 'sum2' }));
+      assert.ok(sl.summarize().includes('2 episodes'), 'should mention 2 episodes');
+      fs.rmSync(sumDir, { recursive: true, force: true });
     });
   });
 

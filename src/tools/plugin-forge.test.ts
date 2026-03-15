@@ -110,7 +110,8 @@ describe('PluginForgeTool', () => {
 
   describe('validate', () => {
     it('passes valid plugin', async () => {
-      const result = await forge.execute({ action: 'validate', name: 'hello' });
+      await forge.execute({ action: 'create', name: 'valid_check', code: 'return "ok";' });
+      const result = await forge.execute({ action: 'validate', name: 'valid_check' });
       assert.ok(result.includes('passed all safety checks'), 'should pass validation');
     });
 
