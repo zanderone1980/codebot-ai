@@ -479,7 +479,14 @@ const App = {
     if (status === 'working') {
       if (!this.agentStartTime) this.agentStartTime = Date.now();
       indicator.className = 'agent-status working';
-      indicator.innerHTML = '<span class="agent-status-dot working"></span><span class="agent-status-text">Working...</span><span class="agent-status-timer" id="agent-timer">0s</span>';
+      var toolInfo = '';
+      if (data && data.tool) {
+        toolInfo = data.tool + (data.action ? ':' + data.action : '');
+      } else if (data && data.toolDone) {
+        toolInfo = data.toolDone + (data.success ? ' ✓' : ' ✗');
+      }
+      var label = toolInfo ? toolInfo : 'Working...';
+      indicator.innerHTML = '<span class="agent-status-dot working"></span><span class="agent-status-text">' + this.escapeHtml(label) + '</span><span class="agent-status-timer" id="agent-timer">0s</span>';
       if (this.agentStatusTimer) clearInterval(this.agentStatusTimer);
       this.agentStatusTimer = setInterval(() => {
         const el = document.getElementById('agent-timer');

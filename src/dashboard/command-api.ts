@@ -169,6 +169,14 @@ export function registerCommandRoutes(
       let result = '';
       for await (const event of agent.run(next.message)) {
         if (event.type === 'text') result += (event as any).text || '';
+        if (event.type === 'tool_call') {
+          const tc = (event as any).toolCall;
+          broadcastStatus('working', { tool: tc?.name, action: tc?.args?.action || tc?.args?.command, message: next.message });
+        }
+        if (event.type === 'tool_result') {
+          const tr = (event as any).toolResult;
+          broadcastStatus('working', { toolDone: tr?.name, success: !tr?.is_error, message: next.message });
+        }
         if (event.type === 'done' || event.type === 'error') break;
       }
       next.resolve({ result });
