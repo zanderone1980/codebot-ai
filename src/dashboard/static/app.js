@@ -456,7 +456,7 @@ const App = {
   connectAgentStatus() {
     try {
       const token = window.__CODEBOT_TOKEN;
-      const url = this.baseUrl + '/api/command/agent-status';
+      const url = this.baseUrl + '/api/command/agent-status' + (token ? '?token=' + encodeURIComponent(token) : '');
       const es = new EventSource(url);
       es.onmessage = (e) => {
         try {
