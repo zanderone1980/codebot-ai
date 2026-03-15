@@ -227,6 +227,7 @@ const App = {
       case 'memory': this.initMemory(); break;
       case 'risk': this.loadRisk(); break;
       case 'models': this.initModels(); break;
+        case 'risk': this.initRisk(); break;
       case 'codeagi': this.initPanelCodeagi(); break;
     }
   },
@@ -2086,4 +2087,116 @@ setInterval(function() {
   if (secPanel && secPanel.classList.contains('active')) {
     loadSecurityData();
   }
+
+
+  // ── Risk Scoring Panel ──
+
+  async initRisk() {
+    try {
+      const res = await fetch('/api/metrics');
+      if (!res.ok) return;
+      const metrics = await res.json();
+      this.renderRiskPanel(metrics);
+    } catch (e) {
+      console.error('Risk panel error:', e);
+    }
+  }
+
+  renderRiskPanel(metrics) {
+    // Extract risk-related metrics
+    const toolCalls = metrics.tool_calls_total || {};
+    const securityBlocks = metrics.security_blocks_total || {};
+    const errors = metrics.errors_total || {};
+
+    // Calculate totals
+    let totalCalls = 0;
+    let totalBlocks = 0;
+    const toolScores = {};
+
+    for (const [key, count] of Object.entries(toolCalls)) {
+      totalCalls += count;
+      if (!toolScores[key]) toolScores[key] = { calls: 0, blocks: 0, errors: 0 };
+      toolScores[key].calls += count;
+    }
+
+    for (const [key, count] of Object.entries(securityBlocks)) {
+      totalBlocks += count;
+      const tool = key.split('{')[0] || key;
+      if (!toolScores[tool]) toolScores[tool] = { calls: 0, blocks: 0, errors: 0 };
+      toolScores[tool].blocks += count;
+    }
+
+    for (const [key, count] of Object.entries(errors)) {
+      const tool = key.split('{')[0] || key;
+      if (!toolScores[tool]) toolScores[tool] = { calls: 0, blocks: 0, errors: 0 };
+      toolScores[tool].errors += count;
+    }
+
+    // Compute per-tool risk scores (higher blocks/errors ratio = higher risk)
+    const toolRiskList = [];
+    for (const [tool, data] of Object.entries(toolScores)) {
+      const riskScore = data.calls > 0
+        ? Math.round(((data.blocks + data.errors) / data.calls) * 100)
+        : 0;
+      toolRiskList.push({ tool, ...data, riskScore });
+    }
+    toolRiskList.sort((a, b) => b.riskScore - a.riskScore);
+
+    // Distribution buckets
+    let low = 0, medium = 0, high = 0, critical = 0;
+    for (const t of toolRiskList) {
+      if (t.riskScore <= 25) low += t.calls;
+      else if (t.riskScore <= 50) medium += t.calls;
+      else if (t.riskScore <= 75) high += t.calls;
+      else critical += t.calls;
+    }
+
+    const total = Math.max(totalCalls, 1);
+    const blockRate = totalCalls > 0 ? ((totalBlocks / totalCalls) * 100).toFixed(1) : '0';
+    const avgScore = toolRiskList.length > 0
+      ? Math.round(toolRiskList.reduce((sum, t) => sum + t.riskScore, 0) / toolRiskList.length)
+      : 0;
+
+    // Update summary cards
+    document.getElementById('risk-total').textContent = totalCalls;
+    document.getElementById('risk-block-rate').textContent = blockRate + '%';
+    document.getElementById('risk-avg-score').textContent = avgScore;
+    document.getElementById('risk-high-count').textContent = high + critical;
+
+    // Update bars
+    document.getElementById('risk-bar-low').style.width = ((low / total) * 100) + '%';
+    document.getElementById('risk-bar-medium').style.width = ((medium / total) * 100) + '%';
+    document.getElementById('risk-bar-high').style.width = ((high / total) * 100) + '%';
+    document.getElementById('risk-bar-critical').style.width = ((critical / total) * 100) + '%';
+    document.getElementById('risk-count-low').textContent = low;
+    document.getElementById('risk-count-medium').textContent = medium;
+    document.getElementById('risk-count-high').textContent = high;
+    document.getElementById('risk-count-critical').textContent = critical;
+
+    // Top risk tools
+    const toolsEl = document.getElementById('risk-tools-list');
+    if (toolRiskList.length > 0) {
+      toolsEl.innerHTML = toolRiskList.slice(0, 12).map(t => {
+        const level = t.riskScore <= 25 ? 'low' : t.riskScore <= 50 ? 'medium' : t.riskScore <= 75 ? 'high' : 'critical';
+        return '<div class="risk-tool-card">' +
+          '<span class="risk-tool-name">' + t.tool + '</span>' +
+          '<span class="risk-tool-score ' + level + '">' + t.riskScore + '% risk</span>' +
+          '</div>';
+      }).join('');
+    }
+
+    // Recent high-risk (tools with blocks/errors)
+    const recentEl = document.getElementById('risk-recent-list');
+    const highRisk = toolRiskList.filter(t => t.blocks > 0 || t.errors > 0);
+    if (highRisk.length > 0) {
+      recentEl.innerHTML = highRisk.slice(0, 10).map(t => {
+        const level = t.riskScore <= 25 ? 'low' : t.riskScore <= 50 ? 'medium' : t.riskScore <= 75 ? 'high' : 'critical';
+        return '<div class="risk-recent-item">' +
+          '<span class="risk-recent-tool">' + t.tool + ' — ' + t.blocks + ' blocks, ' + t.errors + ' errors / ' + t.calls + ' calls</span>' +
+          '<span class="risk-recent-score risk-tool-score ' + level + '">' + t.riskScore + '%</span>' +
+          '</div>';
+      }).join('');
+    }
+  }
+
 }, 5000);

@@ -1,4 +1,5 @@
 import { Tool } from '../types';
+import { cacheGet, cacheSet } from '../offline-cache';
 
 export class WebFetchTool implements Tool {
   name = 'web_fetch';
@@ -141,6 +142,13 @@ export class WebFetchTool implements Tool {
 
       const statusLine = `HTTP ${res.status} ${res.statusText}`;
 
+      // Cache successful GET responses for offline fallback (1h TTL)
+      if (method === 'GET' && res.ok) {
+        const cacheKey = `web_fetch:${url}`;
+        const cacheValue = contentType.includes('text/html') ? this.htmlToText(truncated) : truncated;
+        cacheSet(cacheKey, cacheValue, 3_600_000);
+      }
+
       // For HTML, strip tags to get readable text
       if (contentType.includes('text/html')) {
         const text = this.htmlToText(truncated);
@@ -150,6 +158,16 @@ export class WebFetchTool implements Tool {
       return `${statusLine}\n\n${truncated}`;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // Offline fallback: serve from cache if network fails (GET only)
+      if (method === 'GET') {
+        const cacheKey = `web_fetch:${url}`;
+        const cached = cacheGet(cacheKey);
+        if (cached) {
+          return `[Offline — cached response]\n\n${cached}`;
+        }
+      }
+
       return `Error: ${msg}`;
     }
   }

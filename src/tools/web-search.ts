@@ -1,4 +1,5 @@
 import { Tool } from '../types';
+import { cacheGet, cacheSet } from '../offline-cache';
 
 interface SearchResult {
   title: string;
@@ -25,6 +26,8 @@ export class WebSearchTool implements Tool {
 
     const numResults = Math.min(Math.max((args.num_results as number) || 5, 1), 10);
 
+    const cacheKey = `web_search:${query}:${numResults}`;
+
     try {
       const results = await this.search(query, numResults);
 
@@ -37,9 +40,21 @@ export class WebSearchTool implements Tool {
         output += `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}\n\n`;
       });
 
-      return output.trim();
+      const result = output.trim();
+
+      // Cache for offline fallback (2h TTL)
+      cacheSet(cacheKey, result, 7_200_000);
+
+      return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // Offline fallback
+      const cached = cacheGet(cacheKey);
+      if (cached) {
+        return `[Offline — cached results]\n\n${cached}`;
+      }
+
       return `Search error: ${msg}. Try using the browser tool to navigate to https://duckduckgo.com/?q=${encodeURIComponent(query)} instead.`;
     }
   }

@@ -117,6 +117,12 @@ export function loadPlugins(projectRoot?: string): Tool[] {
         const plugin = mod.default || mod;
 
         if (isValidTool(plugin)) {
+          // Validate tool parameter schema
+          const schemaError = validateToolSchema(plugin.parameters, entry.name);
+          if (schemaError) {
+            console.error(`Plugin skipped (${entry.name}): invalid parameter schema — ${schemaError}`);
+            continue;
+          }
           plugins.push(plugin);
         }
       } catch (err) {
@@ -126,6 +132,48 @@ export function loadPlugins(projectRoot?: string): Tool[] {
   }
 
   return plugins;
+}
+
+/** Validate a plugin tool's parameter schema against JSON Schema conventions */
+function validateToolSchema(params: unknown, pluginName: string): string | null {
+  if (!params || typeof params !== 'object') return 'parameters must be an object';
+  const schema = params as Record<string, unknown>;
+
+  if (schema.type !== 'object') return 'parameters.type must be "object"';
+  if (!schema.properties || typeof schema.properties !== 'object') {
+    return 'parameters.properties must be an object';
+  }
+
+  const props = schema.properties as Record<string, unknown>;
+  const validTypes = new Set(['string', 'number', 'boolean', 'object', 'array', 'integer']);
+
+  for (const [key, val] of Object.entries(props)) {
+    if (!val || typeof val !== 'object') {
+      return `parameters.properties.${key} must be an object`;
+    }
+    const prop = val as Record<string, unknown>;
+    if (typeof prop.type !== 'string' || !validTypes.has(prop.type)) {
+      return `parameters.properties.${key}.type must be one of: ${[...validTypes].join(', ')}`;
+    }
+    if (prop.description !== undefined && typeof prop.description !== 'string') {
+      return `parameters.properties.${key}.description must be a string`;
+    }
+    if (prop.enum !== undefined && !Array.isArray(prop.enum)) {
+      return `parameters.properties.${key}.enum must be an array`;
+    }
+  }
+
+  if (schema.required !== undefined) {
+    if (!Array.isArray(schema.required)) return 'parameters.required must be an array';
+    for (const req of schema.required) {
+      if (typeof req !== 'string') return 'parameters.required entries must be strings';
+      if (!(req in props)) {
+        return `parameters.required references "${req}" but it is not in properties`;
+      }
+    }
+  }
+
+  return null;
 }
 
 function isValidTool(obj: unknown): obj is Tool {
