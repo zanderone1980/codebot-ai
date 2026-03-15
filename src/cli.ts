@@ -60,7 +60,8 @@ export async function main() {
 
   // ── Process lifecycle: graceful shutdown on signals ──
   // Prevents orphaned zombie processes when parent session ends
-  const pidFile = path.join(require('os').homedir(), '.codebot', 'dashboard.pid');
+  const { codebotPath } = require('./paths');
+  const pidFile = codebotPath('dashboard.pid');
   let shuttingDown = false;
   const gracefulShutdown = (signal: string) => {
     if (shuttingDown) return;
@@ -324,8 +325,7 @@ export async function main() {
       const dashStaticDir = require('fs').existsSync(srcStatic) ? srcStatic : distStatic;
       const dashHost = typeof args.host === 'string' ? args.host : '127.0.0.1';
       const dashServer = new DashboardServer({ port: 3120, host: dashHost, staticDir: dashStaticDir });
-      const os = require('os');
-      registerApiRoutes(dashServer, os.homedir());
+      registerApiRoutes(dashServer);
       registerCommandRoutes(dashServer, agent);
       registerCodeAGIRoutes(dashServer);
       registerModelRoutes(dashServer);
@@ -333,7 +333,7 @@ export async function main() {
       console.log(c(`   Dashboard: ${dashInfo.url}`, 'cyan'));
       // Write PID file so stale processes can be identified
       try {
-        const pidDir = path.join(require('os').homedir(), '.codebot');
+        const pidDir = codebotPath('');
         if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
         fs.writeFileSync(pidFile, String(process.pid), 'utf8');
       } catch { /* best-effort */ }

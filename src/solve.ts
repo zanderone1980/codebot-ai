@@ -471,7 +471,10 @@ export class SolveCommand {
       // Branch may already exist from a previous attempt — try switching to it
       try {
         execFileSync('git', ['checkout', branchName], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-        // Reset to match default branch
+        // Stash any previous work on this branch before resetting
+        try {
+          execFileSync('git', ['stash', 'push', '-m', `codebot-solve: stashed ${branchName} before reset`], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+        } catch { /* nothing to stash */ }
         const defaultBranch = this.getDefaultBranch(repoDir);
         execFileSync('git', ['reset', '--hard', defaultBranch], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
       } catch {
@@ -507,16 +510,16 @@ export class SolveCommand {
 
     // Check if safe mode file limit exceeded
     if (this.options.safe && filesModified.length > 3) {
-      yield { type: 'progress', phase: 'fixing', message: `Safe mode: ${filesModified.length} files exceeds limit of 3. Rolling back.` };
-      execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-      yield { type: 'error', phase: 'fixing', error: 'Safe mode: too many files changed. Try without --safe.' };
+      yield { type: 'progress', phase: 'fixing', message: `Safe mode: ${filesModified.length} files exceeds limit of 3. Stashing changes.` };
+      try { execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: safe mode rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); } catch { execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); }
+      yield { type: 'error', phase: 'fixing', error: 'Safe mode: too many files changed. Changes stashed (git stash list to recover). Try without --safe.' };
       return;
     }
 
     if (filesModified.length > this.options.maxFiles) {
-      yield { type: 'progress', phase: 'fixing', message: `${filesModified.length} files exceeds --max-files ${this.options.maxFiles}. Rolling back.` };
-      execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-      yield { type: 'error', phase: 'fixing', error: `Max files limit exceeded (${filesModified.length} > ${this.options.maxFiles})` };
+      yield { type: 'progress', phase: 'fixing', message: `${filesModified.length} files exceeds --max-files ${this.options.maxFiles}. Stashing changes.` };
+      try { execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: max-files rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); } catch { execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); }
+      yield { type: 'error', phase: 'fixing', error: `Max files limit exceeded (${filesModified.length} > ${this.options.maxFiles}). Changes stashed (git stash list to recover).` };
       return;
     }
 
@@ -746,9 +749,13 @@ export class SolveCommand {
         }).trim();
 
         if (status) {
-          // Dirty — reset to clean state
-          execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-          execFileSync('git', ['clean', '-fd'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+          // Dirty — stash changes from previous solve attempt (recoverable via git stash list)
+          try {
+            execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: previous attempt auto-stashed'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+          } catch {
+            // Stash failed (e.g., no changes to stash) — clean untracked files only
+            execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+          }
         }
 
         const defaultBranch = this.getDefaultBranch(repoDir);
