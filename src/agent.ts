@@ -495,9 +495,9 @@ export class Agent {
           if (modelInfo.supportsVision) {
             toolMsg.images = [{ data: lastScreenshotData, mediaType: 'image/png' }];
           }
-          // Clear the screenshot data reference (module-level export)
-          const browserModule = require('./tools/browser');
-          browserModule.lastScreenshotData = null;
+          // Clear the screenshot data via setter (ES module export can't be reassigned)
+          const { setLastScreenshotData } = require('./tools/browser/connection');
+          setLastScreenshotData(null);
         }
 
         this.messages.push(toolMsg);

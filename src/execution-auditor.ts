@@ -161,10 +161,15 @@ export class ExecutionAuditor {
     };
   }
 
+  // Tools that legitimately make many sequential calls with varying actions
+  private static LOOP_EXEMPT_TOOLS = new Set(['browser']);
+
   private detectLoop(): AnomalyReport | null {
     if (this.executions.length < this.loopThreshold) return null;
 
     const recent = this.executions.slice(-this.loopThreshold);
+    // Skip loop detection for tools that naturally need many sequential calls
+    if (ExecutionAuditor.LOOP_EXEMPT_TOOLS.has(recent[0].toolName)) return null;
     // Check if the same tool+args pattern repeats
     const signatures = recent.map(e => `${e.toolName}:${e.success}`);
     const uniqueSigs = new Set(signatures);
