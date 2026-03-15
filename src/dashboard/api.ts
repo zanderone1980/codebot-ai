@@ -155,7 +155,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
       fs.unlinkSync(sessionFile);
 
       // Also remove corresponding audit log if it exists
-      const auditFile = path.join(root, '.codebot', 'audit', `${params.id}.jsonl`);
+      const auditFile = path.join(codebotPath('audit'), `${params.id}.jsonl`);
       if (fs.existsSync(auditFile)) {
         fs.unlinkSync(auditFile);
       }
@@ -191,7 +191,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
       try {
         if (fs.existsSync(sessionFile)) {
           fs.unlinkSync(sessionFile);
-          const auditFile = path.join(root, '.codebot', 'audit', `${id}.jsonl`);
+          const auditFile = path.join(codebotPath('audit'), `${id}.jsonl`);
           if (fs.existsSync(auditFile)) fs.unlinkSync(auditFile);
           deleted++;
         }
@@ -371,7 +371,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     const days = Math.max(1, parseInt(query.days || '7', 10));
     const cutoff = Date.now() - days * 86400 * 1000;
 
-    const auditDir = path.join(root, '.codebot', 'audit');
+    const auditDir = codebotPath('audit');
     const entries = loadAuditEntries(auditDir, cutoff);
 
     DashboardServer.json(res, {
@@ -383,7 +383,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
   // NOTE: /api/audit/verify must be registered before /api/audit/:sessionId
   server.route('GET', '/api/audit/verify', (_req, res) => {
-    const auditDir = path.join(root, '.codebot', 'audit');
+    const auditDir = codebotPath('audit');
     const entries = loadAuditEntries(auditDir, 0);
 
     let valid = 0;
@@ -405,7 +405,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   });
 
   server.route('GET', '/api/audit/:sessionId', (_req, res, params) => {
-    const auditDir = path.join(root, '.codebot', 'audit');
+    const auditDir = codebotPath('audit');
     const entries = loadAuditEntries(auditDir, 0).filter(
       (e: any) => e.sessionId === params.sessionId
     );
@@ -429,8 +429,8 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
   // ── Metrics ──
   server.route('GET', '/api/metrics/summary', (_req, res) => {
-    const sessionsDir = path.join(root, '.codebot', 'sessions');
-    const auditDir = path.join(root, '.codebot', 'audit');
+    const sessionsDir = codebotPath('sessions');
+    const auditDir = codebotPath('audit');
 
     const sessionCount = listSessionFiles(sessionsDir).length;
     const auditEntries = loadAuditEntries(auditDir, 0);
@@ -456,7 +456,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   // ── Usage ──
   server.route('GET', '/api/usage', (_req, res) => {
     // Return a usage summary from available sessions
-    const sessionsDir = path.join(root, '.codebot', 'sessions');
+    const sessionsDir = codebotPath('sessions');
     const sessions = listSessionFiles(sessionsDir).slice(-10); // Last 10 sessions
 
     const usage = sessions.map(f => {
@@ -475,7 +475,7 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
 
   // ── SARIF Export ──
   server.route('POST', '/api/audit/export', async (_req, res) => {
-    const auditDir = path.join(root, '.codebot', 'audit');
+    const auditDir = codebotPath('audit');
     const entries = loadAuditEntries(auditDir, 0);
 
     // Build a simplified SARIF-like export
