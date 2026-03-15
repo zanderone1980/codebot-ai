@@ -115,16 +115,24 @@ describe('GoalDecomposer', () => {
     assert.strictEqual(d.isFinished(tree), true);
   });
 
-  it('isFinished returns true when root fails', () => {
+  it('isFinished returns true when root fails due to child failure', () => {
     const d = new GoalDecomposer(1);
     const tree = d.decompose('Fix the crash bug');
     const root = tree.nodes.get(tree.rootId)!;
 
-    // Fail a subtask — root should fail too
+    // Fail the first ready subtask — dependents get skipped
     const ready = d.getReady(tree);
     d.fail(tree, ready[0].id, 'Failure');
 
-    // Root fails because a child failed
+    // Complete or skip remaining non-terminal siblings so parent can resolve
+    for (const childId of root.subtasks) {
+      const child = tree.nodes.get(childId)!;
+      if (child.status === 'ready' || child.status === 'pending') {
+        d.complete(tree, childId, 'done');
+      }
+    }
+
+    // Root should now be failed because at least one child failed
     assert.strictEqual(root.status, 'failed');
     assert.strictEqual(d.isFinished(tree), true);
   });
