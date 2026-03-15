@@ -30,7 +30,7 @@ describe('Orchestrator', () => {
   });
 
   it('canSpawn rejects at max depth', () => {
-    const orch = makeOrchestrator({}, 1);
+    const orch = makeOrchestrator({ maxDepth: 2 }, 2);
     const result = orch.canSpawn();
     assert.strictEqual(result.allowed, false);
     assert.ok(result.reason?.includes('depth'));
