@@ -2087,22 +2087,19 @@ setInterval(function() {
   if (secPanel && secPanel.classList.contains('active')) {
     loadSecurityData();
   }
+}, 5000);
 
 
-  // ── Risk Scoring Panel ──
+// ── Risk Scoring Panel ──
 
-  async initRisk() {
-    try {
-      const res = await fetch('/api/metrics');
-      if (!res.ok) return;
-      const metrics = await res.json();
-      this.renderRiskPanel(metrics);
-    } catch (e) {
-      console.error('Risk panel error:', e);
-    }
-  }
+function initRisk() {
+  fetch('/api/metrics')
+    .then(function(res) { if (!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
+    .then(function(metrics) { renderRiskPanel(metrics); })
+    .catch(function(e) { console.error('Risk panel error:', e); });
+}
 
-  renderRiskPanel(metrics) {
+function renderRiskPanel(metrics) {
     // Extract risk-related metrics
     const toolCalls = metrics.tool_calls_total || {};
     const securityBlocks = metrics.security_blocks_total || {};
@@ -2197,6 +2194,4 @@ setInterval(function() {
           '</div>';
       }).join('');
     }
-  }
-
-}, 5000);
+}
