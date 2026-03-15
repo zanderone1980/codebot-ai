@@ -155,6 +155,7 @@ export function registerCommandRoutes(
   function broadcastStatus(status: 'idle' | 'working' | 'done' | 'queued', extra?: Record<string, unknown>) {
     const data = { status, queueLength: messageQueue.length, ...extra };
     for (const client of statusClients) {
+      if (client.writableEnded || client.destroyed) { statusClients.delete(client); continue; }
       try { DashboardServer.sseSend(client, data); } catch { statusClients.delete(client); }
     }
   }
@@ -262,6 +263,12 @@ export function registerCommandRoutes(
     statusClients.add(res);
     res.on('close', () => { statusClients.delete(res); });
     DashboardServer.sseSend(res, { status: agentBusy ? 'working' : 'idle', queueLength: messageQueue.length });
+    // Heartbeat keeps Safari/proxy connections alive
+    const hb = setInterval(() => {
+      if (res.writableEnded || res.destroyed) { clearInterval(hb); statusClients.delete(res); return; }
+      try { res.write(': heartbeat\n\n'); } catch { clearInterval(hb); statusClients.delete(res); }
+    }, 15_000);
+    res.on('close', () => clearInterval(hb));
   });
 
   // ── POST /api/command/chat (agent only) ──
@@ -313,6 +320,12 @@ export function registerCommandRoutes(
     let closed = false;
     res.on('close', () => { closed = true; });
 
+    // Heartbeat keeps connection alive through proxies/Safari
+    const heartbeat = setInterval(() => {
+      if (closed || res.writableEnded || res.destroyed) { clearInterval(heartbeat); return; }
+      try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); closed = true; }
+    }, 15_000);
+
     try {
       for await (const event of agent.run(userMessage)) {
         if (closed) break;
@@ -327,6 +340,7 @@ export function registerCommandRoutes(
         });
       }
     } finally {
+      clearInterval(heartbeat);
       agentBusy = false;
       broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
       if (!closed) DashboardServer.sseClose(res);

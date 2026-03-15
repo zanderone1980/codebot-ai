@@ -453,11 +453,14 @@ const App = {
     }
   },
 
+  _sseBackoff: 1000,
+
   connectAgentStatus() {
     try {
       const token = window.__CODEBOT_TOKEN;
       const url = this.baseUrl + '/api/command/agent-status' + (token ? '?token=' + encodeURIComponent(token) : '');
       const es = new EventSource(url);
+      es.onopen = () => { this._sseBackoff = 1000; };
       es.onmessage = (e) => {
         try {
           const data = JSON.parse(e.data);
@@ -466,7 +469,9 @@ const App = {
       };
       es.onerror = () => {
         es.close();
-        setTimeout(() => this.connectAgentStatus(), 5000);
+        var delay = Math.min(this._sseBackoff, 30000);
+        this._sseBackoff = Math.min(this._sseBackoff * 1.5, 30000);
+        setTimeout(() => this.connectAgentStatus(), delay);
       };
     } catch(err) {}
   },

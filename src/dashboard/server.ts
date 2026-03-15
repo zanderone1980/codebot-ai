@@ -77,10 +77,13 @@ export class DashboardServer {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
         this.handleRequest(req, res).catch(err => {
-          console.error('Dashboard server error:', err);
-          DashboardServer.error(res, 500, 'Internal Server Error');
+          if (!res.writableEnded && !res.destroyed) {
+            try { DashboardServer.error(res, 500, 'Internal Server Error'); } catch { /* gone */ }
+          }
         });
       });
+      this.server.keepAliveTimeout = 65_000;
+      this.server.headersTimeout = 70_000;
 
       this.server.on('error', (err: NodeJS.ErrnoException) => {
         if (err.code === 'EADDRINUSE') {
@@ -257,15 +260,16 @@ export class DashboardServer {
     });
   }
 
-  /** Send a single SSE data event */
+  /** Send a single SSE data event (safe — ignores closed connections) */
   static sseSend(res: http.ServerResponse, data: unknown): void {
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    if (res.writableEnded || res.destroyed) return;
+    try { res.write(`data: ${JSON.stringify(data)}\n\n`); } catch { /* client gone */ }
   }
 
-  /** Close an SSE stream */
+  /** Close an SSE stream (safe — checks if writable) */
   static sseClose(res: http.ServerResponse): void {
-    res.write('data: [DONE]\n\n');
-    res.end();
+    if (res.writableEnded || res.destroyed) return;
+    try { res.write('data: [DONE]\n\n'); res.end(); } catch { /* client gone */ }
   }
 
   // ── Private methods ──
