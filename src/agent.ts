@@ -201,6 +201,14 @@ export class Agent {
     this.messages = messages;
   }
 
+  /** Reset conversation state for a new chat */
+  resetConversation() {
+    this.messages = [];
+    this.cordBlockedKeys.clear();
+    this.sessionToolCalls = [];
+    this.sessionGoal = '';
+  }
+
   async *run(userMessage: string): AsyncGenerator<AgentEvent> {
     const userMsg: Message = { role: 'user', content: userMessage };
     this.messages.push(userMsg);

@@ -315,6 +315,7 @@ const App = {
       const msg = input.value.trim();
       if (!msg) return;
       input.value = '';
+      this.lastUserMessage = msg;
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
 
@@ -453,7 +454,36 @@ const App = {
     } catch (err) { contentEl.textContent = 'Error: ' + err.message; }
   },
 
+  friendlyError(msg) {
+    if (!msg) return 'Something went wrong. Please try again.';
+    var m = msg.toLowerCase();
+    if (m.includes('rate limit') || m.includes('429')) return 'Rate limited — too many requests. Wait a moment and try again.';
+    if (m.includes('401') || m.includes('unauthorized') || m.includes('authentication')) return 'API key is invalid or expired. Check Settings to update your key.';
+    if (m.includes('402') || m.includes('insufficient') || m.includes('credit') || m.includes('billing')) return 'API credits exhausted. Add credits to your API account to continue.';
+    if (m.includes('timeout') || m.includes('timed out')) return 'Request timed out. Try breaking the task into smaller steps.';
+    if (m.includes('network') || m.includes('fetch') || m.includes('econnrefused')) return 'Network error — cannot reach the AI provider. Check your internet connection.';
+    if (m.includes('overloaded') || m.includes('503') || m.includes('529')) return 'AI provider is overloaded. Wait a moment and try again.';
+    return msg;
+  },
+
+  lastUserMessage: null,
+
+  retryLastMessage() {
+    if (this.lastUserMessage) {
+      var msgs = document.querySelectorAll('.chat-msg');
+      if (msgs.length > 0) {
+        var last = msgs[msgs.length - 1];
+        if (last.querySelector('.chat-error-box')) last.remove();
+      }
+      this.streamChat(this.lastUserMessage);
+    }
+  },
+
   newChat() {
+    // Reset agent conversation on the server
+    apiFetch('/api/command/chat/reset', { method: 'POST' }).catch(function() {});
+    this.lastUserMessage = null;
+
     // Clear chat messages and reset to initial state
     var container = document.getElementById('chat-messages');
     if (container) container.innerHTML = '';

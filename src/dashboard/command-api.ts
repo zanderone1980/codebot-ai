@@ -228,6 +228,17 @@ export function registerCommandRoutes(
     res.on('close', () => clearInterval(hb));
   });
 
+
+  // ── POST /api/command/chat/reset — start a new conversation ──
+  server.route('POST', '/api/command/chat/reset', async (_req, res) => {
+    if (!agent) {
+      DashboardServer.error(res, 503, 'Agent not available');
+      return;
+    }
+    agent.resetConversation();
+    DashboardServer.json(res, { reset: true });
+  });
+
   // ── POST /api/command/chat (agent only) ──
   server.route('POST', '/api/command/chat', async (req, res) => {
     if (!agent) {

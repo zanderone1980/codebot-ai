@@ -1151,6 +1151,21 @@ body.is-electron .agent-status {
 
 .cmd-output:empty { display: none; }
 .cmd-error { color: var(--danger); font-family: var(--font-mono); }
+
+/* Chat error box */
+.chat-error-box {
+  display: flex; align-items: center; gap: 10px;
+  background: rgba(255, 80, 80, 0.08); border: 1px solid rgba(255, 80, 80, 0.25);
+  border-radius: 8px; padding: 12px 16px; margin-top: 8px;
+}
+.chat-error-icon { font-size: 1.3em; color: #ff6b6b; flex-shrink: 0; }
+.chat-error-text { color: #ff9999; font-size: 0.9em; flex: 1; }
+.chat-retry-btn {
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #e0e0e0; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  font-size: 0.85em; white-space: nowrap; transition: background 0.15s;
+}
+.chat-retry-btn:hover { background: rgba(255, 255, 255, 0.15); }
 .cmd-success { color: var(--text-secondary); font-family: var(--font-mono); white-space: pre-wrap; margin: 0; background: none; border: none; padding: 0; }
 .cmd-meta { font-size: 10px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
 
