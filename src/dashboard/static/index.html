@@ -320,6 +320,49 @@
       </div>
     </div>
 
+
+      <!-- Settings Panel -->
+      <div id="panel-settings" class="panel">
+        <div class="panel-header"><h2>Settings</h2></div>
+        <div class="settings-content">
+          <div class="settings-section">
+            <h3>AI Provider</h3>
+            <div class="settings-row">
+              <label>Provider</label>
+              <select id="settings-provider">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label>Model</label>
+              <select id="settings-model">
+                <option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
+                <option value="claude-opus-4-6">Claude Opus 4.6</option>
+                <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5</option>
+                <option value="gpt-4o">GPT-4o</option>
+                <option value="gpt-4o-mini">GPT-4o Mini</option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label>API Key</label>
+              <div style="display:flex;gap:8px;flex:1;">
+                <input id="settings-api-key" type="password" placeholder="sk-ant-..." style="flex:1;" />
+                <button class="settings-btn" onclick="App.toggleKeyVisibility()">Show</button>
+              </div>
+            </div>
+            <button class="settings-btn primary" onclick="App.saveSettings()" id="settings-save-btn">Save Settings</button>
+            <div id="settings-status" class="settings-status"></div>
+          </div>
+          <div class="settings-section">
+            <h3>About</h3>
+            <div class="settings-row"><label>Version</label><span id="settings-version">2.9.0</span></div>
+            <div class="settings-row"><label>Tests</label><span>1,404 passing</span></div>
+            <div class="settings-row"><label>Tools</label><span>32 available</span></div>
+          </div>
+        </div>
+      </div>
+
     <!-- Bottom Nav Pills -->
     <nav id="bottom-nav">
       <button class="nav-pill active" data-panel="chat">
@@ -349,6 +392,10 @@
       <button class="nav-pill" data-panel="codeagi">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
         <span>CodeAGI</span>
+      </button>
+      <button class="nav-pill" data-panel="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>Settings</span>
       </button>
     </nav>
     <div id="agent-status-indicator" class="agent-status idle">
