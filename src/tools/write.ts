@@ -5,7 +5,6 @@ import { isPathSafe } from '../security';
 import { scanForSecrets } from '../secrets';
 import { PolicyEnforcer } from '../policy';
 import { codebotPath } from '../paths';
-import { warnNonFatal } from '../warn';
 
 
 
@@ -61,7 +60,7 @@ export class WriteFileTool implements Tool {
       '.env', '.env.local', '.env.production', '.gitignore', '.npmrc',
       'yarn.lock', 'pnpm-lock.yaml', 'Cargo.lock', 'go.sum',
     ]);
-    if (existed && PROTECTED_FILES.has(basename)) {
+    if (fs.existsSync(filePath) && PROTECTED_FILES.has(basename)) {
       // Only allow overwrite if content looks like an edit (not a complete replacement)
       try {
         const oldContent = fs.readFileSync(filePath, 'utf-8');
@@ -87,6 +86,7 @@ export class WriteFileTool implements Tool {
     }
 
     const existed = fs.existsSync(filePath);
+
 
     // Save undo snapshot before overwriting
     if (existed) {
