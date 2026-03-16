@@ -71,9 +71,24 @@ async function startServer() {
     // Not running — start it
   }
 
-  const nodeBin = process.execPath.includes('Electron')
-    ? 'node'  // Use system node when running in Electron
-    : process.execPath;
+  // Find node binary — macOS .app bundles don't inherit shell PATH
+  let nodeBin = process.execPath;
+  if (nodeBin.includes('Electron') || nodeBin.includes('CodeBot AI')) {
+    // Try common node locations
+    const candidates = [
+      '/usr/local/bin/node',
+      '/opt/homebrew/bin/node',
+      path.join(process.env.HOME || '', '.nvm/versions/node', 'current', 'bin', 'node'),
+      '/usr/bin/node',
+    ];
+    // Also check PATH if available
+    const pathDirs = (process.env.PATH || '').split(':');
+    for (const dir of pathDirs) {
+      candidates.push(path.join(dir, 'node'));
+    }
+    nodeBin = candidates.find(p => fs.existsSync(p)) || 'node';
+    console.log('  Using node at:', nodeBin);
+  }
 
   const binPath = paths.bin;
   if (!fs.existsSync(binPath)) {
@@ -88,10 +103,15 @@ async function startServer() {
   console.log('  Bin path:', binPath);
   console.log('  CWD:', paths.root);
 
+  // Ensure PATH includes common bin dirs for macOS .app context
+  const extraPath = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'].join(':');
+  const fullPath = process.env.PATH ? `${extraPath}:${process.env.PATH}` : extraPath;
+
   serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1'], {
     cwd: paths.root,
     env: {
       ...process.env,
+      PATH: fullPath,
       CODEBOT_DASHBOARD_PORT: String(DASHBOARD_PORT),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
