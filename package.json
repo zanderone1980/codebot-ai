@@ -90,5 +90,9 @@
   },
   "dependencies": {
     "cord-engine": "^4.1.0"
+  },
+  "optionalDependencies": {
+    "@ai-operations/spark-engine": "^0.1.0",
+    "@ai-operations/ops-storage": "^0.1.0"
   }
 }

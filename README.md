@@ -9,7 +9,7 @@ The only AI coding agent that runs locally, works with any LLM, and enforces saf
 [![npm version](https://img.shields.io/npm/v/codebot-ai.svg?style=flat-square&color=6366f1)](https://www.npmjs.com/package/codebot-ai)
 [![npm downloads](https://img.shields.io/npm/dw/codebot-ai.svg?style=flat-square&color=6366f1)](https://www.npmjs.com/package/codebot-ai)
 [![license](https://img.shields.io/npm/l/codebot-ai.svg?style=flat-square)](https://github.com/Ascendral/codebot-ai/blob/main/LICENSE)
-![tests](https://img.shields.io/badge/tests-1265%20passing-22c55e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-1413%20passing-22c55e?style=flat-square)
 ![node](https://img.shields.io/node/v/codebot-ai.svg?style=flat-square)
 [![GitHub stars](https://img.shields.io/github/stars/Ascendral/codebot-ai?style=flat-square)](https://github.com/Ascendral/codebot-ai)
 [![last commit](https://img.shields.io/github/last-commit/Ascendral/codebot-ai?style=flat-square)](https://github.com/Ascendral/codebot-ai)
@@ -50,7 +50,7 @@ codebot --dashboard                # web UI at localhost:3120
 ```
 User ──> Agent Loop ──> Tool Router ──> CORD Safety Engine ──> Execution
               │              │                │                    │
-              │              │           14-dimension          31 tools
+              │              │           14-dimension          32 tools
               │              │           risk scoring          (code, shell,
               │              │           + policy gates         browser, git,
               │              │           + audit trail          network, DB...)
@@ -74,14 +74,14 @@ User ──> Agent Loop ──> Tool Router ──> CORD Safety Engine ──> E
 
 ## Capabilities
 
-**31 built-in tools** covering code editing, shell execution, Chrome automation (CDP), web search, deep research, Git operations, Docker management, database queries, SSH, scheduled routines, and persistent memory.
+**32 built-in tools** covering code editing, shell execution, Chrome automation (CDP), web search, deep research, Git operations, Docker management, database queries, SSH, scheduled routines, and persistent memory.
 
 **10 app connectors** — GitHub, Jira, Linear, Slack, Gmail, Google Calendar, Notion, Google Drive, OpenAI Images, Replicate. Credentials stored in AES-256-GCM encrypted vault.
 
 **Web dashboard** at localhost:3120 — sessions, audit trail, metrics, security feed, command center.
 
 <details>
-<summary><strong>All 31 tools</strong></summary>
+<summary><strong>All 32 tools</strong></summary>
 
 | Tool | Permission | Description |
 |------|:----------:|-------------|
@@ -177,7 +177,7 @@ for await (const event of agent.run('list all TypeScript files')) {
 
 ## Testing
 
-1,265 tests across 242 suites. CI runs on 3 OS (macOS, Linux, Windows) x 3 Node versions (18, 20, 22). Zero network calls in the test suite — all providers mocked. Security tests cover SSRF, path traversal, injection, and secret detection.
+1,413 tests across 242 suites. CI runs on 3 OS (macOS, Linux, Windows) x 3 Node versions (18, 20, 22). Zero network calls in the test suite — all providers mocked. Security tests cover SSRF, path traversal, injection, and secret detection.
 
 ```bash
 npm test

@@ -471,12 +471,11 @@ export class SolveCommand {
       // Branch may already exist from a previous attempt — try switching to it
       try {
         execFileSync('git', ['checkout', branchName], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-        // Stash any previous work on this branch before resetting
-        try {
-          execFileSync('git', ['stash', 'push', '-m', `codebot-solve: stashed ${branchName} before reset`], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-        } catch { /* nothing to stash */ }
+        // Delete the old branch and recreate from default branch (no destructive ops on working tree)
         const defaultBranch = this.getDefaultBranch(repoDir);
-        execFileSync('git', ['reset', '--hard', defaultBranch], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+        execFileSync('git', ['checkout', defaultBranch], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+        execFileSync('git', ['branch', '-D', branchName], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+        execFileSync('git', ['checkout', '-b', branchName], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
       } catch {
         yield { type: 'error', phase: 'fixing', error: `Failed to create or switch to branch ${branchName}` };
         return;
@@ -511,14 +510,22 @@ export class SolveCommand {
     // Check if safe mode file limit exceeded
     if (this.options.safe && filesModified.length > 3) {
       yield { type: 'progress', phase: 'fixing', message: `Safe mode: ${filesModified.length} files exceeds limit of 3. Stashing changes.` };
-      try { execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: safe mode rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); } catch { execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); }
+      try {
+        execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: safe mode rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+      } catch (stashErr) {
+        warnNonFatal('solve.safeMode', 'Could not stash changes — leaving working tree intact for manual recovery');
+      }
       yield { type: 'error', phase: 'fixing', error: 'Safe mode: too many files changed. Changes stashed (git stash list to recover). Try without --safe.' };
       return;
     }
 
     if (filesModified.length > this.options.maxFiles) {
       yield { type: 'progress', phase: 'fixing', message: `${filesModified.length} files exceeds --max-files ${this.options.maxFiles}. Stashing changes.` };
-      try { execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: max-files rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); } catch { execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 }); }
+      try {
+        execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: max-files rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+      } catch (stashErr) {
+        warnNonFatal('solve.maxFiles', 'Could not stash changes — leaving working tree intact for manual recovery');
+      }
       yield { type: 'error', phase: 'fixing', error: `Max files limit exceeded (${filesModified.length} > ${this.options.maxFiles}). Changes stashed (git stash list to recover).` };
       return;
     }
@@ -751,10 +758,10 @@ export class SolveCommand {
         if (status) {
           // Dirty — stash changes from previous solve attempt (recoverable via git stash list)
           try {
-            execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: previous attempt auto-stashed'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+            execFileSync('git', ['stash', 'push', '--include-untracked', '-m', 'codebot-solve: previous attempt auto-stashed'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
           } catch {
-            // Stash failed (e.g., no changes to stash) — clean untracked files only
-            execFileSync('git', ['checkout', '.'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
+            // Stash failed — leave working tree intact, warn but don't destroy work
+            warnNonFatal('solve.ensureRepo', 'Could not stash dirty working tree — proceeding with existing state');
           }
         }
 
