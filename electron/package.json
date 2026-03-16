@@ -31,7 +31,12 @@
         "dmg",
         "dir"
       ],
-      "darkModeSupport": true
+      "identity": "alex pinkevich (PWG7UVB6S4)",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "entitlements.plist",
+      "entitlementsInherit": "entitlements.plist"
     },
     "dmg": {
       "title": "CodeBot AI",
