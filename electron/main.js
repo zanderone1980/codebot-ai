@@ -217,16 +217,10 @@ function createWindow() {
       contextIsolation: true,
       spellcheck: false,
     },
-    show: false,  // Show after ready-to-show
+    show: true,
   });
 
-  // Show window when content is ready (prevents white flash)
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
-  });
-
-  // Load dashboard
+  // Load dashboard directly — server is already ready by this point
   mainWindow.loadURL(DASHBOARD_URL);
 
   // Open external links in system browser
