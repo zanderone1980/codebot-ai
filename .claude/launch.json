@@ -4,7 +4,7 @@
     {
       "name": "dashboard",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["/Users/zanderone/ClaudeWork/codebot-ai/bin/codebot", "--dashboard", "--provider", "ollama", "--model", "qwen3:14b"],
+      "runtimeArgs": ["/Users/zanderone/ClaudeWork/codebot-ai/bin/codebot", "--dashboard"],
       "port": 3120,
       "autoPort": true
     },

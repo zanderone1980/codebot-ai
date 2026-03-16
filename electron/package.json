@@ -1,0 +1,64 @@
+{
+  "name": "codebot-desktop",
+  "version": "2.9.0",
+  "description": "CodeBot AI Desktop — Autonomous AI coding agent",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac",
+    "build:dmg": "electron-builder --mac dmg",
+    "build:dir": "electron-builder --mac dir"
+  },
+  "author": "Ascendral",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.ascendral.codebot",
+    "productName": "CodeBot AI",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "icons/icon.icns",
+      "target": [
+        "dmg",
+        "dir"
+      ],
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "CodeBot AI",
+      "contents": [
+        { "x": 130, "y": 220 },
+        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "icons/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../dist",
+        "to": "codebot/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../bin",
+        "to": "codebot/bin",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../node_modules",
+        "to": "codebot/node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../package.json",
+        "to": "codebot/package.json"
+      }
+    ]
+  }
+}
