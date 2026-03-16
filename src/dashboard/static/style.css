@@ -1998,8 +1998,8 @@ body.chat-expanded .card-grid {
   font-family: var(--font-mono);
   transition: all 0.3s ease;
   position: fixed;
-  top: 12px;
-  left: 12px;
+  top: 46px;
+  right: 16px;
   z-index: 101;
 }
 .agent-status.idle {
