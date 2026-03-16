@@ -107,13 +107,47 @@ async function startServer() {
   const extraPath = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'].join(':');
   const fullPath = process.env.PATH ? `${extraPath}:${process.env.PATH}` : extraPath;
 
+  // Resolve API key: embedded .env > user config > env vars
+  let apiKey = process.env.ANTHROPIC_API_KEY || '';
+  if (!apiKey) {
+    // Check for .env file next to the app (for demo/investor builds)
+    const envLocations = [
+      path.join(paths.root, '.env'),
+      path.join(app.getPath('userData'), '.env'),
+      path.join(process.env.HOME || '', '.codebot', '.env'),
+    ];
+    for (const envPath of envLocations) {
+      try {
+        const envContent = fs.readFileSync(envPath, 'utf-8');
+        const match = envContent.match(/ANTHROPIC_API_KEY=(.+)/);
+        if (match) { apiKey = match[1].trim(); break; }
+      } catch { /* not found, try next */ }
+    }
+  }
+  if (!apiKey) {
+    // Check user's codebot config
+    try {
+      const configPath = path.join(process.env.HOME || '', '.codebot', 'config.json');
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      if (config.apiKey) apiKey = config.apiKey;
+    } catch { /* no config */ }
+  }
+
+  const serverEnv = {
+    ...process.env,
+    PATH: fullPath,
+    CODEBOT_DASHBOARD_PORT: String(DASHBOARD_PORT),
+  };
+  if (apiKey) {
+    serverEnv.ANTHROPIC_API_KEY = apiKey;
+    // Also set provider/model so it doesn't try to autodetect local LLMs
+    if (!process.env.CODEBOT_MODEL) serverEnv.CODEBOT_MODEL = 'claude-sonnet-4-6';
+    if (!process.env.CODEBOT_PROVIDER) serverEnv.CODEBOT_PROVIDER = 'anthropic';
+  }
+
   serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1'], {
     cwd: paths.root,
-    env: {
-      ...process.env,
-      PATH: fullPath,
-      CODEBOT_DASHBOARD_PORT: String(DASHBOARD_PORT),
-    },
+    env: serverEnv,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
