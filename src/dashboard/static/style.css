@@ -51,6 +51,32 @@ body {
   overflow: hidden;
 }
 
+/* ── Electron Title Bar (macOS hiddenInset) ── */
+
+.electron-titlebar {
+  -webkit-app-region: drag;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 38px;
+  z-index: 9999;
+}
+
+/* When running in Electron, add padding for traffic lights */
+body.is-electron #app {
+  padding-top: 38px;
+}
+
+body.is-electron #conn-indicator,
+body.is-electron #notification-area {
+  top: 48px;
+}
+
+body.is-electron #agent-status-indicator {
+  top: 48px;
+}
+
 /* ── App Container ── */
 
 #app {
