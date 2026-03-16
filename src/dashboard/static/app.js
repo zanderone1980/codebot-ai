@@ -523,6 +523,56 @@ const App = {
     if (input) { input.value = ''; input.focus(); }
   },
 
+
+  // ===========================================================
+  // SETTINGS
+  // ===========================================================
+
+  settingsLoaded: false,
+
+  async initSettings() {
+    if (this.settingsLoaded) return;
+    this.settingsLoaded = true;
+    try {
+      var data = await this.fetch('/api/setup/status');
+      if (data.provider) document.getElementById('settings-provider').value = data.provider;
+      if (data.model) document.getElementById('settings-model').value = data.model;
+      if (data.hasApiKey) document.getElementById('settings-api-key').placeholder = 'Key configured (hidden)';
+    } catch (err) {}
+  },
+
+  toggleKeyVisibility() {
+    var input = document.getElementById('settings-api-key');
+    input.type = input.type === 'password' ? 'text' : 'password';
+  },
+
+  async saveSettings() {
+    var provider = document.getElementById('settings-provider').value;
+    var model = document.getElementById('settings-model').value;
+    var apiKey = document.getElementById('settings-api-key').value.trim();
+    var statusEl = document.getElementById('settings-status');
+    var saveBtn = document.getElementById('settings-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+    try {
+      var body = { provider: provider, model: model };
+      if (apiKey) body.apiKey = apiKey;
+      await apiFetch('/api/setup/provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      statusEl.style.color = '#4caf50';
+      statusEl.textContent = 'Settings saved. Restart the app for changes to take full effect.';
+      if (apiKey) { document.getElementById('settings-api-key').value = ''; document.getElementById('settings-api-key').placeholder = 'Key configured (hidden)'; }
+    } catch (err) {
+      statusEl.style.color = '#ff6b6b';
+      statusEl.textContent = 'Error: ' + err.message;
+    }
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Settings';
+  },
+
   // ===========================================================
   // NOTIFICATIONS
   // ===========================================================
