@@ -73,8 +73,10 @@ body.is-electron #notification-area {
   top: 48px;
 }
 
-body.is-electron #agent-status-indicator {
+body.is-electron #agent-status-indicator,
+body.is-electron .agent-status {
   top: 48px;
+  left: 84px;  /* Clear macOS traffic lights */
 }
 
 /* ── App Container ── */
