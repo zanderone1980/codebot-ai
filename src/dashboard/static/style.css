@@ -76,7 +76,7 @@ body.is-electron #notification-area {
 body.is-electron #agent-status-indicator,
 body.is-electron .agent-status {
   top: 48px;
-  left: 84px;  /* Clear macOS traffic lights */
+  left: 90px;  /* Clear macOS traffic lights */
 }
 
 /* ── App Container ── */
@@ -2024,21 +2024,12 @@ body.chat-expanded .card-grid {
 }
 .agent-status-dot.idle {
   background: #00ff41;
-  box-shadow: 0 0 6px #00ff41;
 }
 .agent-status-dot.working {
   background: #00aaff;
-  box-shadow: 0 0 6px #00aaff;
-  animation: pulse-dot 1.2s ease-in-out infinite;
 }
 .agent-status-dot.queued {
   background: #ffaa00;
-  box-shadow: 0 0 6px #ffaa00;
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.8); }
 }
 .agent-status-timer {
   font-variant-numeric: tabular-nums;
