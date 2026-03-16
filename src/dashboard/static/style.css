@@ -75,9 +75,9 @@ body.is-electron #notification-area {
 
 body.is-electron #agent-status-indicator,
 body.is-electron .agent-status {
-  top: 6px;
+  top: 80px;
   left: auto;
-  right: 100px;  /* Move to right side, away from macOS traffic lights */
+  right: 16px;  /* Directly below version badge, away from traffic lights */
 }
 
 /* ── App Container ── */
