@@ -310,31 +310,11 @@ const App = {
     if (this.chatInitialized) return;
     this.chatInitialized = true;
 
-    const welcomeInput = document.getElementById('chat-input');
-    const welcomeSend = document.getElementById('chat-send');
-    const activeInput = document.getElementById('chat-input-active');
-    const activeSend = document.getElementById('chat-send-active');
-    if (!welcomeInput || !welcomeSend) return;
-
-    const switchToActiveChat = () => {
-      var welcome = document.getElementById('chat-welcome');
-      var bottom = document.getElementById('chat-input-bottom');
-      if (welcome) welcome.style.display = 'none';
-      if (bottom) bottom.style.display = '';
-      const logoArea = document.getElementById('logo-area');
-      if (logoArea) logoArea.classList.add('faded');
-      document.body.classList.add('chat-expanded');
-      if (activeInput) activeInput.focus();
-    };
-
-    const getActiveInput = () => {
-      var welcome = document.getElementById('chat-welcome');
-      if (welcome && welcome.style.display !== 'none') return welcomeInput;
-      return activeInput || welcomeInput;
-    };
+    const input = document.getElementById('chat-input');
+    const sendBtn = document.getElementById('chat-send');
+    if (!input || !sendBtn) return;
 
     const send = () => {
-      var input = getActiveInput();
       const msg = input.value.trim();
       if (!msg) return;
       input.value = '';
@@ -342,17 +322,19 @@ const App = {
       this.saveMessageToConversation('user', msg);
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
-      switchToActiveChat();
+
+      // Hide suggestion chips
+      var suggestions = document.getElementById('chat-suggestions');
+      if (suggestions) suggestions.style.display = 'none';
+
+      // Fade logo + expand layout once chat starts
+      const logoArea = document.getElementById('logo-area');
+      if (logoArea) logoArea.classList.add('faded');
+      document.body.classList.add('chat-expanded');
     };
 
-    // Capability card clicks handled by sendCapabilityDemo
-
-    welcomeSend.addEventListener('click', send);
-    welcomeInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); send(); }
-    });
-    if (activeSend) activeSend.addEventListener('click', send);
-    if (activeInput) activeInput.addEventListener('keydown', (e) => {
+    sendBtn.addEventListener('click', send);
+    input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); send(); }
     });
   },
@@ -585,11 +567,9 @@ const App = {
     var container = document.getElementById('chat-messages');
     if (container) container.innerHTML = '';
 
-    // Show welcome screen again
-    var welcome = document.getElementById('chat-welcome');
-    if (welcome) welcome.style.display = '';
-    var bottom = document.getElementById('chat-input-bottom');
-    if (bottom) bottom.style.display = 'none';
+    // Show suggestion chips again
+    var suggestions = document.getElementById('chat-suggestions');
+    if (suggestions) suggestions.style.display = '';
 
     // Reset logo and layout
     var logoArea = document.getElementById('logo-area');
@@ -859,12 +839,10 @@ const App = {
       this.highlightAllCode();
     }
 
-    // Show/hide welcome vs active chat
+    // Show/hide suggestions
     var hasMessages = conv && conv.messages.length > 0;
-    var welcome = document.getElementById('chat-welcome');
-    var bottom = document.getElementById('chat-input-bottom');
-    if (welcome) welcome.style.display = hasMessages ? 'none' : '';
-    if (bottom) bottom.style.display = hasMessages ? '' : 'none';
+    var suggestions = document.getElementById('chat-suggestions');
+    if (suggestions) suggestions.style.display = hasMessages ? 'none' : '';
 
     // Update layout
     var logoArea = document.getElementById('logo-area');
@@ -889,10 +867,8 @@ const App = {
       } else {
         var container = document.getElementById('chat-messages');
         if (container) container.innerHTML = '';
-        var welcome = document.getElementById('chat-welcome');
-        if (welcome) welcome.style.display = '';
-        var bottom = document.getElementById('chat-input-bottom');
-        if (bottom) bottom.style.display = 'none';
+        var suggestions = document.getElementById('chat-suggestions');
+        if (suggestions) suggestions.style.display = '';
       }
     }
     this.saveConversations();
