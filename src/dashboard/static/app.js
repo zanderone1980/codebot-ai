@@ -551,6 +551,23 @@ const App = {
     }
   },
 
+  sendCapabilityDemo(category) {
+    var demos = {
+      code: 'Show me what you can do with code. Read a file from this project, analyze it, and suggest an improvement.',
+      research: 'Research the latest trends in AI agents and autonomous coding tools. Give me a comprehensive summary.',
+      automate: 'Show me your automation capabilities. Check the system health, list recent git commits, and give me a status report.',
+      create: 'Write a professional LinkedIn post announcing an AI-powered coding agent that can autonomously write, test, and deploy code.',
+      connect: 'Show me all the app integrations you support and how they work. List your connectors and their capabilities.',
+      safe: 'Explain your safety architecture. What prevents you from doing something dangerous? Walk me through your 8-layer safety stack.',
+    };
+    var msg = demos[category] || 'What can you do?';
+    var input = document.getElementById('chat-input');
+    if (input) input.value = msg;
+    // Trigger the send
+    var sendBtn = document.getElementById('chat-send');
+    if (sendBtn) sendBtn.click();
+  },
+
   newChat() {
     // Reset agent conversation on the server
     apiFetch('/api/command/chat/reset', { method: 'POST' }).catch(function() {});

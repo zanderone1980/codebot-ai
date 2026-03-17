@@ -2664,3 +2664,56 @@ code.inline-code {
   padding: 24px;
   text-align: center;
 }
+
+/* ── Capability Showcase Grid ── */
+
+.capability-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 8px;
+  width: 100%;
+  max-width: 640px;
+}
+
+.capability-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+}
+.capability-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-card-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
+}
+
+.capability-icon {
+  color: var(--accent);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.capability-title {
+  font-size: 0.9em;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.capability-desc {
+  font-size: 0.72em;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+@media (max-width: 600px) {
+  .capability-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
