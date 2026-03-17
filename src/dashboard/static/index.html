@@ -7,14 +7,16 @@
   <meta http-equiv="pragma" content="no-cache">
   <meta http-equiv="expires" content="0">
   <title>CodeBot AI — v2</title>
-  <link rel="stylesheet" href="style.css?v=35">
-  <link rel="icon" href="favicon.svg?v=35" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css?v=40">
+  <link rel="icon" href="favicon.svg?v=40" type="image/svg+xml">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#00d4ff">
   <meta name="description" content="CodeBot AI Development Console">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="logo.svg">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 </head>
 <body>
   <!-- Onboarding Overlay (shown on first run) -->
@@ -51,7 +53,7 @@
     <div id="center-stage">
       <!-- Logo -->
       <div id="logo-area">
-        <img src="logo.svg?v=35" alt="CodeBot" id="logo-img" />
+        <img src="logo.svg?v=40" alt="CodeBot" id="logo-img" />
         <div id="logo-tagline">AI Development Console</div>
       </div>
 
@@ -60,29 +62,40 @@
 
         <!-- Chat Panel (default) -->
         <div id="panel-chat" class="panel active">
-          <button id="new-chat-btn" class="new-chat-btn" style="display:none" onclick="App.newChat()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New Chat
-          </button>
-          <div id="chat-messages" class="chat-messages"></div>
-          <!-- Suggestion Chips (shown when chat is empty) -->
-          <div id="chat-suggestions" class="chat-suggestions">
-            <div class="suggestion-label">Try something:</div>
-            <div class="suggestion-chips">
-              <button class="suggestion-chip" data-msg="Post on X about ">Post on X</button>
-              <button class="suggestion-chip" data-msg="Research the latest news about ">Research a topic</button>
-              <button class="suggestion-chip" data-msg="Remind me to ">Set a reminder</button>
-              <button class="suggestion-chip" data-msg="Write a blog post about ">Write content</button>
-              <button class="suggestion-chip" data-msg="Check my system health">System check</button>
-              <button class="suggestion-chip" data-msg="What can you do?">What can you do?</button>
+          <div class="chat-layout">
+            <!-- Conversation Sidebar -->
+            <div id="chat-sidebar" class="chat-sidebar">
+              <div class="chat-sidebar-header">
+                <button id="new-chat-btn" class="new-chat-sidebar-btn" onclick="App.newChat()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  New Chat
+                </button>
+              </div>
+              <div id="chat-sidebar-list" class="chat-sidebar-list"></div>
             </div>
-          </div>
-          <div class="chat-input-row">
-            <input type="text" id="chat-input" class="chat-input"
-                   placeholder="Ask CodeBot anything..." autocomplete="off" />
-            <button id="chat-send" class="btn-send">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            </button>
+            <!-- Main Chat Area -->
+            <div class="chat-main">
+              <div id="chat-messages" class="chat-messages"></div>
+              <!-- Suggestion Chips (shown when chat is empty) -->
+              <div id="chat-suggestions" class="chat-suggestions">
+                <div class="suggestion-label">Try something:</div>
+                <div class="suggestion-chips">
+                  <button class="suggestion-chip" data-msg="Explain how this project works">Explain codebase</button>
+                  <button class="suggestion-chip" data-msg="Find and fix bugs in this project">Find bugs</button>
+                  <button class="suggestion-chip" data-msg="Write tests for the most critical code paths">Write tests</button>
+                  <button class="suggestion-chip" data-msg="Research the latest news about ">Research a topic</button>
+                  <button class="suggestion-chip" data-msg="Check my system health">System check</button>
+                  <button class="suggestion-chip" data-msg="What can you do?">What can you do?</button>
+                </div>
+              </div>
+              <div class="chat-input-row">
+                <textarea id="chat-input" class="chat-input"
+                       placeholder="Ask CodeBot anything..." autocomplete="off" rows="1"></textarea>
+                <button id="chat-send" class="btn-send">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -404,7 +417,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=40"></script>
   <script>
   // Kill any leftover service workers — they cause more problems than they solve
   if ('serviceWorker' in navigator) {
