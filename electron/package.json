@@ -24,6 +24,7 @@
   "build": {
     "appId": "com.ascendral.codebot",
     "productName": "CodeBot AI",
+    "afterSign": "notarize.js",
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "icons/icon.icns",
