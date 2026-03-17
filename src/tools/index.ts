@@ -86,26 +86,44 @@ export class ToolRegistry {
     this.register(new PackageManagerTool());
     this.register(new CodeReviewTool());
     // v2.5.0 — App Connectors
+    let vault: VaultManager | undefined;
+    let connectorRegistry: ConnectorRegistry | undefined;
     try {
-      const vault = new VaultManager();
-      const connectorRegistry = new ConnectorRegistry(vault);
-      connectorRegistry.register(new GitHubConnector());
-      connectorRegistry.register(new SlackConnector());
-      connectorRegistry.register(new JiraConnector());
-      connectorRegistry.register(new LinearConnector());
-      connectorRegistry.register(new OpenAIImagesConnector());
-      connectorRegistry.register(new ReplicateConnector());
-      connectorRegistry.register(new GmailConnector());
-      connectorRegistry.register(new GoogleCalendarConnector());
-      connectorRegistry.register(new NotionConnector());
-      connectorRegistry.register(new GoogleDriveConnector());
+      vault = new VaultManager();
+      connectorRegistry = new ConnectorRegistry(vault);
+    } catch (err) {
+      console.warn('[ToolRegistry] Vault/ConnectorRegistry init failed:', err);
+    }
+
+    if (vault && connectorRegistry) {
+      const connectors: Array<{ name: string; create: () => any }> = [
+        { name: 'GitHub', create: () => new GitHubConnector() },
+        { name: 'Slack', create: () => new SlackConnector() },
+        { name: 'Jira', create: () => new JiraConnector() },
+        { name: 'Linear', create: () => new LinearConnector() },
+        { name: 'OpenAIImages', create: () => new OpenAIImagesConnector() },
+        { name: 'Replicate', create: () => new ReplicateConnector() },
+        { name: 'Gmail', create: () => new GmailConnector() },
+        { name: 'GoogleCalendar', create: () => new GoogleCalendarConnector() },
+        { name: 'Notion', create: () => new NotionConnector() },
+        { name: 'GoogleDrive', create: () => new GoogleDriveConnector() },
+      ];
+      for (const c of connectors) {
+        try {
+          connectorRegistry.register(c.create());
+        } catch (err) {
+          console.warn(`[ToolRegistry] ${c.name} connector failed to register:`, err);
+        }
+      }
       this.register(new AppConnectorTool(vault, connectorRegistry));
-      this.register(new GraphicsTool());
-      this.register(new DeepResearchTool());
-      this.register(new SkillForgeTool());
-      this.register(new DecomposeGoalTool());
-      this.register(new PluginForgeTool());
-    } catch { /* connectors unavailable */ }
+    }
+
+    // Non-connector tools — always register regardless of connector status
+    this.register(new GraphicsTool());
+    this.register(new DeepResearchTool());
+    this.register(new SkillForgeTool());
+    this.register(new DecomposeGoalTool());
+    this.register(new PluginForgeTool());
   }
 
   register(tool: Tool) {
