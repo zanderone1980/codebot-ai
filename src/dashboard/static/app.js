@@ -337,6 +337,16 @@ const App = {
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); send(); }
     });
+
+    // Wire up suggestion chips
+    var chips = document.querySelectorAll('.suggestion-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].addEventListener('click', function() {
+        var msg = this.getAttribute('data-msg');
+        input.value = msg;
+        input.focus();
+      });
+    }
   },
 
   appendChatMessage(role, content) {
