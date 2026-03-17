@@ -610,26 +610,55 @@ const App = {
         placeholder.selected = true;
         select.insertBefore(placeholder, select.firstChild);
       }
+      App._modelProviderAvailable = data.available || {};
     }).catch(function() {});
+  },
+
+  _detectProvider(model) {
+    if (model.startsWith('claude')) return 'anthropic';
+    if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) return 'openai';
+    if (model.startsWith('gemini')) return 'gemini';
+    if (model.startsWith('deepseek')) return 'deepseek';
+    if (model.startsWith('grok')) return 'xai';
+    if (model.startsWith('mistral') || model.startsWith('codestral')) return 'mistral';
+    if (model.includes('groq') || model.startsWith('llama-')) return 'groq';
+    return 'local';
   },
 
   changeModel(model) {
     if (!model) return;
-    // Detect provider from model name
-    var provider = 'local';
-    if (model.startsWith('claude')) provider = 'anthropic';
-    else if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) provider = 'openai';
-    else if (model.startsWith('gemini')) provider = 'gemini';
-    else if (model.startsWith('deepseek')) provider = 'deepseek';
-    else if (model.startsWith('grok')) provider = 'xai';
-    else if (model.startsWith('mistral') || model.startsWith('codestral')) provider = 'mistral';
-    else if (model.includes('groq') || model.startsWith('llama-')) provider = 'groq';
+    var provider = this._detectProvider(model);
+
+    // Check if provider has API key
+    if (provider !== 'local' && this._modelProviderAvailable && !this._modelProviderAvailable[provider]) {
+      var providerNames = {
+        anthropic: 'Anthropic (Claude)', openai: 'OpenAI', gemini: 'Google Gemini',
+        deepseek: 'DeepSeek', groq: 'Groq', mistral: 'Mistral', xai: 'xAI'
+      };
+      var envKeys = {
+        anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', gemini: 'GEMINI_API_KEY',
+        deepseek: 'DEEPSEEK_API_KEY', groq: 'GROQ_API_KEY', mistral: 'MISTRAL_API_KEY', xai: 'XAI_API_KEY'
+      };
+      var key = prompt('Enter API key for ' + (providerNames[provider] || provider) + ':');
+      if (!key || !key.trim()) {
+        // Revert selection
+        this.loadModels();
+        return;
+      }
+      apiFetch('/api/setup/provider', {
+        method: 'POST',
+        body: JSON.stringify({ provider: provider, model: model, apiKey: key.trim() }),
+      }).then(function() {
+        App._modelProviderAvailable[provider] = true;
+        apiFetch('/api/command/chat/reset', { method: 'POST' }).catch(function() {});
+      }).catch(function() {});
+      return;
+    }
 
     apiFetch('/api/setup/provider', {
       method: 'POST',
       body: JSON.stringify({ provider: provider, model: model }),
     }).then(function() {
-      // Reset chat so new model takes effect
       apiFetch('/api/command/chat/reset', { method: 'POST' }).catch(function() {});
     }).catch(function() {});
   },
