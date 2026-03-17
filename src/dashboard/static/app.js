@@ -44,12 +44,11 @@ const App = {
 
   // -- Init --
   init() {
-    // Detect Electron and add title bar drag region
+    // Detect Electron and enable title bar drag region
     if (window.electronAPI && window.electronAPI.isElectron) {
       document.body.classList.add('is-electron');
-      var titlebar = document.createElement('div');
-      titlebar.className = 'electron-titlebar';
-      document.body.prepend(titlebar);
+      var titlebar = document.getElementById('electron-titlebar');
+      if (titlebar) titlebar.style.display = '';
     }
     this.setupNavigation();
     this.checkOnboarding();

@@ -54,28 +54,34 @@ body {
 /* ── Electron Title Bar (macOS hiddenInset) ── */
 
 .electron-titlebar {
+  display: none;
+}
+
+body.is-electron .electron-titlebar {
+  display: block;
   -webkit-app-region: drag;
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
+  width: 100%;
   height: 38px;
-  z-index: 9999;
-  pointer-events: auto;
+  flex-shrink: 0;
 }
 
 /* Ensure all interactive elements are not draggable */
-.electron-titlebar button,
-.electron-titlebar input,
-.electron-titlebar a,
-button, input, textarea, select, a, .nav-pill, .suggestion-chip, .capability-card,
-.chat-sidebar-item, .new-chat-sidebar-btn, .notification-bell, .file-item {
+body.is-electron button,
+body.is-electron input,
+body.is-electron textarea,
+body.is-electron select,
+body.is-electron a,
+body.is-electron .nav-pill,
+body.is-electron .suggestion-chip,
+body.is-electron .capability-card,
+body.is-electron .chat-sidebar-item,
+body.is-electron .new-chat-sidebar-btn,
+body.is-electron .notification-bell,
+body.is-electron .file-item,
+body.is-electron #conn-indicator,
+body.is-electron #notification-area,
+body.is-electron .agent-status {
   -webkit-app-region: no-drag;
-}
-
-/* When running in Electron, add padding for traffic lights */
-body.is-electron #app {
-  padding-top: 38px;
 }
 
 body.is-electron #conn-indicator,
