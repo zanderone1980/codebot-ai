@@ -19,6 +19,7 @@ export function buildSystemPrompt(opts: {
   userProfile: UserProfile;
   stateEngine: AgentStateEngine | null;
   messages: Message[];
+  crossSession?: CrossSessionLearning;
 }): string {
   let repoMap = '';
   try {
@@ -43,8 +44,8 @@ export function buildSystemPrompt(opts: {
 
   let crossSessionBlock = '';
   try {
-    const crossSession = new CrossSessionLearning();
-    crossSessionBlock = crossSession.buildPromptBlock();
+    const cs = opts.crossSession ?? new CrossSessionLearning();
+    crossSessionBlock = cs.buildPromptBlock();
     if (crossSessionBlock) crossSessionBlock = '\n' + crossSessionBlock + '\n';
   } catch {}
 

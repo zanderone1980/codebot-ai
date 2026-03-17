@@ -165,6 +165,10 @@ export function loadSkills(): SkillDefinition[] {
           const raw = fs.readFileSync(path.join(codebotPath('skills'), file), 'utf-8');
           const skill = JSON.parse(raw) as SkillDefinition;
           if (skill.name && skill.steps?.length) {
+            // Skip retired skills (confidence below threshold)
+            if ((skill as any).confidence !== undefined && (skill as any).confidence < 0.1) {
+              continue;
+            }
             skills.push(skill);
           }
         } catch { /* skip invalid skill files */ }

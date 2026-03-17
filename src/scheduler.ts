@@ -140,7 +140,7 @@ export class Scheduler {
   }
 
   /** Run health checks and handle critical issues */
-  private healthTick(): void {
+  private async healthTick(): Promise<void> {
     try {
       const report = this.selfMonitor.runAll();
       this.lastHealthReport = report;
@@ -149,10 +149,20 @@ export class Scheduler {
         this.onOutput?.('\n[HEALTH] Critical issues detected:\n' + SelfMonitor.formatReport(report) + '\n');
       }
 
-      // Auto-execute low-risk fix actions when in autonomous mode
+      // Auto-execute low-risk fix actions through the agent (goes through CORD safety)
       for (const action of report.fixActions) {
         if (action.risk <= 0.3) {
           this.onOutput?.(`\n[HEALTH] Auto-fixing: ${action.description}\n`);
+          try {
+            for await (const event of this.agent.run(`[AUTO-HEAL] ${action.description}. Use tool "${action.tool}" with args: ${JSON.stringify(action.args)}`)) {
+              if (event.type === 'text' && event.text) {
+                this.onOutput?.(event.text);
+              }
+            }
+            this.onOutput?.(`[HEALTH] Fix applied: ${action.description}\n`);
+          } catch (err) {
+            this.onOutput?.(`[HEALTH] Fix failed: ${action.description} — ${err instanceof Error ? err.message : String(err)}\n`);
+          }
         }
       }
     } catch { /* health check should never crash the scheduler */ }

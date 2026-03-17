@@ -253,6 +253,13 @@ export async function main() {
       maxIterations: config.maxIterations, autoApprove: true,
     });
     const daemon = new Daemon();
+    daemon.onExecuteJob = async (job) => {
+      let output = '';
+      for await (const event of agent.run(job.description)) {
+        if (event.type === 'text' && event.text) output += event.text;
+      }
+      return output || `Completed: ${job.description}`;
+    };
     console.log(c('  CodeBot Daemon starting...', 'cyan'));
     console.log(c('  Press Ctrl+C to stop.', 'dim'));
     await daemon.start();

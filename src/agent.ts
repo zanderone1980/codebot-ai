@@ -184,7 +184,7 @@ export class Agent {
     const supportsTools = getModelInfo(opts.model).supportsToolCalling;
     this.messages.push({
       role: 'system',
-      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, stateEngine: this.stateEngine, messages: this.messages }),
+      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, stateEngine: this.stateEngine, messages: this.messages, crossSession: this.crossSession }),
     });
   }
 
