@@ -20,8 +20,8 @@ exports.default = async function notarizing(context) {
 
   try {
     execSync(
-      `xcrun notarytool submit "${zipPath}" --keychain-profile "codebot-notarize" --wait`,
-      { stdio: 'inherit', timeout: 600000 }
+      `xcrun notarytool submit "${zipPath}" --keychain-profile "codebot-notarize" --wait --timeout 30m`,
+      { stdio: 'inherit', timeout: 1800000 }
     );
 
     console.log('Notarization succeeded. Stapling ticket...');
