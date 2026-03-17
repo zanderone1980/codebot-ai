@@ -146,6 +146,21 @@ if (fs.existsSync(bsqlite)) {
   if (fs.existsSync(prebuild)) fs.rmSync(prebuild, { recursive: true, force: true });
 }
 
+// Clean up dangling .bin symlinks (broken after removing packages above)
+const binDir = path.join(STAGING_DIR, 'node_modules', '.bin');
+if (fs.existsSync(binDir)) {
+  for (const entry of fs.readdirSync(binDir)) {
+    const linkPath = path.join(binDir, entry);
+    try {
+      // fs.statSync follows symlinks — throws if target doesn't exist
+      fs.statSync(linkPath);
+    } catch {
+      // Dangling symlink — remove it
+      try { fs.unlinkSync(linkPath); } catch {}
+    }
+  }
+}
+
 // Report sizes
 const stagingSize = execSync(`du -sh "${STAGING_DIR}/node_modules" 2>/dev/null || echo "unknown"`, {
   encoding: 'utf-8',
