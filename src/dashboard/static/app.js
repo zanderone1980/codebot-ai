@@ -269,6 +269,8 @@ const App = {
       case 'tools': this.initTools(); break;
       case 'workflows': this.initWorkflows(); break;
       case 'memory': this.initMemory(); break;
+      case 'files': this.initFiles(); break;
+      case 'status': this.initStatus(); break;
       case 'codeagi': this.initPanelCodeagi(); break;
       case 'settings': this.initSettings(); break;
     }
@@ -577,6 +579,186 @@ const App = {
 
 
   // ===========================================================
+  // FILE EXPLORER
+  // ===========================================================
+
+  filesInitialized: false,
+
+  async initFiles() {
+    if (this.filesInitialized) return;
+    this.filesInitialized = true;
+    this.browseDir();
+  },
+
+  async browseDir(dirPath) {
+    var url = '/api/files/browse';
+    if (dirPath) url += '?path=' + encodeURIComponent(dirPath);
+    try {
+      var data = await this.fetch(url);
+      // Breadcrumb
+      var breadcrumb = document.getElementById('file-breadcrumb');
+      if (breadcrumb) {
+        var parts = data.path.split('/').filter(Boolean);
+        var crumbs = '<span class="breadcrumb-item" onclick="App.browseDir('/')">root</span>';
+        var built = '';
+        for (var i = 0; i < parts.length; i++) {
+          built += '/' + parts[i];
+          var isLast = i === parts.length - 1;
+          crumbs += ' <span class="breadcrumb-sep">/</span> ';
+          if (isLast) {
+            crumbs += '<span class="breadcrumb-item active">' + this.escapeHtml(parts[i]) + '</span>';
+          } else {
+            crumbs += '<span class="breadcrumb-item" onclick="App.browseDir('' + this.escapeHtml(built) + '')">' + this.escapeHtml(parts[i]) + '</span>';
+          }
+        }
+        breadcrumb.innerHTML = crumbs;
+      }
+
+      // File list
+      var list = document.getElementById('file-list');
+      if (!list) return;
+      var html = '';
+      if (data.parent) {
+        html += '<div class="file-item directory" onclick="App.browseDir('' + this.escapeHtml(data.parent) + '')"><span class="file-icon">&#128193;</span> <span class="file-name">..</span></div>';
+      }
+      for (var j = 0; j < data.items.length; j++) {
+        var item = data.items[j];
+        if (item.type === 'directory') {
+          html += '<div class="file-item directory" onclick="App.browseDir('' + this.escapeHtml(item.path) + '')"><span class="file-icon">&#128193;</span> <span class="file-name">' + this.escapeHtml(item.name) + '</span></div>';
+        } else {
+          var sizeStr = item.size ? this.formatBytes(item.size) : '';
+          html += '<div class="file-item file" onclick="App.previewFile('' + this.escapeHtml(item.path) + '', '' + this.escapeHtml(item.name) + '')"><span class="file-icon">' + this.getFileIcon(item.ext) + '</span> <span class="file-name">' + this.escapeHtml(item.name) + '</span><span class="file-size">' + sizeStr + '</span></div>';
+        }
+      }
+      list.innerHTML = html;
+    } catch (err) {
+      var list = document.getElementById('file-list');
+      if (list) list.innerHTML = '<div class="file-error">Error loading files</div>';
+    }
+  },
+
+  async previewFile(filePath, fileName) {
+    try {
+      var data = await this.fetch('/api/files/read?path=' + encodeURIComponent(filePath));
+      var preview = document.getElementById('file-preview');
+      var nameEl = document.getElementById('file-preview-name');
+      var contentEl = document.getElementById('file-preview-content');
+      if (preview) preview.classList.add('visible');
+      if (nameEl) nameEl.textContent = fileName;
+      if (contentEl) {
+        var ext = fileName.split('.').pop() || '';
+        var langMap = { ts: 'typescript', js: 'javascript', py: 'python', json: 'json', css: 'css', html: 'html', md: 'markdown', sh: 'bash', yml: 'yaml', yaml: 'yaml' };
+        var lang = langMap[ext] || '';
+        contentEl.textContent = data.content;
+        if (typeof hljs !== 'undefined' && lang) {
+          contentEl.className = 'file-preview-content language-' + lang;
+          hljs.highlightElement(contentEl);
+        }
+      }
+    } catch (err) {
+      var contentEl = document.getElementById('file-preview-content');
+      if (contentEl) contentEl.textContent = 'Error reading file';
+    }
+  },
+
+  closeFilePreview() {
+    var preview = document.getElementById('file-preview');
+    if (preview) preview.classList.remove('visible');
+  },
+
+  getFileIcon(ext) {
+    var icons = {
+      ts: '&#128220;', js: '&#128220;', py: '&#128013;', json: '&#128203;',
+      css: '&#127912;', html: '&#127760;', md: '&#128196;', svg: '&#127912;',
+      png: '&#128247;', jpg: '&#128247;', gif: '&#128247;', sh: '&#9000;',
+      yml: '&#9881;', yaml: '&#9881;', env: '&#128274;', lock: '&#128274;',
+    };
+    return icons[ext] || '&#128196;';
+  },
+
+  formatBytes(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  },
+
+  // ===========================================================
+  // SYSTEM STATUS
+  // ===========================================================
+
+  statusInitialized: false,
+  statusInterval: null,
+
+  async initStatus() {
+    this.loadStatus();
+    if (!this.statusInterval) {
+      this.statusInterval = setInterval(() => this.loadStatus(), 10000);
+    }
+  },
+
+  async loadStatus() {
+    try {
+      var data = await this.fetch('/api/system/stats');
+      var grid = document.getElementById('status-grid');
+      if (!grid) return;
+
+      var uptimeStr = this.formatUptime(data.uptime);
+      var memUsed = ((data.processMemory.heapUsed / 1024 / 1024)).toFixed(0);
+      var memTotal = ((data.processMemory.heapTotal / 1024 / 1024)).toFixed(0);
+      var sysMem = ((data.totalMemory - data.freeMemory) / 1024 / 1024 / 1024).toFixed(1);
+      var sysMemTotal = (data.totalMemory / 1024 / 1024 / 1024).toFixed(0);
+
+      grid.innerHTML =
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>' +
+          '<div class="status-card-label">Uptime</div>' +
+          '<div class="status-card-value">' + uptimeStr + '</div>' +
+        '</div>' +
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg></div>' +
+          '<div class="status-card-label">Process Memory</div>' +
+          '<div class="status-card-value">' + memUsed + ' / ' + memTotal + ' MB</div>' +
+          '<div class="status-card-bar"><div class="status-bar-fill" style="width:' + Math.round(data.processMemory.heapUsed / data.processMemory.heapTotal * 100) + '%"></div></div>' +
+        '</div>' +
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>' +
+          '<div class="status-card-label">System Memory</div>' +
+          '<div class="status-card-value">' + sysMem + ' / ' + sysMemTotal + ' GB</div>' +
+          '<div class="status-card-bar"><div class="status-bar-fill" style="width:' + Math.round((data.totalMemory - data.freeMemory) / data.totalMemory * 100) + '%"></div></div>' +
+        '</div>' +
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>' +
+          '<div class="status-card-label">AI Provider</div>' +
+          '<div class="status-card-value">' + this.escapeHtml(data.provider) + '</div>' +
+          '<div class="status-card-sub">' + this.escapeHtml(data.model) + '</div>' +
+        '</div>' +
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>' +
+          '<div class="status-card-label">Platform</div>' +
+          '<div class="status-card-value">' + this.escapeHtml(data.platform + '-' + data.arch) + '</div>' +
+          '<div class="status-card-sub">Node ' + this.escapeHtml(data.nodeVersion) + ' &middot; ' + data.cpus + ' cores</div>' +
+        '</div>' +
+        '<div class="status-card">' +
+          '<div class="status-card-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>' +
+          '<div class="status-card-label">Version</div>' +
+          '<div class="status-card-value">v' + this.escapeHtml(data.version) + '</div>' +
+          '<div class="status-card-sub">PID: ' + data.pid + '</div>' +
+        '</div>';
+    } catch (err) {
+      var grid = document.getElementById('status-grid');
+      if (grid) grid.innerHTML = '<div class="status-error">Error loading system stats</div>';
+    }
+  },
+
+  formatUptime(seconds) {
+    if (seconds < 60) return seconds + 's';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+    var h = Math.floor(seconds / 3600);
+    var m = Math.floor((seconds % 3600) / 60);
+    return h + 'h ' + m + 'm';
+  },
+
+    // ===========================================================
   // CONVERSATION HISTORY
   // ===========================================================
 

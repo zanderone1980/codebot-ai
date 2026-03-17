@@ -531,6 +531,95 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     DashboardServer.json(res, { enabled: true, ...metrics });
   });
 
+  // ── System Stats (for dashboard status panel) ──
+  server.route('GET', '/api/system/stats', (_req, res) => {
+    const os = require('os');
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+    const memUsage = process.memoryUsage();
+
+    DashboardServer.json(res, {
+      version: VERSION,
+      uptime,
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      hostname: os.hostname(),
+      cpus: os.cpus().length,
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
+      processMemory: {
+        rss: memUsage.rss,
+        heapUsed: memUsage.heapUsed,
+        heapTotal: memUsage.heapTotal,
+      },
+      provider: process.env.CODEBOT_PROVIDER || 'anthropic',
+      model: process.env.CODEBOT_MODEL || 'claude-sonnet-4-6',
+      pid: process.pid,
+    });
+  });
+
+  // ── File Browser ──
+  server.route('GET', '/api/files/browse', (req, res) => {
+    const query = DashboardServer.parseQuery(req.url || '');
+    const dirPath = query.path || root;
+
+    const resolved = path.resolve(dirPath);
+    if (!resolved.startsWith(root) && resolved !== root) {
+      DashboardServer.error(res, 403, 'Access denied: path outside project');
+      return;
+    }
+
+    try {
+      const entries = fs.readdirSync(resolved, { withFileTypes: true });
+      const items = entries
+        .filter((e) => !e.name.startsWith('.') || e.name === '.env.example')
+        .map((e) => ({
+          name: e.name,
+          type: e.isDirectory() ? 'directory' : 'file',
+          path: path.join(resolved, e.name),
+          ext: e.isFile() ? path.extname(e.name).slice(1) : null,
+          size: e.isFile() ? (() => { try { return fs.statSync(path.join(resolved, e.name)).size; } catch { return 0; } })() : null,
+        }))
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      DashboardServer.json(res, {
+        path: resolved,
+        parent: resolved !== root ? path.dirname(resolved) : null,
+        items,
+      });
+    } catch {
+      DashboardServer.error(res, 500, 'Cannot read directory');
+    }
+  });
+
+  // ── File Read (for file explorer) ──
+  server.route('GET', '/api/files/read', (req, res) => {
+    const query = DashboardServer.parseQuery(req.url || '');
+    const filePath = query.path;
+    if (!filePath) { DashboardServer.error(res, 400, 'Missing path'); return; }
+
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(root)) {
+      DashboardServer.error(res, 403, 'Access denied');
+      return;
+    }
+
+    try {
+      const stat = fs.statSync(resolved);
+      if (stat.size > 512 * 1024) {
+        DashboardServer.json(res, { path: resolved, content: '(File too large to display: ' + Math.round(stat.size / 1024) + 'KB)', truncated: true });
+        return;
+      }
+      const content = fs.readFileSync(resolved, 'utf-8');
+      DashboardServer.json(res, { path: resolved, content, size: stat.size });
+    } catch {
+      DashboardServer.error(res, 404, 'File not found');
+    }
+  });
+
 }
 
 // ── File system helpers (fail-safe) ──
