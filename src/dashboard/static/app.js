@@ -310,11 +310,31 @@ const App = {
     if (this.chatInitialized) return;
     this.chatInitialized = true;
 
-    const input = document.getElementById('chat-input');
-    const sendBtn = document.getElementById('chat-send');
-    if (!input || !sendBtn) return;
+    const welcomeInput = document.getElementById('chat-input');
+    const welcomeSend = document.getElementById('chat-send');
+    const activeInput = document.getElementById('chat-input-active');
+    const activeSend = document.getElementById('chat-send-active');
+    if (!welcomeInput || !welcomeSend) return;
+
+    const switchToActiveChat = () => {
+      var welcome = document.getElementById('chat-welcome');
+      var bottom = document.getElementById('chat-input-bottom');
+      if (welcome) welcome.style.display = 'none';
+      if (bottom) bottom.style.display = '';
+      const logoArea = document.getElementById('logo-area');
+      if (logoArea) logoArea.classList.add('faded');
+      document.body.classList.add('chat-expanded');
+      if (activeInput) activeInput.focus();
+    };
+
+    const getActiveInput = () => {
+      var welcome = document.getElementById('chat-welcome');
+      if (welcome && welcome.style.display !== 'none') return welcomeInput;
+      return activeInput || welcomeInput;
+    };
 
     const send = () => {
+      var input = getActiveInput();
       const msg = input.value.trim();
       if (!msg) return;
       input.value = '';
@@ -322,41 +342,18 @@ const App = {
       this.saveMessageToConversation('user', msg);
       this.appendChatMessage('user', msg);
       this.streamChat(msg);
-
-      // Hide suggestion chips, show new chat button
-      var suggestions = document.getElementById('chat-suggestions');
-      if (suggestions) suggestions.style.display = 'none';
-      var newChatBtn = document.getElementById('new-chat-btn');
-      if (newChatBtn) newChatBtn.style.display = '';
-
-      // Fade logo + expand layout once chat starts
-      const logoArea = document.getElementById('logo-area');
-      if (logoArea) logoArea.classList.add('faded');
-      document.body.classList.add('chat-expanded');
+      switchToActiveChat();
     };
 
-    // Suggestion chip click handlers
-    var chips = document.querySelectorAll('.suggestion-chip');
-    for (var i = 0; i < chips.length; i++) {
-      chips[i].addEventListener('click', function() {
-        var msg = this.getAttribute('data-msg');
-        input.value = msg;
-        input.focus();
-        // If message doesn't end with space (complete action), send immediately
-        if (msg && msg.charAt(msg.length - 1) !== ' ') {
-          send();
-        }
-      });
-    }
+    // Capability card clicks handled by sendCapabilityDemo
 
-    sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+    welcomeSend.addEventListener('click', send);
+    welcomeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); send(); }
     });
-    // Auto-resize textarea
-    input.addEventListener('input', function() {
-      this.style.height = 'auto';
-      this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+    if (activeSend) activeSend.addEventListener('click', send);
+    if (activeInput) activeInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); send(); }
     });
   },
 
@@ -588,9 +585,11 @@ const App = {
     var container = document.getElementById('chat-messages');
     if (container) container.innerHTML = '';
 
-    // Show suggestion chips again
-    var suggestions = document.getElementById('chat-suggestions');
-    if (suggestions) suggestions.style.display = '';
+    // Show welcome screen again
+    var welcome = document.getElementById('chat-welcome');
+    if (welcome) welcome.style.display = '';
+    var bottom = document.getElementById('chat-input-bottom');
+    if (bottom) bottom.style.display = 'none';
 
     // Reset logo and layout
     var logoArea = document.getElementById('logo-area');
@@ -860,12 +859,14 @@ const App = {
       this.highlightAllCode();
     }
 
-    // Show/hide suggestions
-    var suggestions = document.getElementById('chat-suggestions');
-    if (suggestions) suggestions.style.display = (conv && conv.messages.length > 0) ? 'none' : '';
+    // Show/hide welcome vs active chat
+    var hasMessages = conv && conv.messages.length > 0;
+    var welcome = document.getElementById('chat-welcome');
+    var bottom = document.getElementById('chat-input-bottom');
+    if (welcome) welcome.style.display = hasMessages ? 'none' : '';
+    if (bottom) bottom.style.display = hasMessages ? '' : 'none';
 
     // Update layout
-    var hasMessages = conv && conv.messages.length > 0;
     var logoArea = document.getElementById('logo-area');
     if (logoArea) {
       if (hasMessages) logoArea.classList.add('faded');
@@ -888,8 +889,10 @@ const App = {
       } else {
         var container = document.getElementById('chat-messages');
         if (container) container.innerHTML = '';
-        var suggestions = document.getElementById('chat-suggestions');
-        if (suggestions) suggestions.style.display = '';
+        var welcome = document.getElementById('chat-welcome');
+        if (welcome) welcome.style.display = '';
+        var bottom = document.getElementById('chat-input-bottom');
+        if (bottom) bottom.style.display = 'none';
       }
     }
     this.saveConversations();

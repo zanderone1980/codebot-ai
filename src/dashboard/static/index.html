@@ -79,9 +79,15 @@
             <!-- Main Chat Area -->
             <div class="chat-main">
               <div id="chat-messages" class="chat-messages"></div>
-              <!-- Capability Showcase (shown when chat is empty) -->
-              <div id="chat-suggestions" class="chat-suggestions">
-                <!-- Capability Cards -->
+              <!-- Welcome screen: input centered, capability cards below -->
+              <div id="chat-welcome" class="chat-welcome">
+                <div class="chat-input-row">
+                  <input type="text" id="chat-input" class="chat-input"
+                         placeholder="Ask CodeBot anything..." autocomplete="off" />
+                  <button id="chat-send" class="btn-send">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  </button>
+                </div>
                 <div class="capability-grid">
                   <div class="capability-card" onclick="App.sendCapabilityDemo('code')">
                     <div class="capability-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
@@ -111,20 +117,15 @@
                   <div class="capability-card" onclick="App.sendCapabilityDemo('safe')">
                     <div class="capability-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
                     <div class="capability-title">Safe</div>
-                    <div class="capability-desc">8-layer safety stack: policy, CORD, audit, sandbox, secrets</div>
+                    <div class="capability-desc">CORD constitutional safety, audit trail, sandbox</div>
                   </div>
                 </div>
-                <!-- Quick Action Chips -->
-                <div class="suggestion-chips" style="margin-top: 12px;">
-                  <button class="suggestion-chip" data-msg="What can you do? Give me a tour of your capabilities.">Take a tour</button>
-                  <button class="suggestion-chip" data-msg="Check my system health and show me a summary">System check</button>
-                  <button class="suggestion-chip" data-msg="Research the latest news about ">Research</button>
-                </div>
               </div>
-              <div class="chat-input-row">
-                <textarea id="chat-input" class="chat-input"
-                       placeholder="Ask CodeBot anything..." autocomplete="off" rows="1"></textarea>
-                <button id="chat-send" class="btn-send">
+              <!-- Input row pinned to bottom when chatting -->
+              <div id="chat-input-bottom" class="chat-input-row chat-input-bottom" style="display:none">
+                <input type="text" id="chat-input-active" class="chat-input"
+                       placeholder="Ask CodeBot anything..." autocomplete="off" />
+                <button id="chat-send-active" class="btn-send">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </div>
