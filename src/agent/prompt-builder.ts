@@ -8,7 +8,7 @@ import { buildRepoMap } from '../context/repo-map';
 import { MemoryManager } from '../memory';
 import { isLikelyDeveloper } from '../intent';
 import { UserProfile } from '../user-profile';
-import { SparkSoul } from '../spark-soul';
+import { AgentStateEngine } from '../spark-soul';
 import { ToolRegistry } from '../tools';
 import { CrossSessionLearning } from '../cross-session';
 
@@ -17,7 +17,7 @@ export function buildSystemPrompt(opts: {
   supportsTools: boolean;
   tools: ToolRegistry;
   userProfile: UserProfile;
-  sparkSoul: SparkSoul | null;
+  stateEngine: AgentStateEngine | null;
   messages: Message[];
 }): string {
   let repoMap = '';
@@ -34,10 +34,10 @@ export function buildSystemPrompt(opts: {
   } catch {}
 
   let sparkBlock = '';
-  if (opts.sparkSoul) {
+  if (opts.stateEngine) {
     try {
       const lastMsg = opts.messages.length > 0 ? (opts.messages[opts.messages.length - 1]?.content as string) : '';
-      sparkBlock = opts.sparkSoul.getPromptBlock(lastMsg || '');
+      sparkBlock = opts.stateEngine.getPromptBlock(lastMsg || '');
     } catch {}
   }
 

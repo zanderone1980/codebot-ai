@@ -4,7 +4,7 @@ import { RateLimiter } from '../rate-limiter';
 import { AuditLogger } from '../audit';
 import { TokenTracker } from '../telemetry';
 import { MetricsCollector } from '../metrics';
-import { SparkSoul } from '../spark-soul';
+import { AgentStateEngine } from '../spark-soul';
 import { getRecoverySuggestion, formatRecoveryHint } from '../recovery';
 import { sanitizeToolOutput } from './message-repair';
 
@@ -41,7 +41,7 @@ export interface ToolExecutorDeps {
   metricsCollector: MetricsCollector;
   auditLogger: AuditLogger;
   tokenTracker: TokenTracker;
-  sparkSoul: SparkSoul | null;
+  stateEngine: AgentStateEngine | null;
   lastExecutedTools: string[];
   ensureBranch: () => Promise<string | null>;
   checkToolCapabilities: (toolName: string, args: Record<string, unknown>) => string | null;
@@ -128,7 +128,7 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
     }
 
     // SPARK: record success
-    if (deps.sparkSoul) { try { deps.sparkSoul.recordOutcome(toolName, prep.args, true, output, latencyMs); } catch {} }
+    if (deps.stateEngine) { try { deps.stateEngine.recordOutcome(toolName, prep.args, true, output, latencyMs); } catch {} }
 
     return { content: output };
   } catch (err: unknown) {
@@ -141,7 +141,7 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
     deps.auditLogger.log({ tool: toolName, action: 'error', args: prep.args, result: 'error', reason: errMsg });
 
     // SPARK: record failure
-    if (deps.sparkSoul) { try { deps.sparkSoul.recordOutcome(toolName, prep.args, false, errMsg, latencyMs); } catch {} }
+    if (deps.stateEngine) { try { deps.stateEngine.recordOutcome(toolName, prep.args, false, errMsg, latencyMs); } catch {} }
 
     // Append recovery hint if a known pattern matches
     const recovery = getRecoverySuggestion(errMsg);

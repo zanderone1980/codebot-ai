@@ -18,7 +18,7 @@ import { TokenTracker } from './telemetry';
 import { MetricsCollector } from './metrics';
 import { RiskScorer, RiskAssessment } from './risk';
 import { ConstitutionalLayer, ConstitutionalResult } from './constitutional';
-import { SparkSoul } from './spark-soul';
+import { AgentStateEngine } from './spark-soul';
 import { isLikelyDeveloper } from './intent';
 import { UserProfile } from './user-profile';
 import { validateToolArgs, repairToolCallMessages } from './agent/message-repair';
@@ -56,12 +56,14 @@ export class Agent {
   private metricsCollector: MetricsCollector;
   private riskScorer: RiskScorer;
   private constitutional: ConstitutionalLayer | null = null;
-  private sparkSoul: SparkSoul | null = null;
+  private stateEngine: AgentStateEngine | null = null;
   private userProfile: UserProfile;
   private executionAuditor: ExecutionAuditor;
   private crossSession: CrossSessionLearning;
   private sessionToolCalls: Array<{ tool: string; success: boolean }> = [];
   private cordBlockedKeys: Set<string> = new Set();
+  private static readonly MAX_SESSION_TOOL_CALLS = 500;
+  private static readonly MAX_CORD_BLOCKED_KEYS = 200;
   private sessionStartedAt: string = new Date().toISOString();
   private sessionGoal: string = '';
 
@@ -120,10 +122,10 @@ export class Agent {
     this.executionAuditor = new ExecutionAuditor();
     this.crossSession = new CrossSessionLearning();
 
-    // Initialize SPARK soul
+    // Initialize agent state engine
     try {
-      this.sparkSoul = new SparkSoul(this.projectRoot);
-      if (!this.sparkSoul.isActive) this.sparkSoul = null;
+      this.stateEngine = new AgentStateEngine(this.projectRoot);
+      if (!this.stateEngine.isActive) this.stateEngine = null;
     } catch {}
 
     const costLimit = this.policyEnforcer.getCostLimitUsd();
@@ -182,7 +184,7 @@ export class Agent {
     const supportsTools = getModelInfo(opts.model).supportsToolCalling;
     this.messages.push({
       role: 'system',
-      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, sparkSoul: this.sparkSoul, messages: this.messages }),
+      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, stateEngine: this.stateEngine, messages: this.messages }),
     });
   }
 
@@ -323,7 +325,7 @@ export class Agent {
 
         // Fatal errors (missing API key, auth failure, billing, etc.) — stop immediately
         if (isFatalError(streamError)) {
-          return;
+          this.recordSessionEpisode(false); return;
         }
 
         // Provider rate limit backoff on 429
@@ -335,7 +337,7 @@ export class Agent {
         if (streamError === lastErrorMsg) {
           consecutiveErrors++;
           if (consecutiveErrors >= 3) {
-            yield { type: 'error', error: `Same error repeated ${consecutiveErrors} times — stopping. Fix the issue and try again.` };
+            this.recordSessionEpisode(false); yield { type: 'error', error: `Same error repeated ${consecutiveErrors} times — stopping. Fix the issue and try again.` };
             return;
           }
         } else {
@@ -365,7 +367,7 @@ export class Agent {
 
       // No tool calls = conversation turn done
       if (toolCalls.length === 0) {
-        if (this.sparkSoul) { try { this.sparkSoul.finalizeSession(); } catch {} }
+        if (this.stateEngine) { try { this.stateEngine.finalizeSession(); } catch {} }
         this.recordSessionEpisode(true);
         yield { type: 'done' };
         return;
@@ -373,7 +375,7 @@ export class Agent {
 
       // Cost budget check: stop if over limit
       if (this.tokenTracker.isOverBudget()) {
-        yield { type: 'error', error: `Cost limit exceeded ($${this.tokenTracker.getTotalCost().toFixed(4)} / $${this.policyEnforcer.getCostLimitUsd().toFixed(2)}). Stopping.` };
+        if (this.stateEngine) { try { this.stateEngine.finalizeSession(); } catch {} } this.recordSessionEpisode(false); yield { type: 'error', error: `Cost limit exceeded ($${this.tokenTracker.getTotalCost().toFixed(4)} / $${this.policyEnforcer.getCostLimitUsd().toFixed(2)}). Stopping.` };
         return;
       }
 
@@ -438,7 +440,7 @@ export class Agent {
           });
 
           if (cordResult.decision === 'BLOCK') {
-            this.cordBlockedKeys.add(blockKey);
+            this.trackCordBlock(blockKey);
             this.auditLogger.log({ tool: toolName, action: 'constitutional_block', args, reason: cordResult.explanation || 'Constitutional violation' });
             this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'constitutional' });
             prepared.push({ tc, tool, args, denied: true, error: `Blocked by safety policy.` });
@@ -452,9 +454,9 @@ export class Agent {
 
         // SPARK adaptive safety — learned judgment overrides autoApprove
         let sparkChallenged = false;
-        if (this.sparkSoul) {
+        if (this.stateEngine) {
           try {
-            const sparkResult = this.sparkSoul.evaluateTool(toolName, args);
+            const sparkResult = this.stateEngine.evaluateTool(toolName, args);
             if (sparkResult.decision === 'BLOCK') {
               prepared.push({ tc, tool, args, denied: false, error: 'Error: Blocked by SPARK: ' + sparkResult.reason });
               continue;
@@ -495,7 +497,7 @@ export class Agent {
         metricsCollector: this.metricsCollector,
         auditLogger: this.auditLogger,
         tokenTracker: this.tokenTracker,
-        sparkSoul: this.sparkSoul,
+        stateEngine: this.stateEngine,
         lastExecutedTools: this.lastExecutedTools,
         ensureBranch: () => this.ensureBranch(),
         checkToolCapabilities: (t, a) => this.checkToolCapabilities(t, a),
@@ -526,10 +528,10 @@ export class Agent {
 
         if (prep.denied) {
           yield { type: 'tool_result', toolResult: { name: toolName, result: 'Permission denied.' } };
-          this.sessionToolCalls.push({ tool: toolName, success: false });
+          this.trackToolCall(toolName, false);
         } else {
           yield { type: 'tool_result', toolResult: { name: toolName, result: output.content, is_error: output.is_error } };
-          this.sessionToolCalls.push({ tool: toolName, success: !output.is_error });
+          this.trackToolCall(toolName, !output.is_error);
 
           // Execution auditing: detect anomalies in tool execution patterns
           const anomalies = this.executionAuditor.record({
@@ -560,7 +562,7 @@ export class Agent {
       }
     }
 
-    if (this.sparkSoul) { try { this.sparkSoul.finalizeSession(); } catch {} }
+    if (this.stateEngine) { try { this.stateEngine.finalizeSession(); } catch {} }
     this.recordSessionEpisode(false);
     yield { type: 'error', error: `Max iterations (${this.maxIterations}) reached.` };
   }
@@ -693,6 +695,23 @@ export class Agent {
     }
 
     return null;
+  }
+
+  /** Track tool call with bounded growth */
+  private trackToolCall(tool: string, success: boolean): void {
+    if (this.sessionToolCalls.length >= Agent.MAX_SESSION_TOOL_CALLS) {
+      this.sessionToolCalls = this.sessionToolCalls.slice(-Math.floor(Agent.MAX_SESSION_TOOL_CALLS / 2));
+    }
+    this.sessionToolCalls.push({ tool, success });
+  }
+
+  /** Track CORD blocked key with bounded growth */
+  private trackCordBlock(key: string): void {
+    if (this.cordBlockedKeys.size >= Agent.MAX_CORD_BLOCKED_KEYS) {
+      const entries = Array.from(this.cordBlockedKeys);
+      this.cordBlockedKeys = new Set(entries.slice(-Math.floor(Agent.MAX_CORD_BLOCKED_KEYS / 2)));
+    }
+    this.cordBlockedKeys.add(key);
   }
 
   /** Record cross-session episode when session ends */

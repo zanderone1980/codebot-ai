@@ -1,5 +1,5 @@
 /**
- * SparkSoul — SPARK's soul integrated into CodeBot.
+ * AgentStateEngine — Adaptive state engine for CodeBot.
  *
  * Wraps SparkOrchestrator into a clean facade that agent.ts consumes.
  * All methods are try/catch-wrapped: SPARK failure never crashes CodeBot.
@@ -7,7 +7,7 @@
  * Split architecture:
  *   spark-types.ts   — Types, constants, mappings
  *   spark-helpers.ts — Pure functions, classifiers, orchestrator helpers
- *   spark-soul.ts    — SparkSoul class (this file)
+ *   spark-soul.ts      — AgentStateEngine class (this file)
  */
 
 import * as path from 'path';
@@ -47,9 +47,9 @@ export {
   resolveToolOperation,
 } from './spark-helpers';
 
-// ── SparkSoul Class ──────────────────────────────────────────────
+// ── AgentStateEngine Class ──────────────────────────────────────────────
 
-export class SparkSoul {
+export class AgentStateEngine {
   private orchestrator: any;
   private store: any;
   private db: any;
@@ -84,7 +84,7 @@ export class SparkSoul {
   getPromptBlock(currentQuery?: string): string {
     if (!this.initialized) return '';
     try {
-      const parts = ['\n--- SPARK Soul ---'];
+      const parts = ['\n--- Agent State ---'];
       const emo = tryCall(() => this.orchestrator.emotionalState.getSummary());
       if (emo) parts.push(`Emotional state: ${emo}`);
       const pers = tryCall(() => this.orchestrator.personality.getSummary());
@@ -103,7 +103,7 @@ export class SparkSoul {
           parts.push(`Alert: ${alert.message || alert.type}`);
         }
       }
-      parts.push('--- End SPARK ---\n');
+      parts.push('--- End Agent State ---\n');
       return parts.length > 2 ? parts.join('\n') : '';
     } catch {
       return '';
@@ -215,3 +215,7 @@ export class SparkSoul {
     return tryCall(() => this.orchestrator.awareness.report()) || null;
   }
 }
+
+/** @deprecated Alias for backward compatibility — use AgentStateEngine */
+export const SparkSoul = AgentStateEngine;
+export type SparkSoul = AgentStateEngine;
