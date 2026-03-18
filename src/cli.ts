@@ -92,7 +92,7 @@ export async function main() {
   }
 
   if (args.help) { showHelp(); return; }
-  if (args.version) { console.log(`codebot v${VERSION}`); return; }
+  if (args.version) { console.log(`CodeBot AI v${VERSION}`); return; }
   if (args.setup) { await runSetup(); }
 
   // ── Standalone commands ──
