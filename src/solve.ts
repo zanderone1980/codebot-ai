@@ -635,7 +635,7 @@ export class SolveCommand {
         };
 
         // Feed test failure back to agent for retry
-        const retryPrompt = `The tests failed after your fix. Here is the test output:\n\n${testsOutput.substring(0, 3000)}\n\nPlease fix the failing tests. Make minimal changes.`;
+        const retryPrompt = `The tests failed after your fix. Here is the test output:\n\n${testsOutput.substring(0, 3000)}\n\nPlease fix the failing tests. Make minimal changes. Do NOT run tests yourself — the pipeline will run them automatically after your edits.`;
         for await (const event of agent.run(retryPrompt)) {
           yield { type: 'agent_event', phase: 'testing', agentEvent: event };
           if (Date.now() > deadline) break;

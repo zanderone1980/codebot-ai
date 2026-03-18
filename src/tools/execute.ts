@@ -118,7 +118,7 @@ export class ExecuteTool implements Tool {
       return `Error: ${cwdSafety.reason}`;
     }
 
-    const timeout = (args.timeout as number) || 30000;
+    const timeout = (args.timeout as number) || 180000;
 
     // ── v1.7.0: Sandbox routing (v2.1.5: uses PolicyEnforcer for RBAC) ──
     const enforcer = new PolicyEnforcer(undefined, projectRoot);
