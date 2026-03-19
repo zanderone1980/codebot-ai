@@ -4,6 +4,8 @@ import { Tool } from '../types';
 
 export class GlobTool implements Tool {
   name = 'glob';
+  private projectRoot: string;
+  constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Find files matching a glob pattern. Returns matching file paths relative to the search directory.';
   permission: Tool['permission'] = 'auto';
   cacheable = true;
@@ -17,7 +19,7 @@ export class GlobTool implements Tool {
   };
 
   async execute(args: Record<string, unknown>): Promise<string> {
-    const cwd = (args.cwd as string) || process.cwd();
+    const cwd = (args.cwd as string) || this.projectRoot;
     const pattern = args.pattern as string;
     const matches = this.walkAndMatch(cwd, pattern);
 

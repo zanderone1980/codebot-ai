@@ -4,6 +4,8 @@ import { Tool } from '../types';
 
 export class GrepTool implements Tool {
   name = 'grep';
+  private projectRoot: string;
+  constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Search file contents for a regex pattern. Returns matching lines with file paths and line numbers.';
   permission: Tool['permission'] = 'auto';
   cacheable = true;
@@ -18,7 +20,7 @@ export class GrepTool implements Tool {
   };
 
   async execute(args: Record<string, unknown>): Promise<string> {
-    const searchPath = (args.path as string) || process.cwd();
+    const searchPath = (args.path as string) || this.projectRoot;
     if (!args.pattern) return 'Error: pattern is required';
 
     let regex: RegExp;

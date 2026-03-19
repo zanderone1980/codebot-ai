@@ -15,9 +15,11 @@ export class BatchEditTool implements Tool {
   name = 'batch_edit';
   description = 'Apply multiple find-and-replace edits across one or more files atomically. All edits are validated before any are applied. Useful for renaming, refactoring, and coordinated multi-file changes.';
   permission: Tool['permission'] = 'prompt';
+  private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 
-  constructor(policyEnforcer?: PolicyEnforcer) {
+  constructor(policyEnforcer?: PolicyEnforcer, projectRoot?: string) {
+    this.projectRoot = projectRoot || process.cwd();
     this.policyEnforcer = policyEnforcer;
   }
   parameters = {
@@ -46,7 +48,7 @@ export class BatchEditTool implements Tool {
       return 'Error: edits array is required and must not be empty';
     }
 
-    const projectRoot = process.cwd();
+    const projectRoot = this.projectRoot;
 
     // Phase 1: Validate all edits before applying any
     const errors: string[] = [];
@@ -60,7 +62,7 @@ export class BatchEditTool implements Tool {
         errors.push(`Invalid edit: missing path or old_string`);
         continue;
       }
-      const filePath = path.resolve(edit.path);
+      const filePath = path.resolve(this.projectRoot, edit.path);
 
       // Security: path safety check
       const safety = isPathSafe(filePath, projectRoot);

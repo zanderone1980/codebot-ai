@@ -7,6 +7,8 @@ export class ReadFileTool implements Tool {
   description = 'Read the contents of a file. Returns file content with line numbers.';
   permission: Tool['permission'] = 'auto';
   cacheable = true;
+  private projectRoot: string;
+  constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   parameters = {
     type: 'object',
     properties: {
@@ -21,7 +23,7 @@ export class ReadFileTool implements Tool {
     if (!args.path || typeof args.path !== 'string') {
       return 'Error: path is required';
     }
-    const filePath = path.resolve(args.path);
+    const filePath = path.resolve(this.projectRoot, args.path);
 
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);

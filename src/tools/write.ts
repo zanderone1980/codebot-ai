@@ -12,9 +12,11 @@ export class WriteFileTool implements Tool {
   name = 'write_file';
   description = 'Create a new file or overwrite an existing file with the given content. Automatically saves an undo snapshot for existing files.';
   permission: Tool['permission'] = 'prompt';
+  private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 
-  constructor(policyEnforcer?: PolicyEnforcer) {
+  constructor(policyEnforcer?: PolicyEnforcer, projectRoot?: string) {
+    this.projectRoot = projectRoot || process.cwd();
     this.policyEnforcer = policyEnforcer;
   }
   parameters = {
@@ -33,7 +35,7 @@ export class WriteFileTool implements Tool {
     if (args.content === undefined || args.content === null) {
       return 'Error: content is required';
     }
-    const filePath = path.resolve(args.path);
+    const filePath = path.resolve(this.projectRoot, args.path);
     const content = String(args.content);
     const dir = path.dirname(filePath);
 

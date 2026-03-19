@@ -15,9 +15,11 @@ export class EditFileTool implements Tool {
   name = 'edit_file';
   description = 'Edit a file by replacing an exact string match with new content. The old_string must appear exactly once in the file. Shows a diff preview and creates an undo snapshot.';
   permission: Tool['permission'] = 'prompt';
+  private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 
-  constructor(policyEnforcer?: PolicyEnforcer) {
+  constructor(policyEnforcer?: PolicyEnforcer, projectRoot?: string) {
+    this.projectRoot = projectRoot || process.cwd();
     this.policyEnforcer = policyEnforcer;
   }
   parameters = {
@@ -40,7 +42,7 @@ export class EditFileTool implements Tool {
     if (args.new_string === undefined || args.new_string === null) {
       return 'Error: new_string is required';
     }
-    const filePath = path.resolve(args.path);
+    const filePath = path.resolve(this.projectRoot, args.path);
     const oldStr = String(args.old_string);
     const newStr = String(args.new_string);
 

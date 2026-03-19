@@ -86,6 +86,8 @@ export const FILTERED_ENV_VARS = [
 
 export class ExecuteTool implements Tool {
   name = 'execute';
+  private projectRoot: string;
+  constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Execute a shell command. Returns stdout and stderr. Use for running tests, builds, git commands, etc.';
   permission: Tool['permission'] = 'prompt';
   parameters = {
@@ -111,8 +113,8 @@ export class ExecuteTool implements Tool {
     }
 
     // Security: validate CWD
-    const cwd = (args.cwd as string) || process.cwd();
-    const projectRoot = process.cwd();
+    const cwd = (args.cwd as string) || this.projectRoot;
+    const projectRoot = this.projectRoot;
     const cwdSafety = isCwdSafe(cwd, projectRoot);
     if (!cwdSafety.safe) {
       return `Error: ${cwdSafety.reason}`;

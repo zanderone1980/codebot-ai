@@ -70,13 +70,13 @@ export class ToolRegistry {
 
   constructor(projectRoot?: string, policyEnforcer?: PolicyEnforcer) {
     // Core file tools — policy-enforced tools receive the enforcer
-    this.register(new ReadFileTool());
-    this.register(new WriteFileTool(policyEnforcer));
-    this.register(new EditFileTool(policyEnforcer));
-    this.register(new BatchEditTool(policyEnforcer));
-    this.register(new ExecuteTool());
-    this.register(new GlobTool());
-    this.register(new GrepTool());
+    this.register(new ReadFileTool(projectRoot));
+    this.register(new WriteFileTool(policyEnforcer, projectRoot));
+    this.register(new EditFileTool(policyEnforcer, projectRoot));
+    this.register(new BatchEditTool(policyEnforcer, projectRoot));
+    this.register(new ExecuteTool(projectRoot));
+    this.register(new GlobTool(projectRoot));
+    this.register(new GrepTool(projectRoot));
     this.register(new ThinkTool());
     this.register(new MemoryTool(projectRoot));
     // Web & browser
