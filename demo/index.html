@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeBot AI — Autonomous Issue Solver</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #06060a;
+    color: #c8c8d0;
+    font-family: 'SF Mono', 'Menlo', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px;
+  }
+
+  h1 {
+    font-size: clamp(18px, 4vw, 28px);
+    font-weight: 600;
+    color: #e0e0e8;
+    margin-bottom: 6px;
+    text-align: center;
+    letter-spacing: 0.5px;
+  }
+
+  .subtitle {
+    font-size: clamp(11px, 2.5vw, 14px);
+    color: #555;
+    margin-bottom: 24px;
+    text-align: center;
+  }
+
+  .terminal {
+    background: #0a0a0f;
+    border: 1px solid #1a1a2e;
+    border-radius: 10px;
+    width: 100%;
+    max-width: 820px;
+    overflow: hidden;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6), 0 0 80px rgba(0,200,180,0.03);
+  }
+
+  .titlebar {
+    background: #111118;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #1a1a2e;
+  }
+
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot.red { background: #ff5f57; }
+  .dot.yellow { background: #febc2e; }
+  .dot.green { background: #28c840; }
+
+  .titlebar-text {
+    flex: 1;
+    text-align: center;
+    font-size: 12px;
+    color: #555;
+    margin-right: 48px;
+  }
+
+  .content {
+    padding: 20px;
+    min-height: 420px;
+    font-size: clamp(12px, 2.8vw, 14px);
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+
+  .prompt { color: #28c840; }
+  .cmd { color: #e0e0e8; }
+  .cursor {
+    display: inline-block;
+    width: 8px;
+    height: 16px;
+    background: #28c840;
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .phase-label { color: #22d3ee; }
+  .phase-done { color: #28c840; }
+  .phase-tool { color: #444; font-size: 0.9em; }
+  .phase-dim { color: #666; }
+  .phase-warn { color: #f59e0b; }
+
+  .result-box {
+    margin-top: 12px;
+    border: 1px solid #28c840;
+    border-radius: 6px;
+    padding: 14px 18px;
+    background: rgba(40, 200, 64, 0.04);
+  }
+  .result-box .header {
+    color: #28c840;
+    font-weight: 700;
+    font-size: 1.05em;
+    margin-bottom: 8px;
+  }
+  .result-box .row { color: #c8c8d0; }
+  .result-box .val { color: #22d3ee; }
+  .result-box .link { color: #818cf8; }
+
+  .spinner {
+    display: inline-block;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin {
+    0% { content: '|'; }
+    25% { content: '/'; }
+    50% { content: '-'; }
+    75% { content: '\\'; }
+  }
+
+  #replay-btn {
+    display: none;
+    margin-top: 20px;
+    padding: 10px 28px;
+    background: transparent;
+    border: 1px solid #28c840;
+    color: #28c840;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  #replay-btn:hover {
+    background: #28c840;
+    color: #0a0a0f;
+  }
+
+  .footer {
+    margin-top: 32px;
+    font-size: 12px;
+    color: #333;
+    text-align: center;
+  }
+
+  .line { white-space: pre-wrap; word-break: break-word; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>CodeBot AI &mdash; Autonomous Issue Solver</h1>
+<div class="subtitle">Watch an AI agent solve a GitHub issue end-to-end in one command</div>
+
+<div class="terminal">
+  <div class="titlebar">
+    <div class="dot red"></div>
+    <div class="dot yellow"></div>
+    <div class="dot green"></div>
+    <div class="titlebar-text">Terminal &mdash; codebot</div>
+  </div>
+  <div class="content" id="terminal"></div>
+</div>
+
+<button id="replay-btn" onclick="replay()">Replay</button>
+
+<div class="footer">Built by Ascendral</div>
+
+<script>
+const terminal = document.getElementById('terminal');
+const replayBtn = document.getElementById('replay-btn');
+
+const COMMAND = 'codebot --solve https://github.com/Ascendral/KlomboAGI/issues/2';
+
+const PHASES = [
+  { label: 'Parsing issue URL...', done: 'Done: Ascendral/KlomboAGI#2', delay: 600 },
+  { label: 'Fetching issue from GitHub...', done: "Done: 'Add --version flag to CLI' [open]", delay: 900 },
+  { label: 'Preparing Ascendral/KlomboAGI...', done: 'Done: cloned', delay: 1200 },
+  { label: 'Indexing codebase...', done: 'Done: 69 entries, Python, pytest', delay: 800 },
+  { label: 'Installing dependencies (pip)...', done: 'Done', delay: 1000 },
+  {
+    label: 'Creating branch and generating fix...',
+    tools: [
+      'tool:read  klombo/cli.py',
+      'tool:read  klombo/__init__.py',
+      'tool:read  pyproject.toml',
+      'tool:write klombo/cli.py  (+14 lines)',
+      'tool:write tests/test_cli.py  (+22 lines)',
+      'tool:write pyproject.toml  (version field)',
+    ],
+    done: 'Done: 3 file(s) modified',
+    delay: 400,
+    toolDelay: 250,
+  },
+  { label: 'Running tests (pytest)...', done: 'Done: All tests pass', delay: 1400 },
+  { label: 'Agent self-reviewing changes...', done: 'Done: Self-review: APPROVE', delay: 1100 },
+  { label: 'Computing confidence...', done: 'Done: Confidence: 89% | Risk: low', delay: 700 },
+  { label: 'Creating commit and pull request...', done: 'Done: PR #4', delay: 1000 },
+];
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function appendLine() {
+  const div = document.createElement('div');
+  div.className = 'line';
+  terminal.appendChild(div);
+  return div;
+}
+
+function scrollBottom() {
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+async function typeCommand() {
+  const line = appendLine();
+  const promptSpan = el('span', 'prompt', '$ ');
+  const cmdSpan = el('span', 'cmd');
+  const cursorSpan = el('span', 'cursor');
+  line.appendChild(promptSpan);
+  line.appendChild(cmdSpan);
+  line.appendChild(cursorSpan);
+
+  for (let i = 0; i < COMMAND.length; i++) {
+    cmdSpan.textContent += COMMAND[i];
+    scrollBottom();
+    await sleep(45 + Math.random() * 30);
+  }
+
+  cursorSpan.remove();
+  await sleep(300);
+
+  // blank line after command
+  appendLine();
+}
+
+async function runPhase(phase) {
+  // Label line
+  const labelLine = appendLine();
+  const labelSpan = el('span', 'phase-label', '  ' + phase.label + ' ');
+  labelLine.appendChild(labelSpan);
+
+  // Spinner
+  const frames = ['|', '/', '-', '\\'];
+  let frame = 0;
+  const spinnerSpan = el('span', 'phase-dim');
+  labelLine.appendChild(spinnerSpan);
+  const spinInterval = setInterval(() => {
+    spinnerSpan.textContent = frames[frame % 4];
+    frame++;
+  }, 120);
+
+  scrollBottom();
+
+  // If there are tool calls, show them
+  if (phase.tools) {
+    await sleep(phase.delay);
+    for (const tool of phase.tools) {
+      const toolLine = appendLine();
+      toolLine.appendChild(el('span', 'phase-tool', '    ' + tool));
+      scrollBottom();
+      await sleep(phase.toolDelay + Math.random() * 150);
+    }
+    await sleep(300);
+  } else {
+    await sleep(phase.delay + Math.random() * 400);
+  }
+
+  clearInterval(spinInterval);
+  spinnerSpan.textContent = '';
+
+  // Done
+  const doneSpan = el('span', 'phase-done', phase.done);
+  labelLine.appendChild(doneSpan);
+  scrollBottom();
+
+  await sleep(150);
+}
+
+function renderResultBox() {
+  const box = document.createElement('div');
+  box.className = 'result-box';
+
+  const hdr = el('div', 'header', 'SOLVE RESULT');
+  box.appendChild(hdr);
+
+  const rows = [
+    ['Issue',      'Ascendral/KlomboAGI#2'],
+    ['Title',      'Add --version flag to CLI'],
+    ['Branch',     'solve/issue-2-add-version-flag'],
+    ['Files',      '3 modified'],
+    ['Tests',      'All passing (207 total)'],
+    ['Self-review','APPROVE'],
+    ['Confidence', '89%  |  Risk: low'],
+    ['PR',         'https://github.com/Ascendral/KlomboAGI/pull/4'],
+  ];
+
+  for (const [k, v] of rows) {
+    const row = el('div', 'row');
+    row.appendChild(el('span', 'phase-dim', '  ' + k.padEnd(13)));
+    const cls = k === 'PR' ? 'link' : 'val';
+    row.appendChild(el('span', cls, v));
+    box.appendChild(row);
+  }
+
+  terminal.appendChild(box);
+  scrollBottom();
+}
+
+async function run() {
+  terminal.innerHTML = '';
+  replayBtn.style.display = 'none';
+
+  await sleep(500);
+  await typeCommand();
+
+  // Header
+  const hdrLine = appendLine();
+  hdrLine.appendChild(el('span', 'phase-dim', '  CodeBot AI v2.9.0 — Solve Pipeline'));
+  appendLine();
+  scrollBottom();
+  await sleep(400);
+
+  for (const phase of PHASES) {
+    await runPhase(phase);
+  }
+
+  appendLine();
+  renderResultBox();
+
+  const done = appendLine();
+  done.style.marginTop = '12px';
+  done.appendChild(el('span', 'phase-done', '  Solved in 47s.'));
+  scrollBottom();
+
+  replayBtn.style.display = 'inline-block';
+}
+
+function replay() {
+  run();
+}
+
+run();
+</script>
+</body>
+</html>
