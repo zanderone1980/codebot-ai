@@ -11,7 +11,10 @@
     "postbuild:dir": "codesign --force --deep --sign - 'dist/mac-arm64/CodeBot AI.app' 2>/dev/null; xattr -cr 'dist/mac-arm64/CodeBot AI.app' 2>/dev/null; echo 'App signed (ad-hoc) and quarantine cleared.'",
     "prebuild": "node scripts/stage-production-deps.js",
     "prebuild:dmg": "node scripts/stage-production-deps.js",
-    "prebuild:dir": "node scripts/stage-production-deps.js"
+    "prebuild:dir": "node scripts/stage-production-deps.js",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:universal": "electron-builder --mac --universal"
   },
   "author": "Ascendral",
   "license": "MIT",
@@ -32,8 +35,18 @@
       "category": "public.app-category.developer-tools",
       "icon": "icons/icon.icns",
       "target": [
-        "dmg",
-        "dir"
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "dir",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "identity": "alex pinkevich (PWG7UVB6S4)",
       "darkModeSupport": true,
@@ -91,6 +104,36 @@
         "from": "../package.json",
         "to": "codebot/package.json"
       }
-    ]
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon.icns"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development",
+      "icon": "icons/icon.icns"
+    }
   }
 }
