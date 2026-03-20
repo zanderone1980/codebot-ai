@@ -1,0 +1,139 @@
+name: Build Electron Apps
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-mac-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build CodeBot
+        run: npm ci && npm run build
+
+      - name: Stage production deps
+        working-directory: electron
+        run: npm ci && node scripts/stage-production-deps.js
+
+      - name: Build DMG (arm64)
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac dmg --arm64
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-arm64
+          path: electron/dist/*.dmg
+
+  build-mac-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build CodeBot
+        run: npm ci && npm run build
+
+      - name: Stage production deps
+        working-directory: electron
+        run: npm ci && node scripts/stage-production-deps.js
+
+      - name: Build DMG (x64)
+        working-directory: electron
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+        run: npx electron-builder --mac dmg --x64
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-x64
+          path: electron/dist/*.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build CodeBot
+        run: npm ci && npm run build
+
+      - name: Stage production deps
+        working-directory: electron
+        run: npm ci && node scripts/stage-production-deps.js
+
+      - name: Build Windows installer
+        working-directory: electron
+        run: npx electron-builder --win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            electron/dist/*.exe
+            electron/dist/*.msi
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install and build CodeBot
+        run: npm ci && npm run build
+
+      - name: Stage production deps
+        working-directory: electron
+        run: npm ci && node scripts/stage-production-deps.js
+
+      - name: Build AppImage
+        working-directory: electron
+        run: npx electron-builder --linux
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-appimage
+          path: electron/dist/*.AppImage
+
+  release:
+    needs: [build-mac-arm64, build-mac-x64, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/dmg-arm64/*.dmg
+            artifacts/dmg-x64/*.dmg
+            artifacts/windows-installer/*.exe
+            artifacts/linux-appimage/*.AppImage
