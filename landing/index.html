@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeBot AI — Governed Autonomous Coding Agent</title>
+<meta name="description" content="CodeBot AI is the governed autonomous coding agent. Point it at a GitHub issue, get a tested PR with full audit trail. Built by Ascendral.">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0a0a0f;--bg2:#12121a;--bg3:#1a1a28;--cyan:#00d4ff;--cyan-dim:rgba(0,212,255,0.15);--cyan-glow:rgba(0,212,255,0.3);--white:#f0f0f5;--gray:#8888a0;--green:#22c55e;--red:#ef4444;--radius:12px}
+html{scroll-behavior:smooth;font-size:16px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;background:var(--bg);color:var(--white);line-height:1.6;overflow-x:hidden}
+a{color:var(--cyan);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Utility */
+.container{max-width:1140px;margin:0 auto;padding:0 24px}
+.section{padding:100px 0}
+.section-title{font-size:2.2rem;font-weight:700;text-align:center;margin-bottom:16px}
+.section-sub{color:var(--gray);text-align:center;max-width:600px;margin:0 auto 60px;font-size:1.1rem}
+
+/* Fade-in on scroll */
+.fade-in{opacity:0;transform:translateY(30px);transition:opacity 0.7s ease,transform 0.7s ease}
+.fade-in.visible{opacity:1;transform:translateY(0)}
+
+/* Nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,10,15,0.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.06);padding:14px 0}
+nav .container{display:flex;align-items:center;justify-content:space-between}
+.nav-logo{font-weight:700;font-size:1.15rem;color:var(--white);display:flex;align-items:center;gap:8px}
+.nav-logo span{color:var(--cyan)}
+.nav-links{display:flex;gap:28px;align-items:center}
+.nav-links a{color:var(--gray);font-size:0.9rem;transition:color 0.2s}
+.nav-links a:hover{color:var(--white);text-decoration:none}
+.nav-btn{background:var(--cyan);color:#000;font-weight:600;padding:8px 20px;border-radius:8px;font-size:0.85rem;transition:opacity 0.2s}
+.nav-btn:hover{opacity:0.85;text-decoration:none;color:#000}
+
+/* Hero */
+.hero{padding:160px 0 100px;text-align:center;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-200px;left:50%;transform:translateX(-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(0,212,255,0.08) 0%,transparent 70%);pointer-events:none}
+.hero h1{font-size:4rem;font-weight:800;letter-spacing:-1px;margin-bottom:16px}
+.hero h1 span{background:linear-gradient(135deg,var(--cyan),#7c3aed);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero p{color:var(--gray);font-size:1.35rem;margin-bottom:40px}
+.hero-btns{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:60px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;border-radius:10px;font-weight:600;font-size:1rem;transition:all 0.2s;border:none;cursor:pointer}
+.btn-primary{background:var(--cyan);color:#000}
+.btn-primary:hover{opacity:0.85;text-decoration:none;color:#000}
+.btn-secondary{background:transparent;color:var(--white);border:1px solid rgba(255,255,255,0.15)}
+.btn-secondary:hover{border-color:var(--cyan);text-decoration:none;color:var(--white)}
+
+/* Terminal */
+.terminal{background:#0d0d14;border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);max-width:720px;margin:0 auto;text-align:left;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.5)}
+.terminal-bar{display:flex;gap:8px;padding:12px 16px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)}
+.terminal-dot{width:12px;height:12px;border-radius:50%}
+.terminal-dot.r{background:#ff5f57}.terminal-dot.y{background:#ffbd2e}.terminal-dot.g{background:#28c840}
+.terminal-body{padding:20px;font-family:'SF Mono',Monaco,Consolas,'Courier New',monospace;font-size:0.85rem;line-height:1.8;min-height:220px}
+.terminal-body .prompt{color:var(--cyan)}
+.terminal-body .cmd{color:var(--white)}
+.terminal-body .out{color:var(--gray)}
+.terminal-body .ok{color:var(--green)}
+.terminal-body .phase{color:#a78bfa}
+.terminal-body .arrow{color:var(--cyan)}
+.typing-cursor{display:inline-block;width:8px;height:16px;background:var(--cyan);animation:blink 1s step-end infinite;vertical-align:text-bottom;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+
+/* How It Works */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:40px}
+.step{text-align:center;position:relative}
+.step-num{width:64px;height:64px;border-radius:50%;background:var(--cyan-dim);border:2px solid var(--cyan);display:flex;align-items:center;justify-content:center;margin:0 auto 20px;font-size:1.5rem;font-weight:700;color:var(--cyan)}
+.step h3{font-size:1.15rem;margin-bottom:8px}
+.step p{color:var(--gray);font-size:0.95rem}
+.step-connector{display:none;position:absolute;top:32px;right:-24px;width:48px;height:2px;background:linear-gradient(90deg,var(--cyan),transparent)}
+@media(min-width:768px){.step-connector{display:block}.step:last-child .step-connector{display:none}}
+
+/* Features */
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.feature-card{background:var(--bg2);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);padding:32px;transition:border-color 0.3s,transform 0.3s}
+.feature-card:hover{border-color:var(--cyan);transform:translateY(-4px)}
+.feature-icon{width:48px;height:48px;border-radius:10px;background:var(--cyan-dim);display:flex;align-items:center;justify-content:center;margin-bottom:16px;font-size:1.4rem}
+.feature-card h3{font-size:1.05rem;margin-bottom:8px}
+.feature-card p{color:var(--gray);font-size:0.9rem;line-height:1.5}
+
+/* Pipeline */
+.pipeline-track{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;margin-top:20px}
+.pipeline-phase{background:var(--bg2);border:1px solid rgba(255,255,255,0.08);padding:14px 22px;border-radius:10px;font-weight:600;font-size:0.9rem;position:relative;transition:all 0.3s;cursor:default}
+.pipeline-phase:hover{border-color:var(--cyan);background:var(--cyan-dim);color:var(--cyan)}
+.pipeline-arrow{color:var(--cyan);font-size:1.2rem;opacity:0.5}
+.pipeline-sub{color:var(--gray);font-size:0.85rem;text-align:center;margin-top:30px;max-width:600px;margin-left:auto;margin-right:auto}
+
+/* Comparison */
+.compare-wrap{overflow-x:auto}
+.compare-table{width:100%;border-collapse:collapse;min-width:600px}
+.compare-table th,.compare-table td{padding:14px 18px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.9rem}
+.compare-table th{color:var(--gray);font-weight:500;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px}
+.compare-table th:first-child,.compare-table td:first-child{text-align:left}
+.compare-table thead th{padding-bottom:20px}
+.compare-table .product-head{color:var(--white);font-weight:700;font-size:0.95rem;text-transform:none;letter-spacing:0}
+.compare-table .product-head.hl{color:var(--cyan)}
+.check{color:var(--green);font-size:1.1rem}
+.cross{color:rgba(255,255,255,0.15);font-size:1.1rem}
+.partial{color:#f59e0b;font-size:0.8rem}
+
+/* Pricing */
+.pricing-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+.price-card{background:var(--bg2);border:1px solid rgba(255,255,255,0.06);border-radius:var(--radius);padding:40px 32px;text-align:center;transition:border-color 0.3s,transform 0.3s}
+.price-card.featured{border-color:var(--cyan);position:relative}
+.price-card.featured::before{content:'Popular';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--cyan);color:#000;font-size:0.75rem;font-weight:700;padding:4px 16px;border-radius:20px}
+.price-card:hover{transform:translateY(-4px)}
+.price-card h3{font-size:1.2rem;margin-bottom:8px}
+.price-amount{font-size:2.8rem;font-weight:800;margin:16px 0 4px}
+.price-amount span{font-size:1rem;color:var(--gray);font-weight:400}
+.price-desc{color:var(--gray);font-size:0.9rem;margin-bottom:24px}
+.price-features{list-style:none;text-align:left;margin-bottom:32px}
+.price-features li{padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.9rem;color:var(--gray);display:flex;align-items:center;gap:10px}
+.price-features li::before{content:"\2713";color:var(--cyan);font-weight:700}
+.price-card .btn{width:100%;justify-content:center}
+
+/* Footer */
+footer{border-top:1px solid rgba(255,255,255,0.06);padding:40px 0;text-align:center}
+footer p{color:var(--gray);font-size:0.9rem;margin-bottom:8px}
+footer .footer-links{display:flex;gap:20px;justify-content:center;margin-bottom:16px}
+footer .footer-links a{color:var(--gray);font-size:0.9rem}
+footer .footer-links a:hover{color:var(--cyan)}
+
+/* Responsive */
+@media(max-width:900px){
+  .features-grid,.pricing-grid{grid-template-columns:repeat(2,1fr)}
+  .hero h1{font-size:2.8rem}
+}
+@media(max-width:640px){
+  .features-grid,.pricing-grid,.steps{grid-template-columns:1fr}
+  .hero h1{font-size:2.2rem}
+  .hero p{font-size:1.1rem}
+  .nav-links a:not(.nav-btn){display:none}
+  .section{padding:70px 0}
+  .pipeline-track{flex-direction:column}
+  .pipeline-arrow{transform:rotate(90deg)}
+}
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="container">
+    <div class="nav-logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><polyline points="7 10 10 13 17 8" stroke="#00d4ff"/></svg> <span>CodeBot</span> AI</div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#pricing">Pricing</a>
+      <a href="https://github.com/Ascendral/codebot-ai" class="nav-btn">GitHub</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container">
+    <h1><span>CodeBot AI</span></h1>
+    <p>The governed autonomous coding agent</p>
+    <div class="hero-btns">
+      <a href="https://github.com/Ascendral/codebot-ai/releases" class="btn btn-primary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download for Mac
+      </a>
+      <a href="https://github.com/Ascendral/codebot-ai" class="btn btn-secondary">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.2 11.39.6.11.82-.26.82-.58v-2.03c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.09-.75.08-.73.08-.73 1.21.08 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.5 1 .1-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 016.02 0c2.3-1.55 3.3-1.23 3.3-1.23.66 1.66.25 2.88.12 3.18.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.63-5.48 5.92.43.37.82 1.1.82 2.22v3.29c0 .32.21.7.82.58A12.01 12.01 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+    </div>
+    <div class="terminal">
+      <div class="terminal-bar">
+        <div class="terminal-dot r"></div>
+        <div class="terminal-dot y"></div>
+        <div class="terminal-dot g"></div>
+      </div>
+      <div class="terminal-body" id="terminal">
+        <div><span class="prompt">$</span> <span class="cmd">codebot --solve 3</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How It Works -->
+<section class="section" id="how">
+  <div class="container">
+    <div class="fade-in">
+      <h2 class="section-title">How It Works</h2>
+      <p class="section-sub">Three steps. Zero babysitting. Full audit trail.</p>
+    </div>
+    <div class="steps fade-in">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Point at a GitHub Issue</h3>
+        <p>Run <code style="color:var(--cyan)">codebot --solve 42</code> and walk away. CodeBot reads the issue, understands the codebase, and gets to work.</p>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Autonomous Fix, Test, Review</h3>
+        <p>CodeBot writes the fix, runs your test suite, and self-reviews its own diff. If tests fail, it iterates. If the review fails, it rejects itself.</p>
+        <div class="step-connector"></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Get a Production-Ready PR</h3>
+        <p>A clean pull request with passing tests, a detailed description, and a full JSON audit log of every decision made along the way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="section" id="features" style="background:var(--bg2)">
+  <div class="container">
+    <div class="fade-in">
+      <h2 class="section-title">Key Features</h2>
+      <p class="section-sub">Enterprise-grade autonomy with safety built into every layer.</p>
+    </div>
+    <div class="features-grid fade-in">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        </div>
+        <h3>Constitutional Safety (CORD)</h3>
+        <p>Every action is risk-scored before execution. High-risk operations are blocked or require approval. Safety is not optional.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3>Full Audit Trail</h3>
+        <p>Every decision, tool call, and file change is logged to structured JSON. Complete transparency for compliance and debugging.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="12" x2="17" y2="12"/><line x1="7" y1="8" x2="13" y2="8"/><line x1="7" y1="16" x2="15" y2="16"/></svg>
+        </div>
+        <h3>Runs Locally</h3>
+        <p>Your code never leaves your machine. CodeBot runs entirely on your hardware. Air-gapped environments supported.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/></svg>
+        </div>
+        <h3>Self-Review</h3>
+        <p>After writing a fix, CodeBot reviews its own diff as a separate pass. If the review fails quality checks, it rejects its own work and retries.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        </div>
+        <h3>32 Built-in Tools</h3>
+        <p>File operations, git, web requests, browser automation, Docker, SSH, test runners, and more. Extensible with custom tools.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        </div>
+        <h3>Multi-LLM</h3>
+        <p>Works with Claude, GPT-4, or local models via Ollama. Switch providers without changing your workflow.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Pipeline -->
+<section class="section" id="pipeline">
+  <div class="container">
+    <div class="fade-in">
+      <h2 class="section-title">The Solve Pipeline</h2>
+      <p class="section-sub">Eight phases from issue to merged PR. Fully autonomous. Fully audited.</p>
+    </div>
+    <div class="pipeline-track fade-in">
+      <div class="pipeline-phase">Parse</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Clone</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Analyze</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Install</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Fix</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Test</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">Review</div>
+      <span class="pipeline-arrow">&rarr;</span>
+      <div class="pipeline-phase">PR</div>
+    </div>
+    <p class="pipeline-sub fade-in">If tests fail, CodeBot loops back to Fix. If self-review fails quality checks, it starts over. Only clean, tested code reaches your repository.</p>
+  </div>
+</section>
+
+<!-- Comparison -->
+<section class="section" id="compare" style="background:var(--bg2)">
+  <div class="container">
+    <div class="fade-in">
+      <h2 class="section-title">How CodeBot Compares</h2>
+      <p class="section-sub">The only agent that governs itself.</p>
+    </div>
+    <div class="compare-wrap fade-in">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th class="product-head hl">CodeBot AI</th>
+            <th class="product-head">Cursor</th>
+            <th class="product-head">Copilot</th>
+            <th class="product-head">Devin</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Autonomous execution</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="check">&#10003;</span></td>
+          </tr>
+          <tr>
+            <td>Safety governance (CORD)</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+          </tr>
+          <tr>
+            <td>Full audit trail</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="partial">Partial</span></td>
+          </tr>
+          <tr>
+            <td>Runs locally</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+          </tr>
+          <tr>
+            <td>Open source</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+          </tr>
+          <tr>
+            <td>Self-review</td>
+            <td><span class="check">&#10003;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+            <td><span class="cross">&#8212;</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- Pricing -->
+<section class="section" id="pricing">
+  <div class="container">
+    <div class="fade-in">
+      <h2 class="section-title">Pricing</h2>
+      <p class="section-sub">Open source at the core. Premium when you need it.</p>
+    </div>
+    <div class="pricing-grid fade-in">
+      <div class="price-card">
+        <h3>Free</h3>
+        <div class="price-amount">$0</div>
+        <p class="price-desc">Open source, forever</p>
+        <ul class="price-features">
+          <li>Full autonomous agent</li>
+          <li>All 32 tools included</li>
+          <li>CORD safety governance</li>
+          <li>Bring your own API key</li>
+          <li>Community support</li>
+        </ul>
+        <a href="https://github.com/Ascendral/codebot-ai" class="btn btn-secondary" style="width:100%;justify-content:center">Get Started</a>
+      </div>
+      <div class="price-card featured">
+        <h3>Pro</h3>
+        <div class="price-amount">$29<span>/mo</span></div>
+        <p class="price-desc">For individual developers</p>
+        <ul class="price-features">
+          <li>Everything in Free</li>
+          <li>Managed API proxy</li>
+          <li>Priority model routing</li>
+          <li>Usage dashboard</li>
+          <li>Email support</li>
+        </ul>
+        <a href="https://github.com/Ascendral/codebot-ai" class="btn btn-primary" style="width:100%;justify-content:center;color:#000">Start Free Trial</a>
+      </div>
+      <div class="price-card">
+        <h3>Enterprise</h3>
+        <div class="price-amount">$99<span>/seat/mo</span></div>
+        <p class="price-desc">For teams and compliance</p>
+        <ul class="price-features">
+          <li>Everything in Pro</li>
+          <li>SSO &amp; SAML</li>
+          <li>Compliance audit exports</li>
+          <li>Custom CORD policies</li>
+          <li>Dedicated support</li>
+        </ul>
+        <a href="mailto:alex@ascendral.com" class="btn btn-secondary" style="width:100%;justify-content:center">Contact Sales</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="container">
+    <div class="footer-links">
+      <a href="https://github.com/Ascendral/codebot-ai">GitHub</a>
+      <a href="https://twitter.com/alexpinkone">@alexpinkone</a>
+      <a href="https://github.com/Ascendral/codebot-ai/releases">Releases</a>
+    </div>
+    <p>Built by <strong>Alex Pinkevich</strong> at <strong>Ascendral Software Development &amp; Innovation</strong></p>
+    <p style="font-size:0.8rem;margin-top:4px">&copy; 2026 Ascendral. All rights reserved.</p>
+  </div>
+</footer>
+
+<script>
+// Terminal typing animation
+(function(){
+  const lines = [
+    {text: '<span class="out">Solving issue <strong>#3</strong> on Ascendral/codebot-ai...</span>', delay: 600},
+    {text: '<span class="phase">[Parse]</span> <span class="out">Reading issue: "Add --stats flag to CLI"</span>', delay: 400},
+    {text: '<span class="phase">[Clone]</span> <span class="out">Cloning repository...</span>', delay: 300},
+    {text: '<span class="phase">[Analyze]</span> <span class="out">Scanning codebase (1,404 tests found)</span>', delay: 500},
+    {text: '<span class="phase">[Fix]</span> <span class="out">Writing implementation in src/cli.ts</span>', delay: 600},
+    {text: '<span class="phase">[Test]</span> <span class="ok">All 1,404 tests passing</span>', delay: 400},
+    {text: '<span class="phase">[Review]</span> <span class="ok">Self-review passed (quality: 9.2/10)</span>', delay: 500},
+    {text: '<span class="phase">[PR]</span> <span class="ok">Created PR #4</span> <span class="arrow">&rarr;</span> <span class="out">github.com/Ascendral/codebot-ai/pull/4</span>', delay: 400},
+    {text: '', delay: 200},
+    {text: '<span class="ok">Done in 47s.</span> <span class="out">Audit log: .codebot/solve-3.json</span>', delay: 0},
+  ];
+  const el = document.getElementById('terminal');
+  let i = 0;
+  function addLine(){
+    if(i >= lines.length) return;
+    const div = document.createElement('div');
+    div.innerHTML = lines[i].text;
+    el.appendChild(div);
+    i++;
+    setTimeout(addLine, lines[i-1].delay + 200);
+  }
+  setTimeout(addLine, 1200);
+})();
+
+// Scroll fade-in
+(function(){
+  const obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){e.target.classList.add('visible');obs.unobserve(e.target)}
+    });
+  },{threshold:0.15});
+  document.querySelectorAll('.fade-in').forEach(function(el){obs.observe(el)});
+})();
+
+// Smooth scroll for nav links
+document.querySelectorAll('a[href^="#"]').forEach(function(a){
+  a.addEventListener('click',function(e){
+    const t=document.querySelector(this.getAttribute('href'));
+    if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'})}
+  });
+});
+</script>
+</body>
+</html>
