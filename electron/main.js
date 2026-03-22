@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, clipboard, globalShortcut, shell, dialog, Tray, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -385,6 +385,23 @@ function createWindow() {
       }
     }
   });
+  
+  // ── Manual clipboard shortcuts (nuclear fix for macOS) ──
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.meta && input.key === 'c') {
+      mainWindow.webContents.copy();
+    }
+    if (input.meta && input.key === 'v') {
+      mainWindow.webContents.paste();
+    }
+    if (input.meta && input.key === 'x') {
+      mainWindow.webContents.cut();
+    }
+    if (input.meta && input.key === 'a') {
+      mainWindow.webContents.selectAll();
+    }
+  });
+
   mainWindow.webContents.on('did-finish-load', () => {
     loadRetryCount = 0;
     // Force enable text selection and copy/paste in Electron
