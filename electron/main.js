@@ -385,7 +385,36 @@ function createWindow() {
       }
     }
   });
-  mainWindow.webContents.on('did-finish-load', () => { loadRetryCount = 0; });
+  mainWindow.webContents.on('did-finish-load', () => {
+    loadRetryCount = 0;
+    // Force enable text selection and copy/paste in Electron
+    mainWindow.webContents.executeJavaScript(`
+      document.body.style.webkitUserSelect = 'text';
+      document.body.style.userSelect = 'text';
+      document.querySelectorAll('.chat-messages, .chat-messages *, .message-content, .message-content *, pre, code, p, span').forEach(el => {
+        el.style.webkitUserSelect = 'text';
+        el.style.userSelect = 'text';
+        el.style.webkitAppRegion = 'no-drag';
+      });
+      // MutationObserver to fix dynamically added messages
+      new MutationObserver((mutations) => {
+        mutations.forEach(m => {
+          m.addedNodes.forEach(node => {
+            if (node.nodeType === 1) {
+              node.style.webkitUserSelect = 'text';
+              node.style.userSelect = 'text';
+              node.style.webkitAppRegion = 'no-drag';
+              node.querySelectorAll && node.querySelectorAll('*').forEach(child => {
+                child.style.webkitUserSelect = 'text';
+                child.style.userSelect = 'text';
+                child.style.webkitAppRegion = 'no-drag';
+              });
+            }
+          });
+        });
+      }).observe(document.querySelector('.chat-messages') || document.body, { childList: true, subtree: true });
+    `).catch(() => {});
+  });
 
   // Open external links in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
