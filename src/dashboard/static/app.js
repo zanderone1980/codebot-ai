@@ -54,6 +54,20 @@ const App = {
     this.checkHealth();
     this.navigateToHash();
     window.addEventListener('hashchange', () => this.navigateToHash());
+    // Escape key closes notification panel and file preview
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (this.notificationPanelOpen) {
+          this.notificationPanelOpen = false;
+          var np = document.getElementById('notification-panel');
+          if (np) np.style.display = 'none';
+        }
+        var fp = document.getElementById('file-preview');
+        if (fp && fp.classList.contains('visible')) {
+          fp.classList.remove('visible');
+        }
+      }
+    });
     setInterval(() => this.checkHealth(), 30000);
     this.loadConversations();
     this.connectAgentStatus();
@@ -264,6 +278,11 @@ const App = {
       }
     }
     document.body.classList.toggle('chat-expanded', name !== 'chat' || hasMessages);
+    // Clear status polling when navigating away from status panel
+    if (name !== 'status' && this.statusInterval) {
+      clearInterval(this.statusInterval);
+      this.statusInterval = null;
+    }
     switch (name) {
       case 'chat': this.initChat(); break;
       case 'sessions': this.loadSessions(); break;
@@ -338,7 +357,7 @@ const App = {
 
     sendBtn.addEventListener('click', send);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); send(); }
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
 
     // Load model selector
@@ -488,8 +507,13 @@ const App = {
             const ev = JSON.parse(payload);
             if (ev.type === 'text') {
               fullText += ev.text || '';
-              contentEl.innerHTML = App.renderMarkdown(fullText);
-              container.scrollTop = container.scrollHeight;
+              if (!App._renderRAF) {
+                App._renderRAF = requestAnimationFrame(function() {
+                  contentEl.innerHTML = App.renderMarkdown(fullText);
+                  container.scrollTop = container.scrollHeight;
+                  App._renderRAF = null;
+                });
+              }
             }
             else if (ev.type === 'tool_call' && ev.toolCall) {
               this._lastToolDiv = this.appendChatToolCall(ev.toolCall.name, ev.toolCall.args);
@@ -682,6 +706,7 @@ const App = {
       }
       apiFetch('/api/setup/provider', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: provider, model: model, apiKey: key.trim() }),
       }).then(function() {
         App._modelProviderAvailable[provider] = true;
@@ -923,7 +948,7 @@ const App = {
     this.renderConversationList();
   },
 
-  saveConversations() {
+  _saveConversationsNow() {
     // Prune to max 50 conversations to prevent hitting 5MB localStorage limit
     if (this.conversations.length > 50) {
       this.conversations = this.conversations.slice(0, 50);
@@ -937,6 +962,13 @@ const App = {
         try { localStorage.setItem('codebot_conversations', JSON.stringify(this.conversations)); } catch(e2) {}
       }
     }
+  },
+
+  _saveConvTimer: null,
+
+  saveConversations() {
+    if (this._saveConvTimer) clearTimeout(this._saveConvTimer);
+    this._saveConvTimer = setTimeout(() => { this._saveConversationsNow(); }, 1000);
   },
 
   createConversation() {
@@ -1029,7 +1061,24 @@ const App = {
     this.renderConversationList();
   },
 
+  _renderConvPending: false,
+
   renderConversationList() {
+    // Debounce: if streaming, defer re-render to avoid thrashing
+    if (this.chatController) {
+      if (!this._renderConvPending) {
+        this._renderConvPending = true;
+        setTimeout(() => {
+          this._renderConvPending = false;
+          this._renderConversationListNow();
+        }, 500);
+      }
+      return;
+    }
+    this._renderConversationListNow();
+  },
+
+  _renderConversationListNow() {
     var list = document.getElementById('chat-sidebar-list');
     if (!list) return;
     if (this.conversations.length === 0) {
@@ -1608,8 +1657,13 @@ const App = {
             var ev = JSON.parse(payload);
             if (ev.type === 'text') {
               fullText += ev.text || '';
-              output.innerHTML = App.renderMarkdown(fullText);
-              output.scrollTop = output.scrollHeight;
+              if (!App._wfRenderRAF) {
+                App._wfRenderRAF = requestAnimationFrame(function() {
+                  output.innerHTML = App.renderMarkdown(fullText);
+                  output.scrollTop = output.scrollHeight;
+                  App._wfRenderRAF = null;
+                });
+              }
             } else if (ev.type === 'tool_call' && ev.toolCall) {
               fullText += '\n[Tool: ' + ev.toolCall.name + ']\n';
               output.innerHTML = App.renderMarkdown(fullText);
@@ -2190,6 +2244,7 @@ const App = {
 
     // Code blocks with syntax highlighting
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
+      lang = lang.replace(/[^a-zA-Z0-9-]/g, '');
       var langClass = lang ? ' class="language-' + lang + '"' : '';
       var langLabel = lang ? '<span class="code-lang-label">' + lang + '</span>' : '';
       var copyBtn = '<button class="code-copy-btn" onclick="App.copyCode(this)">Copy</button>';
@@ -2227,6 +2282,7 @@ const App = {
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(match, text, url) {
       if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        url = url.replace(/["'<>]/g, '');
         return '<a href="' + url + '" target="_blank" rel="noopener">' + text + '</a>';
       }
       return text;
