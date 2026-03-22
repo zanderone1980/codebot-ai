@@ -76,7 +76,7 @@ export async function resolveConfig(args: Record<string, string | boolean>): Pro
     if (defaults) config.apiKey = process.env[defaults.envKey] || '';
   }
   if (!config.apiKey) {
-    config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || '';
+    config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || '';
   }
 
   if (!config.baseUrl) {

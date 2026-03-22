@@ -179,13 +179,31 @@ async function startServer() {
       } catch { /* not found, try next */ }
     }
   }
+  let openaiKey = process.env.OPENAI_API_KEY || '';
+  let geminiKey = process.env.GEMINI_API_KEY || '';
   if (!apiKey) {
     // Check user's codebot config
     try {
       const configPath = path.join(process.env.HOME || '', '.codebot', 'config.json');
       const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
       if (config.apiKey) apiKey = config.apiKey;
+      if (config.openaiApiKey) openaiKey = config.openaiApiKey;
+      if (config.geminiApiKey) geminiKey = config.geminiApiKey;
     } catch { /* no config */ }
+  }
+  // Also check .env files for additional keys
+  if (!openaiKey || !geminiKey) {
+    const envLocations = [
+      path.join(process.env.HOME || '', '.codebot', '.env'),
+      path.join(app.getPath('userData'), '.env'),
+    ];
+    for (const envPath of envLocations) {
+      try {
+        const envContent = fs.readFileSync(envPath, 'utf-8');
+        if (!openaiKey) { const m = envContent.match(/OPENAI_API_KEY=(.+)/); if (m) openaiKey = m[1].trim(); }
+        if (!geminiKey) { const m = envContent.match(/GEMINI_API_KEY=(.+)/); if (m) geminiKey = m[1].trim(); }
+      } catch { /* not found */ }
+    }
   }
 
   // Prompt user for API key if none found
@@ -246,6 +264,8 @@ async function startServer() {
     if (!process.env.CODEBOT_MODEL) serverEnv.CODEBOT_MODEL = 'claude-sonnet-4-6';
     if (!process.env.CODEBOT_PROVIDER) serverEnv.CODEBOT_PROVIDER = 'anthropic';
   }
+  if (openaiKey) serverEnv.OPENAI_API_KEY = openaiKey;
+  if (geminiKey) serverEnv.GEMINI_API_KEY = geminiKey;
 
   serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1', '--no-open'], {
     cwd: paths.root,
