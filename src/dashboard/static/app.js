@@ -45,7 +45,7 @@ const App = {
   init() {
     // Detect Electron and enable title bar drag region
     if (window.electronAPI && window.electronAPI.isElectron) {
-      document.body.classList.add('is-electron');
+      // document.body.classList.add('is-electron'); // DISABLED — causes text selection issues
       var titlebar = document.getElementById('electron-titlebar');
       if (titlebar) titlebar.style.display = '';
     }
