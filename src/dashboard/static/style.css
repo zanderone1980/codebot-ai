@@ -49,7 +49,7 @@
   --bg-hover: var(--bg-card-hover);
 }
 
-*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: text !important; user-select: text !important; -webkit-app-region: no-drag !important; }
 
 *:focus-visible {
   outline: 2px solid var(--cyan);
