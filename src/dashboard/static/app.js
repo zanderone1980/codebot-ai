@@ -2725,3 +2725,26 @@ const App = {
 
 
 document.addEventListener('DOMContentLoaded', () => App.init());
+
+
+// Show status updates during streaming so user knows what's happening
+function updateStreamingStatus(msg) {
+  const statusEl = document.getElementById('streaming-status');
+  if (statusEl) {
+    statusEl.textContent = msg;
+    statusEl.style.display = 'block';
+  } else {
+    // Create status element if it doesn't exist
+    const el = document.createElement('div');
+    el.id = 'streaming-status';
+    el.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.3);color:#00d4ff;padding:6px 16px;border-radius:20px;font-size:13px;z-index:1000;transition:opacity 0.3s;';
+    el.textContent = msg;
+    document.body.appendChild(el);
+  }
+}
+
+// Hide status when streaming ends
+function hideStreamingStatus() {
+  const el = document.getElementById('streaming-status');
+  if (el) { el.style.opacity = '0'; setTimeout(() => { if (el) el.style.display = 'none'; el.style.opacity = '1'; }, 300); }
+}

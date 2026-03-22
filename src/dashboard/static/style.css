@@ -86,7 +86,13 @@ body.is-electron .notification-bell,
 body.is-electron .file-item,
 body.is-electron #conn-indicator,
 body.is-electron #notification-area,
-body.is-electron .agent-status {
+body.is-electron .agent-status,
+body.is-electron .chat-messages,
+body.is-electron .chat-messages *,
+body.is-electron .message-content,
+body.is-electron .message-content *,
+body.is-electron pre,
+body.is-electron code {
   -webkit-app-region: no-drag;
 }
 
@@ -2782,4 +2788,19 @@ code.inline-code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+
+/* Force text selection cursor in Electron */
+body.is-electron .message-content,
+body.is-electron .message-content * {
+  cursor: text !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+body.is-electron pre,
+body.is-electron code {
+  cursor: text !important;
+  -webkit-user-select: text !important;
+  user-select: text !important;
 }
