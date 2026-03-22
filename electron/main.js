@@ -306,8 +306,6 @@ async function startServer() {
         startServer().then((ok) => {
           if (ok && mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.loadURL(DASHBOARD_URL);
-  // Also open in system browser where copy/paste works
-  shell.openExternal(DASHBOARD_URL);
             mainWindow.webContents.send('backend-status', { status: 'connected' });
           }
         });
@@ -326,8 +324,6 @@ async function startServer() {
       if (choice === 0) {
         startServer().then((ok) => {
           if (ok && mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DASHBOARD_URL);
-  // Also open in system browser where copy/paste works
-  shell.openExternal(DASHBOARD_URL);
         });
       } else {
         app.quit();
@@ -371,8 +367,6 @@ function createWindow() {
 
   // Load dashboard with retry on network errors
   mainWindow.loadURL(DASHBOARD_URL);
-  // Also open in system browser where copy/paste works
-  shell.openExternal(DASHBOARD_URL);
 
   let loadRetryCount = 0;
   const MAX_LOAD_RETRIES = 8;
@@ -385,8 +379,6 @@ function createWindow() {
         console.log('Dashboard load failed (' + errorDescription + '), retry ' + loadRetryCount + '/' + MAX_LOAD_RETRIES + ' in ' + delay + 'ms...');
         setTimeout(() => {
           if (mainWindow && !mainWindow.isDestroyed()) mainWindow.loadURL(DASHBOARD_URL);
-  // Also open in system browser where copy/paste works
-  shell.openExternal(DASHBOARD_URL);
         }, delay);
       } else {
         console.error('Dashboard failed to load after ' + MAX_LOAD_RETRIES + ' attempts');
@@ -705,8 +697,6 @@ ipcMain.handle('restart-backend', async () => {
   const ok = await startServer();
   if (ok && mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.loadURL(DASHBOARD_URL);
-  // Also open in system browser where copy/paste works
-  shell.openExternal(DASHBOARD_URL);
   }
   return ok;
 });
