@@ -64,6 +64,14 @@ export const MODEL_REGISTRY: Record<string, ModelInfo> = {
   'o3': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'openai' },
   'o3-mini': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, provider: 'openai' },
   'o4-mini': { contextWindow: 200000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, provider: 'openai' },
+  'gpt-5.4': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5.4-mini': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5.4-nano': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5-codex': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5.4': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5.4-mini': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5.4-nano': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
+  'gpt-5-codex': { contextWindow: 1000000, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'openai' },
 
   // ── Google Gemini (OpenAI-compatible endpoint) ─────────────────────────────
   'gemini-2.5-pro': { contextWindow: 1048576, supportsToolCalling: true, supportsCaching: true, supportsVision: true, supportsJsonMode: true, provider: 'gemini' },
@@ -113,7 +121,7 @@ export function detectProvider(model: string): string | undefined {
 
   // Heuristic detection from model name prefixes
   if (model.startsWith('claude')) return 'anthropic';
-  if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4')) return 'openai';
+  if (model.startsWith('gpt-') || model.startsWith('o1') || model.startsWith('o3') || model.startsWith('o4') || model.startsWith('gpt-5')) return 'openai';
   if (model.startsWith('gemini')) return 'gemini';
   if (model.startsWith('deepseek')) return 'deepseek';
   if (model.startsWith('grok')) return 'xai';
