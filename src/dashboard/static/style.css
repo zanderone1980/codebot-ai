@@ -836,6 +836,9 @@ body.is-electron .agent-status {
 .message-content {
   color: var(--text-secondary);
   word-break: break-word;
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
 /* ── Terminal ── */
@@ -2777,4 +2780,14 @@ code.inline-code {
   .capability-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Ensure all chat text is selectable */
+.chat-messages, .chat-messages * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+.chat-messages button, .chat-messages .chat-retry-btn {
+  user-select: none;
+  -webkit-user-select: none;
 }

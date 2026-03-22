@@ -14,7 +14,7 @@ function apiFetch(path, opts) {
   // Add 30s timeout via AbortController
   var controller = new AbortController();
   var timeoutId = setTimeout(function() { controller.abort(); }, 30000);
-  if (!opts.signal) opts.signal = controller.signal;
+  if (opts.signal) { clearTimeout(timeoutId); } else { opts.signal = controller.signal; }
   return window.fetch(base + path, opts).then(function(res) {
     clearTimeout(timeoutId);
     // Auto-reload on 401 to pick up new auth token after server restart
@@ -437,9 +437,12 @@ const App = {
     let totalTokens = 0;
     let hasError = false;
     try {
+      // Chat uses SSE streaming — no timeout (agent can take minutes)
+      var chatController = new AbortController();
       const res = await apiFetch('/api/command/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: message }),
+        signal: chatController.signal,
       });
       if (!res.ok) {
         const errD = await res.json().catch(() => ({}));
