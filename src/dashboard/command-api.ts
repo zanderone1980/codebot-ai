@@ -88,6 +88,7 @@ function execAndStream(
         DashboardServer.sseSend(res, { type: 'stderr', text: '\n[Timed out after 30s]' });
         DashboardServer.sseSend(res, { type: 'exit', code: 124 });
         DashboardServer.sseClose(res);
+        closed = true;
       }
     }
   }, 30_000);
@@ -311,7 +312,10 @@ export function registerCommandRoutes(
       closed = true;
       agentBusy = false;
       broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
-      if (!res.writableEnded && !res.destroyed) DashboardServer.sseClose(res);
+      if (!res.writableEnded && !res.destroyed) {
+        res.write('data: [DONE]\n\n');
+        DashboardServer.sseClose(res);
+      }
       // Process any queued messages
       if (messageQueue.length > 0) setTimeout(processQueue, 100);
     }
@@ -345,6 +349,12 @@ export function registerCommandRoutes(
       let closed = false;
       res.on('close', () => { closed = true; });
 
+      // Heartbeat keeps connection alive through proxies/Safari
+      const qaHeartbeat = setInterval(() => {
+        if (closed || res.writableEnded || res.destroyed) { clearInterval(qaHeartbeat); return; }
+        try { res.write(': heartbeat\n\n'); } catch { clearInterval(qaHeartbeat); closed = true; }
+      }, 15_000);
+
       try {
         for await (const event of agent.run(actionDef.prompt)) {
           if (closed || res.writableEnded || res.destroyed) break;
@@ -359,9 +369,13 @@ export function registerCommandRoutes(
           });
         }
       } finally {
+        clearInterval(qaHeartbeat);
         agentBusy = false;
         broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
-        if (!closed) DashboardServer.sseClose(res);
+        if (!closed) {
+          res.write('data: [DONE]\n\n');
+          DashboardServer.sseClose(res);
+        }
         if (messageQueue.length > 0) setTimeout(processQueue, 100);
       }
       return;
@@ -522,6 +536,12 @@ export function registerCommandRoutes(
     let closed = false;
     res.on('close', () => { closed = true; });
 
+    // Heartbeat keeps connection alive through proxies/Safari
+    const wfHeartbeat = setInterval(() => {
+      if (closed || res.writableEnded || res.destroyed) { clearInterval(wfHeartbeat); return; }
+      try { res.write(': heartbeat\n\n'); } catch { clearInterval(wfHeartbeat); closed = true; }
+    }, 15_000);
+
     try {
       for await (const event of agent.run(prompt)) {
         if (closed) break;
@@ -536,9 +556,13 @@ export function registerCommandRoutes(
         });
       }
     } finally {
+      clearInterval(wfHeartbeat);
       agentBusy = false;
       broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
-      if (!closed) DashboardServer.sseClose(res);
+      if (!closed) {
+        res.write('data: [DONE]\n\n');
+        DashboardServer.sseClose(res);
+      }
       if (messageQueue.length > 0) setTimeout(processQueue, 100);
     }
   });
