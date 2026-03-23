@@ -17,12 +17,10 @@ export const PROVIDER_DEFAULTS: Record<string, { baseUrl: string; envKey: string
   groq: { baseUrl: 'https://api.groq.com/openai', envKey: 'GROQ_API_KEY' },
   mistral: { baseUrl: 'https://api.mistral.ai', envKey: 'MISTRAL_API_KEY' },
   xai: { baseUrl: 'https://api.x.ai', envKey: 'XAI_API_KEY' },
-  klomboagi: { baseUrl: 'local', envKey: '' },
 };
 
 export const MODEL_REGISTRY: Record<string, ModelInfo> = {
   // ── Ollama / Local Models ──────────────────────────────────────────────────
-  'klomboagi': { contextWindow: 100000, supportsToolCalling: false, supportsCaching: false, supportsVision: false, provider: 'klomboagi' },
   'qwen2.5-coder:32b': { contextWindow: 32768, supportsToolCalling: true },
   'qwen2.5-coder:14b': { contextWindow: 32768, supportsToolCalling: true },
   'qwen2.5-coder:7b': { contextWindow: 32768, supportsToolCalling: true },

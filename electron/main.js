@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, clipboard, globalShortcut, shell, dialog, Tray, nativeImage } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, Tray, nativeImage } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -353,7 +353,7 @@ function createWindow() {
     minWidth: 600,
     minHeight: 500,
     title: 'CodeBot AI',
-    titleBarStyle: 'default',  // macOS native title bar with traffic lights
+    titleBarStyle: 'hiddenInset',  // macOS native title bar with traffic lights
     trafficLightPosition: { x: 15, y: 15 },
     backgroundColor: '#0a0a0f',
     webPreferences: {
@@ -385,53 +385,7 @@ function createWindow() {
       }
     }
   });
-  
-  // ── Manual clipboard shortcuts (nuclear fix for macOS) ──
-  mainWindow.webContents.on('before-input-event', (event, input) => {
-    if (input.meta && input.key === 'c') {
-      mainWindow.webContents.copy();
-    }
-    if (input.meta && input.key === 'v') {
-      mainWindow.webContents.paste();
-    }
-    if (input.meta && input.key === 'x') {
-      mainWindow.webContents.cut();
-    }
-    if (input.meta && input.key === 'a') {
-      mainWindow.webContents.selectAll();
-    }
-  });
-
-  mainWindow.webContents.on('did-finish-load', () => {
-    loadRetryCount = 0;
-    // Force enable text selection and copy/paste in Electron
-    mainWindow.webContents.executeJavaScript(`
-      document.body.style.webkitUserSelect = 'text';
-      document.body.style.userSelect = 'text';
-      document.querySelectorAll('.chat-messages, .chat-messages *, .message-content, .message-content *, pre, code, p, span').forEach(el => {
-        el.style.webkitUserSelect = 'text';
-        el.style.userSelect = 'text';
-        el.style.webkitAppRegion = 'no-drag';
-      });
-      // MutationObserver to fix dynamically added messages
-      new MutationObserver((mutations) => {
-        mutations.forEach(m => {
-          m.addedNodes.forEach(node => {
-            if (node.nodeType === 1) {
-              node.style.webkitUserSelect = 'text';
-              node.style.userSelect = 'text';
-              node.style.webkitAppRegion = 'no-drag';
-              node.querySelectorAll && node.querySelectorAll('*').forEach(child => {
-                child.style.webkitUserSelect = 'text';
-                child.style.userSelect = 'text';
-                child.style.webkitAppRegion = 'no-drag';
-              });
-            }
-          });
-        });
-      }).observe(document.querySelector('.chat-messages') || document.body, { childList: true, subtree: true });
-    `).catch(() => {});
-  });
+  mainWindow.webContents.on('did-finish-load', () => { loadRetryCount = 0; });
 
   // Open external links in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -469,7 +423,6 @@ function createMenu() {
       label: 'CodeBot AI',
       submenu: [
         { label: 'About CodeBot AI', role: 'about' },
-        { label: 'Open in Browser', accelerator: 'CmdOrCtrl+B', click: () => { require('electron').shell.openExternal('http://localhost:3120'); } },
         { type: 'separator' },
         {
           label: 'Settings',

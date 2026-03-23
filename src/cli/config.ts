@@ -5,7 +5,6 @@
 
 import { OpenAIProvider } from '../providers/openai';
 import { AnthropicProvider } from '../providers/anthropic';
-import { KlomboAGIProvider } from '../providers/klomboagi';
 import { detectProvider, PROVIDER_DEFAULTS } from '../providers/registry';
 import { Config, LLMProvider } from '../types';
 import { loadConfig } from '../setup';
@@ -27,10 +26,6 @@ export function createProvider(config: Config): LLMProvider {
       apiKey: config.apiKey,
       model: config.model,
     });
-  }
-
-  if (config.provider === 'klomboagi') {
-    return new KlomboAGIProvider();
   }
 
   return new OpenAIProvider({

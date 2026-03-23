@@ -627,16 +627,16 @@ const App = {
       select.innerHTML = '';
 
       var currentModel = data.current && data.current.model ? data.current.model : '';
-      var providerOrder = ['anthropic', 'openai', 'gemini', 'deepseek', 'groq', 'mistral', 'xai', 'klomboagi', 'local'];
+      var providerOrder = ['anthropic', 'openai', 'gemini', 'deepseek', 'groq', 'mistral', 'xai', 'local'];
       var providerLabels = {
         anthropic: 'Claude', openai: 'OpenAI', gemini: 'Google Gemini',
-        deepseek: 'DeepSeek', groq: 'Groq', mistral: 'Mistral', xai: 'xAI', klomboagi: 'KlomboAGI (Reasoning)', local: 'Local (Ollama)'
+        deepseek: 'DeepSeek', groq: 'Groq', mistral: 'Mistral', xai: 'xAI', local: 'Local (Ollama)'
       };
 
       providerOrder.forEach(function(provider) {
         var models = data.groups[provider];
         if (!models || models.length === 0) return;
-        var available = provider === 'local' || provider === 'klomboagi' || (data.available && data.available[provider]);
+        var available = provider === 'local' || (data.available && data.available[provider]);
         var label = providerLabels[provider] || provider;
         if (!available) label += ' (no key)';
 
@@ -681,7 +681,6 @@ const App = {
     if (model.startsWith('grok')) return 'xai';
     if (model.startsWith('mistral') || model.startsWith('codestral')) return 'mistral';
     if (model.includes('groq') || model.startsWith('llama-')) return 'groq';
-    if (model === 'klomboagi') return 'klomboagi';
     return 'local';
   },
 
@@ -690,7 +689,7 @@ const App = {
     var provider = this._detectProvider(model);
 
     // Check if provider has API key
-    if (provider !== 'local' && provider !== 'klomboagi' && this._modelProviderAvailable && !this._modelProviderAvailable[provider]) {
+    if (provider !== 'local' && this._modelProviderAvailable && !this._modelProviderAvailable[provider]) {
       var providerNames = {
         anthropic: 'Anthropic (Claude)', openai: 'OpenAI', gemini: 'Google Gemini',
         deepseek: 'DeepSeek', groq: 'Groq', mistral: 'Mistral', xai: 'xAI'
