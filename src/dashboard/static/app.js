@@ -218,6 +218,26 @@ const App = {
     }
   },
 
+  async selectFreeProxy() {
+    try {
+      var res = await apiFetch('/api/setup/provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider: 'anthropic',
+          model: 'claude-sonnet-4-6',
+          baseUrl: 'https://codebot-proxy.pinkevich1980.workers.dev',
+          apiKey: 'free-tier',
+        }),
+      });
+      if (!res.ok) { console.error('selectFreeProxy failed: HTTP ' + res.status); }
+    } catch (err) {
+      console.error('selectFreeProxy error:', err.message);
+    }
+    this.onboardingStep = 2;
+    this.showOnboardingStep();
+  },
+
   async selectOnboardingProvider(provider, model, baseUrl) {
     try {
       var body = { provider: provider };
