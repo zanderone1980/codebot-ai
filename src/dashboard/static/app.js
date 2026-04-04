@@ -354,6 +354,8 @@ const App = {
 
   chatInitialized: false,
 
+  pendingImages: [],
+
   initChat() {
     if (this.chatInitialized) return;
     this.chatInitialized = true;
@@ -362,14 +364,23 @@ const App = {
     const sendBtn = document.getElementById('chat-send');
     if (!input || !sendBtn) return;
 
+    // Auto-resize textarea
+    input.addEventListener('input', () => {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 150) + 'px';
+    });
+
     const send = () => {
       const msg = input.value.trim();
-      if (!msg) return;
+      const images = this.pendingImages.slice();
+      if (!msg && images.length === 0) return;
       input.value = '';
+      input.style.height = 'auto';
+      this.clearPendingImages();
       this.lastUserMessage = msg;
       this.saveMessageToConversation('user', msg);
-      this.appendChatMessage('user', msg);
-      this.streamChat(msg);
+      this.appendChatMessage('user', msg, images);
+      this.streamChat(msg, images);
 
       // Hide suggestion chips
       var suggestions = document.getElementById('chat-suggestions');
@@ -386,6 +397,20 @@ const App = {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
     });
 
+    // Paste handler — intercept images from clipboard
+    input.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image/') === 0) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (file) this.addImageFromFile(file);
+          return;
+        }
+      }
+    });
+
     // Load model selector
     this.loadModels();
 
@@ -400,18 +425,63 @@ const App = {
     }
   },
 
-  appendChatMessage(role, content) {
+  addImageFromFile(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target.result;
+      const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+      if (!match) return;
+      const mediaType = match[1];
+      const data = match[2];
+      this.pendingImages.push({ data: data, mediaType: mediaType });
+
+      const preview = document.getElementById('chat-image-preview');
+      if (!preview) return;
+      preview.style.display = 'flex';
+      const idx = this.pendingImages.length - 1;
+      const thumb = document.createElement('div');
+      thumb.className = 'image-thumb';
+      thumb.innerHTML = '<img src="' + dataUrl + '" alt="Pasted image" />' +
+        '<button class="remove-image" data-idx="' + idx + '">&times;</button>';
+      thumb.querySelector('.remove-image').addEventListener('click', (ev) => {
+        const removeIdx = parseInt(ev.target.getAttribute('data-idx'));
+        this.pendingImages.splice(removeIdx, 1);
+        thumb.remove();
+        if (this.pendingImages.length === 0) preview.style.display = 'none';
+        var btns = preview.querySelectorAll('.remove-image');
+        for (var b = 0; b < btns.length; b++) btns[b].setAttribute('data-idx', b);
+      });
+      preview.appendChild(thumb);
+    };
+    reader.readAsDataURL(file);
+  },
+
+  clearPendingImages() {
+    this.pendingImages = [];
+    var preview = document.getElementById('chat-image-preview');
+    if (preview) { preview.innerHTML = ''; preview.style.display = 'none'; }
+  },
+
+  appendChatMessage(role, content, images) {
     const container = document.getElementById('chat-messages');
     if (!container) return document.createElement('div');
     const div = document.createElement('div');
     div.className = 'chat-msg ' + this.escapeHtml(role);
 
     const roleHtml = '<div class="chat-msg-role">' + this.escapeHtml(role) + '</div>';
+    let imagesHtml = '';
+    if (images && images.length > 0) {
+      imagesHtml = '<div class="chat-msg-images">';
+      for (let i = 0; i < images.length; i++) {
+        imagesHtml += '<img src="data:' + images[i].mediaType + ';base64,' + images[i].data + '" class="chat-msg-image" alt="Attached image" />';
+      }
+      imagesHtml += '</div>';
+    }
     let contentHtml;
     if (role === 'assistant') {
       contentHtml = '<div class="chat-msg-content">' + this.renderMarkdown(content) + '</div>';
     } else {
-      contentHtml = '<div class="chat-msg-content">' + this.escapeHtml(content) + '</div>';
+      contentHtml = '<div class="chat-msg-content">' + imagesHtml + this.escapeHtml(content) + '</div>';
     }
     div.innerHTML = roleHtml + contentHtml;
     container.appendChild(div);
@@ -477,7 +547,7 @@ const App = {
     }
   },
 
-  async streamChat(message) {
+  async streamChat(message, images) {
     const container = document.getElementById('chat-messages');
     var cancelBtn = document.getElementById('chat-cancel');
     if (cancelBtn) cancelBtn.style.display = '';
@@ -493,7 +563,7 @@ const App = {
       var chatController = this.chatController;
       const res = await apiFetch('/api/command/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: message }),
+        body: JSON.stringify(images && images.length > 0 ? { message: message, images: images } : { message: message }),
         signal: chatController.signal,
       });
       if (!res.ok) {

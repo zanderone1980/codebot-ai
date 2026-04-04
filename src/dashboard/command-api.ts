@@ -246,7 +246,7 @@ export function registerCommandRoutes(
       return;
     }
 
-    let body: { message?: string; mode?: 'simple' | 'detailed' };
+    let body: { message?: string; mode?: 'simple' | 'detailed'; images?: Array<{ data: string; mediaType: string }> };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
     } catch {
@@ -254,7 +254,7 @@ export function registerCommandRoutes(
       return;
     }
 
-    if (!body?.message) {
+    if (!body?.message && (!body?.images || body.images.length === 0)) {
       DashboardServer.error(res, 400, 'Missing "message" field');
       return;
     }
@@ -276,7 +276,7 @@ export function registerCommandRoutes(
     }
 
     // Simple mode: prepend plain-language instruction for non-technical users
-    let userMessage = body.message;
+    let userMessage = body.message || '';
     if (body.mode === 'simple') {
       userMessage = '[Respond in plain, simple language suitable for someone who is not a programmer. Be concise and friendly. Focus on results, not technical details.]\n\n' + userMessage;
     }
@@ -295,7 +295,12 @@ export function registerCommandRoutes(
     }, 15_000);
 
     try {
-      for await (const event of agent.run(userMessage)) {
+      // Pass images through to agent if provided
+      const chatImages = body.images?.map((img: { data: string; mediaType: string }) => ({
+        data: img.data,
+        mediaType: img.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+      }));
+      for await (const event of agent.run(userMessage, chatImages)) {
         if (closed || res.writableEnded || res.destroyed) break;
         DashboardServer.sseSend(res, event);
         if (event.type === 'done' || event.type === 'error') break;

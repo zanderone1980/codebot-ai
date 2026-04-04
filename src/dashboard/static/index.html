@@ -72,8 +72,11 @@
             <div class="chat-main">
               <div id="chat-messages" class="chat-messages"></div>
               <div class="chat-input-row">
-                <input type="text" id="chat-input" class="chat-input"
-                       placeholder="Ask CodeBot anything..." autocomplete="off" />
+                <div class="chat-input-wrapper">
+                  <div id="chat-image-preview" class="chat-image-preview" style="display:none"></div>
+                  <textarea id="chat-input" class="chat-input" rows="1"
+                            placeholder="Ask CodeBot anything... (paste images with Ctrl+V)" autocomplete="off"></textarea>
+                </div>
                 <button id="chat-send" class="btn-send">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>

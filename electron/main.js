@@ -387,6 +387,37 @@ function createWindow() {
   });
   mainWindow.webContents.on('did-finish-load', () => { loadRetryCount = 0; });
 
+  // Right-click context menu with copy/paste support
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const { MenuItem } = require('electron');
+    const menu = new Menu();
+
+    if (params.selectionText) {
+      menu.append(new MenuItem({ role: 'copy' }));
+    }
+    if (params.isEditable) {
+      menu.append(new MenuItem({ role: 'cut' }));
+      menu.append(new MenuItem({ role: 'paste' }));
+      menu.append(new MenuItem({ role: 'selectAll' }));
+    } else if (!params.selectionText) {
+      menu.append(new MenuItem({ role: 'paste' }));
+    }
+    if (params.linkURL) {
+      if (menu.items.length > 0) menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({
+        label: 'Copy Link',
+        click: () => {
+          const { clipboard } = require('electron');
+          clipboard.writeText(params.linkURL);
+        },
+      }));
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup({ window: mainWindow });
+    }
+  });
+
   // Open external links in system browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost')) {

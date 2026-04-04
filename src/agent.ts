@@ -212,8 +212,9 @@ export class Agent {
     this.sessionGoal = '';
   }
 
-  async *run(userMessage: string): AsyncGenerator<AgentEvent> {
+  async *run(userMessage: string, images?: import('./types').ImageAttachment[]): AsyncGenerator<AgentEvent> {
     const userMsg: Message = { role: 'user', content: userMessage };
+    if (images && images.length > 0) userMsg.images = images;
     this.messages.push(userMsg);
     if (!this.sessionGoal) this.sessionGoal = userMessage.substring(0, 200);
     this.onMessage?.(userMsg);
