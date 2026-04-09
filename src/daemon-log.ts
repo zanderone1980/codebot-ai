@@ -83,20 +83,19 @@ export class DaemonLog {
       fs.mkdirSync(dir, { recursive: true });
       const logFile = codebotPath('daemon/daemon.log');
 
-      // Read existing entries
-      let entries: LogEntry[] = [];
-      if (fs.existsSync(logFile)) {
+      // Append-only NDJSON: one JSON object per line, no re-reading
+      fs.appendFileSync(logFile, JSON.stringify(entry) + '\n');
+
+      // Rotate periodically to cap file size
+      if (Math.random() < 0.05) {
         try {
-          entries = JSON.parse(fs.readFileSync(logFile, 'utf-8'));
-        } catch { entries = []; }
+          const content = fs.readFileSync(logFile, 'utf-8');
+          const lines = content.trim().split('\n');
+          if (lines.length > this.maxFileEntries) {
+            fs.writeFileSync(logFile, lines.slice(-this.maxFileEntries).join('\n') + '\n');
+          }
+        } catch { /* rotation failed */ }
       }
-
-      entries.push(entry);
-      if (entries.length > this.maxFileEntries) {
-        entries = entries.slice(-this.maxFileEntries);
-      }
-
-      fs.writeFileSync(logFile, JSON.stringify(entries, null, 2));
     } catch { /* best-effort logging */ }
   }
 }

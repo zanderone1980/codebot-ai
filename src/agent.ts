@@ -138,33 +138,8 @@ export class Agent {
       }
     } catch (e) { console.warn(`[CodeBot] Failed to initialize plugins: ${(e as Error).message}`); }
 
-    // Load app connectors (each wrapped individually so one failure doesn't kill all)
-    try {
-      const { VaultManager } = require('./vault');
-      const { ConnectorRegistry } = require('./connectors/registry');
-      const { AppConnectorTool } = require('./tools/app-connector');
-
-      const vault = new VaultManager();
-      const connectorRegistry = new ConnectorRegistry(vault);
-
-      const connectorModules: Array<[string, string]> = [
-        ['./connectors/github', 'GitHubConnector'],
-        ['./connectors/slack', 'SlackConnector'],
-        ['./connectors/jira', 'JiraConnector'],
-        ['./connectors/linear', 'LinearConnector'],
-        ['./connectors/openai-images', 'OpenAIImagesConnector'],
-        ['./connectors/replicate', 'ReplicateConnector'],
-      ];
-      for (const [mod, cls] of connectorModules) {
-        try {
-          const m = require(mod);
-          connectorRegistry.register(new m[cls]());
-        } catch (e) { console.warn(`[CodeBot] Failed to initialize connector: ${(e as Error).message}`); }
-      }
-
-      this.tools.register(new AppConnectorTool(vault, connectorRegistry));
-      try { const { GraphicsTool } = require('./tools/graphics'); this.tools.register(new GraphicsTool()); } catch (e) { console.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`); }
-    } catch (e) { console.warn(`[CodeBot] Failed to initialize connectors: ${(e as Error).message}`); }
+    // Connectors, GraphicsTool, and AppConnectorTool are registered by ToolRegistry
+    // constructor (tools/index.ts) — single source of truth for all 12 connectors.
 
     // Load skills as tools (independent of connectors)
     try {
