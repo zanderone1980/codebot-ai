@@ -32,7 +32,7 @@ export interface PreparedCall {
 }
 
 /** Result of a single tool execution */
-export type ToolOutput = { content: string; is_error?: boolean };
+export type ToolOutput = { content: string; is_error?: boolean; durationMs?: number };
 
 /** Dependencies injected from Agent for tool execution */
 export interface ToolExecutorDeps {
@@ -130,7 +130,7 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
     // SPARK: record success
     if (deps.stateEngine) { try { deps.stateEngine.recordOutcome(toolName, prep.args, true, output, latencyMs); } catch {} }
 
-    return { content: output };
+    return { content: output, durationMs: latencyMs };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
     // Record latency even on error
@@ -146,7 +146,7 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
     // Append recovery hint if a known pattern matches
     const recovery = getRecoverySuggestion(errMsg);
     const hint = recovery ? `\n${formatRecoveryHint(recovery)}` : '';
-    return { content: `Error: ${errMsg}${hint}`, is_error: true };
+    return { content: `Error: ${errMsg}${hint}`, is_error: true, durationMs: latencyMs };
   }
 }
 

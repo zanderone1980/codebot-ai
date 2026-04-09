@@ -52,7 +52,7 @@ export async function runTask(opts: TaskOptions): Promise<TaskResult> {
   // Apply preset if specified
   if (opts.preset) {
     try {
-      const pe = (agent as any).policyEnforcer;
+      const pe = agent.getPolicyEnforcer();
       if (pe && pe.applyPreset) pe.applyPreset(opts.preset);
     } catch { /* preset unavailable */ }
   }
@@ -60,7 +60,7 @@ export async function runTask(opts: TaskOptions): Promise<TaskResult> {
   // Apply max cost override
   if (opts.maxCost) {
     try {
-      const tt = (agent as any).tokenTracker;
+      const tt = agent.getTokenTracker();
       if (tt && tt.setCostLimit) tt.setCostLimit(opts.maxCost);
     } catch { /* token tracker unavailable */ }
   }
@@ -121,7 +121,7 @@ export async function runTask(opts: TaskOptions): Promise<TaskResult> {
 
   // Try to get token usage
   try {
-    const tt = (agent as any).tokenTracker;
+    const tt = agent.getTokenTracker();
     if (tt) {
       const s = tt.getSummary();
       result.cost = { input_tokens: s.totalInputTokens || 0, output_tokens: s.totalOutputTokens || 0, estimated_usd: tt.getTotalCost() || 0 };

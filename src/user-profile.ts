@@ -56,6 +56,7 @@ function defaultProfile(): UserProfileData {
 export class UserProfile {
   private data: UserProfileData;
   private dirty = false;
+  private lastSaveTime = 0;
 
   constructor() {
     this.data = this.load();
@@ -97,6 +98,7 @@ export class UserProfile {
     Object.assign(this.data.preferences, prefs);
     this.dirty = true;
     this.save();
+      this.lastSaveTime = Date.now();
   }
 
   /** Track a common action */
@@ -131,6 +133,7 @@ export class UserProfile {
       this.data.connectedServices.push(service);
       this.dirty = true;
       this.save();
+      this.lastSaveTime = Date.now();
     }
   }
 
@@ -190,8 +193,9 @@ export class UserProfile {
     if (/\b(code|debug|fix|test|build)\b/i.test(lower)) this.trackAction('coding');
 
     // Save periodically when dirty
-    if (this.dirty) {
+    if (this.dirty && (!this.lastSaveTime || Date.now() - this.lastSaveTime > 30_000)) {
       this.save();
+      this.lastSaveTime = Date.now();
     }
   }
 

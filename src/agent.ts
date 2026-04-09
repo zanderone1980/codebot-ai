@@ -538,7 +538,7 @@ export class Agent {
           const anomalies = this.executionAuditor.record({
             toolName,
             success: !output.is_error,
-            durationMs: 0,
+            durationMs: output.durationMs || 0,
             errorMessage: output.is_error ? output.content : undefined,
             timestamp: new Date().toISOString(),
           });

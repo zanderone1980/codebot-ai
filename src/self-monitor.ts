@@ -211,7 +211,7 @@ export class DiskSpaceCheck implements HealthCheck {
       return {
         name: this.name,
         status: 'healthy',
-        message: `Disk ${usePercent}% used, ${Math.round(free / 1024 / 1024)}MB RAM free`,
+        message: `Disk ${usePercent}% used, ${Math.round(free / 1024 / 1024)}MB memory free`,
         checkedAt: now,
       };
     } catch {
