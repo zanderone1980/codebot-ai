@@ -7,6 +7,8 @@ import { MetricsCollector } from '../metrics';
 import { AgentStateEngine } from '../spark-soul';
 import { getRecoverySuggestion, formatRecoveryHint } from '../recovery';
 import { sanitizeToolOutput } from './message-repair';
+import { ExperientialMemory } from '../experiential-memory';
+import { extractLessonFromFailure, extractLessonFromSuccess } from '../lesson-extractor';
 
 /** Tools that must run sequentially (e.g. browser shares a single CDP session) */
 export const SEQUENTIAL_TOOLS = new Set(['browser']);
@@ -45,6 +47,8 @@ export interface ToolExecutorDeps {
   lastExecutedTools: string[];
   ensureBranch: () => Promise<string | null>;
   checkToolCapabilities: (toolName: string, args: Record<string, unknown>) => string | null;
+  experientialMemory: ExperientialMemory | null;
+  currentTask: string;
 }
 
 /**
@@ -130,6 +134,9 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
     // SPARK: record success
     if (deps.stateEngine) { try { deps.stateEngine.recordOutcome(toolName, prep.args, true, output, latencyMs); } catch {} }
 
+    // Experiential memory: record non-trivial successes
+    if (deps.experientialMemory?.isActive) { try { const lesson = extractLessonFromSuccess(toolName, prep.args, output, deps.currentTask); if (lesson) deps.experientialMemory.recordLesson(lesson); } catch {} }
+
     return { content: output, durationMs: latencyMs };
   } catch (err: unknown) {
     const errMsg = err instanceof Error ? err.message : String(err);
@@ -142,6 +149,9 @@ export async function executeSingleTool(prep: PreparedCall, deps: ToolExecutorDe
 
     // SPARK: record failure
     if (deps.stateEngine) { try { deps.stateEngine.recordOutcome(toolName, prep.args, false, errMsg, latencyMs); } catch {} }
+
+    // Experiential memory: always record failures
+    if (deps.experientialMemory?.isActive) { try { const lesson = extractLessonFromFailure(toolName, prep.args, errMsg, deps.currentTask); deps.experientialMemory.recordLesson(lesson); } catch {} }
 
     // Append recovery hint if a known pattern matches
     const recovery = getRecoverySuggestion(errMsg);

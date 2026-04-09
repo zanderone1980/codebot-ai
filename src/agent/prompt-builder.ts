@@ -11,6 +11,7 @@ import { UserProfile } from '../user-profile';
 import { AgentStateEngine } from '../spark-soul';
 import { ToolRegistry } from '../tools';
 import { CrossSessionLearning } from '../cross-session';
+import { ExperientialMemory } from '../experiential-memory';
 
 export function buildSystemPrompt(opts: {
   projectRoot: string;
@@ -20,6 +21,7 @@ export function buildSystemPrompt(opts: {
   stateEngine: AgentStateEngine | null;
   messages: Message[];
   crossSession?: CrossSessionLearning;
+  experientialMemory?: ExperientialMemory;
 }): string {
   let repoMap = '';
   try {
@@ -47,6 +49,15 @@ export function buildSystemPrompt(opts: {
     const cs = opts.crossSession ?? new CrossSessionLearning();
     crossSessionBlock = cs.buildPromptBlock();
     if (crossSessionBlock) crossSessionBlock = '\n' + crossSessionBlock + '\n';
+  } catch {}
+
+  let experientialBlock = '';
+  try {
+    if (opts.experientialMemory?.isActive) {
+      const lastMsg = opts.messages.length > 0 ? (opts.messages[opts.messages.length - 1]?.content as string) : '';
+      experientialBlock = opts.experientialMemory.buildPromptBlock({ currentTask: lastMsg || '', recentTools: [] });
+      if (experientialBlock) experientialBlock = '\n' + experientialBlock + '\n';
+    }
   } catch {}
 
   let prompt = `You are CodeBot, an autonomous AI agent created by Ascendral Software Development & Innovation, founded by Alex Pinkevich. You help with ANY task: coding, research, sending emails, posting on social media, web automation, and anything else that can be accomplished with a computer.
@@ -91,7 +102,7 @@ Skills:
 - Email: navigate to Gmail/email, compose and send messages through the browser interface.
 - Routines: use the routine tool to schedule recurring tasks (daily posts, email checks, etc.).
 
-${repoMap}${memoryBlock}${sparkBlock}${crossSessionBlock}${opts.userProfile.getPromptBlock()}`;
+${repoMap}${memoryBlock}${sparkBlock}${crossSessionBlock}${experientialBlock}${opts.userProfile.getPromptBlock()}`;
 
   if (!isLikelyDeveloper(opts.messages as Array<{ role: string; content: string | unknown }>)) {
     prompt += `\n\nIMPORTANT — NON-TECHNICAL USER DETECTED:

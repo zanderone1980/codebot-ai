@@ -25,6 +25,7 @@ import { PreparedCall, ToolOutput, ToolExecutorDeps, executeToolBatch, TOOL_TYPE
 import { buildSystemPrompt } from './agent/prompt-builder';
 import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
+import { ExperientialMemory } from './experiential-memory';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -59,6 +60,7 @@ export class Agent {
   private userProfile: UserProfile;
   private executionAuditor: ExecutionAuditor;
   private crossSession: CrossSessionLearning;
+  private experientialMemory: ExperientialMemory;
   private sessionToolCalls: Array<{ tool: string; success: boolean }> = [];
   private cordBlockedKeys: Set<string> = new Set();
   private static readonly MAX_SESSION_TOOL_CALLS = 500;
@@ -120,6 +122,7 @@ export class Agent {
     // Autonomy systems: execution auditing + cross-session learning
     this.executionAuditor = new ExecutionAuditor();
     this.crossSession = new CrossSessionLearning();
+    this.experientialMemory = new ExperientialMemory();
 
     // Initialize agent state engine
     try {
@@ -158,7 +161,7 @@ export class Agent {
     const supportsTools = getModelInfo(opts.model).supportsToolCalling;
     this.messages.push({
       role: 'system',
-      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, stateEngine: this.stateEngine, messages: this.messages, crossSession: this.crossSession }),
+      content: buildSystemPrompt({ projectRoot: this.projectRoot, supportsTools, tools: this.tools, userProfile: this.userProfile, stateEngine: this.stateEngine, messages: this.messages, crossSession: this.crossSession, experientialMemory: this.experientialMemory }),
     });
   }
 
@@ -476,6 +479,8 @@ export class Agent {
         lastExecutedTools: this.lastExecutedTools,
         ensureBranch: () => this.ensureBranch(),
         checkToolCapabilities: (t, a) => this.checkToolCapabilities(t, a),
+        experientialMemory: this.experientialMemory,
+        currentTask: this.sessionGoal,
       };
       const results = await executeToolBatch(prepared, executorDeps);
 
@@ -703,6 +708,7 @@ export class Agent {
         tokenUsage: { input: summary.totalInputTokens, output: summary.totalOutputTokens },
       });
       this.crossSession.recordEpisode(episode);
+      try { this.experientialMemory.decayAndConsolidate(); } catch {}
     } catch { /* cross-session recording should never crash the agent */ }
   }
 }
