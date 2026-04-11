@@ -247,5 +247,43 @@ describe('CrossSessionLearning', () => {
       assert.strictEqual(plearning.prune(10), 0);
       fs.rmSync(pruneDir2, { recursive: true, force: true });
     });
+
+    it('pruneByAge removes episodes older than maxAgeDays', () => {
+      const ageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-age-'));
+      process.env.CODEBOT_HOME = ageDir;
+      // Disable auto-prune during the test so we can record old episodes
+      // and then assert that the manual pruneByAge call removes them.
+      process.env.CODEBOT_EPISODES_MAX_AGE_DAYS = '99999';
+      process.env.CODEBOT_EPISODES_MAX_COUNT = '99999';
+      const alearning = new CrossSessionLearning();
+      const now = Date.now();
+      const oldIso = new Date(now - 40 * 24 * 60 * 60 * 1000).toISOString(); // 40 days ago
+      const freshIso = new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(); // 1 day ago
+      alearning.recordEpisode(makeEpisode({ sessionId: 'old_a', endedAt: oldIso, startedAt: oldIso }));
+      alearning.recordEpisode(makeEpisode({ sessionId: 'old_b', endedAt: oldIso, startedAt: oldIso }));
+      alearning.recordEpisode(makeEpisode({ sessionId: 'fresh_a', endedAt: freshIso, startedAt: freshIso }));
+
+      const pruned = alearning.pruneByAge(30);
+      assert.strictEqual(pruned, 2, 'should prune both 40-day-old episodes');
+      const remaining = alearning.listEpisodes();
+      assert.ok(remaining.includes('fresh_a'), 'fresh episode should remain');
+      assert.ok(!remaining.includes('old_a'), 'old episode should be gone');
+      delete process.env.CODEBOT_EPISODES_MAX_AGE_DAYS;
+      delete process.env.CODEBOT_EPISODES_MAX_COUNT;
+      fs.rmSync(ageDir, { recursive: true, force: true });
+    });
+
+    it('recordEpisode auto-prunes using env limits', () => {
+      const autoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cross-auto-'));
+      process.env.CODEBOT_HOME = autoDir;
+      process.env.CODEBOT_EPISODES_MAX_COUNT = '3';
+      const alearning = new CrossSessionLearning();
+      for (let i = 0; i < 5; i++) {
+        alearning.recordEpisode(makeEpisode({ sessionId: `auto_${i}` }));
+      }
+      assert.strictEqual(alearning.listEpisodes().length, 3, 'should auto-prune to 3');
+      delete process.env.CODEBOT_EPISODES_MAX_COUNT;
+      fs.rmSync(autoDir, { recursive: true, force: true });
+    });
   });
 });

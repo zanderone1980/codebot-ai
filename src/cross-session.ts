@@ -68,6 +68,18 @@ export interface AggregatedPattern {
 
 // ── Cross-Session Learning Engine ──
 
+/** Default maximum number of episode files to keep on disk. */
+const DEFAULT_MAX_EPISODES = 200;
+/** Default maximum age (days) before an episode is eligible for pruning. */
+const DEFAULT_MAX_EPISODE_AGE_DAYS = 30;
+
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export class CrossSessionLearning {
   private episodesDir: string;
   private indexPath: string;
@@ -80,6 +92,7 @@ export class CrossSessionLearning {
 
   /**
    * Record a completed session as an episode.
+   * Automatically prunes stale episodes by age and count after writing.
    */
   recordEpisode(episode: Episode): void {
     fs.mkdirSync(this.episodesDir, { recursive: true });
@@ -90,6 +103,15 @@ export class CrossSessionLearning {
 
     // Update pattern index
     this.updatePatternIndex(episode);
+
+    // Auto-rotate: remove old/overflow episode files. Failures are swallowed
+    // because rotation should never break session recording.
+    try {
+      const maxAgeDays = parsePositiveIntEnv('CODEBOT_EPISODES_MAX_AGE_DAYS', DEFAULT_MAX_EPISODE_AGE_DAYS);
+      const maxCount = parsePositiveIntEnv('CODEBOT_EPISODES_MAX_COUNT', DEFAULT_MAX_EPISODES);
+      this.pruneByAge(maxAgeDays);
+      this.prune(maxCount);
+    } catch { /* best effort */ }
   }
 
   /**
@@ -306,6 +328,34 @@ export class CrossSessionLearning {
         pruned++;
       } catch { /* skip */ }
     }
+    return pruned;
+  }
+
+  /**
+   * Prune episodes older than the given age in days based on endedAt.
+   * Episodes with unparseable timestamps are left alone.
+   */
+  pruneByAge(maxAgeDays: number): number {
+    if (maxAgeDays <= 0) return 0;
+    if (!fs.existsSync(this.episodesDir)) return 0;
+
+    const cutoff = Date.now() - maxAgeDays * 24 * 60 * 60 * 1000;
+    let pruned = 0;
+
+    for (const sessionId of this.listEpisodes()) {
+      const episodePath = path.join(this.episodesDir, `${sessionId}.json`);
+      try {
+        const raw = fs.readFileSync(episodePath, 'utf-8');
+        const episode = JSON.parse(raw) as Episode;
+        const ts = Date.parse(episode.endedAt || episode.startedAt || '');
+        if (!Number.isFinite(ts)) continue;
+        if (ts < cutoff) {
+          fs.unlinkSync(episodePath);
+          pruned++;
+        }
+      } catch { /* corrupt or unreadable — leave it */ }
+    }
+
     return pruned;
   }
 
