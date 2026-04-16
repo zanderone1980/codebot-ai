@@ -14,7 +14,10 @@
     "prebuild:dir": "node scripts/stage-production-deps.js",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux",
-    "build:universal": "electron-builder --mac --universal"
+    "build:universal": "electron-builder --mac --universal",
+    "sync": "bash scripts/sync-local-app.sh",
+    "sync:install-hook": "bash scripts/install-git-hook.sh",
+    "release:dmg": "CODEBOT_FORCE_NOTARIZE=1 npm run build:dmg"
   },
   "author": "Ascendral",
   "license": "MIT",
