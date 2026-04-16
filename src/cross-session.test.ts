@@ -23,11 +23,15 @@ describe('CrossSessionLearning', () => {
   });
 
   function makeEpisode(overrides?: Partial<Episode>): Episode {
+    // Use current time so default fixtures don't get auto-pruned by the
+    // 30-day age limit baked into recordEpisode. Tests that need old/custom
+    // dates pass them via overrides (see the pruneByAge test below).
+    const now = new Date().toISOString();
     return {
       sessionId: `session_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
       projectRoot: '/tmp/project',
-      startedAt: '2026-03-15T00:00:00Z',
-      endedAt: '2026-03-15T00:10:00Z',
+      startedAt: now,
+      endedAt: now,
       goal: 'Fix a bug',
       toolsUsed: ['grep', 'read_file', 'edit_file'],
       iterationCount: 5,
