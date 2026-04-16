@@ -172,14 +172,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
         const status = response.status;
 
         if (!isRetryable(status) || attempt === MAX_RETRIES) {
-          let msg = `LLM error (${status})`;
-          try {
-            const parsed = JSON.parse(errBody);
-            if (parsed?.error?.message) msg += `: ${parsed.error.message}`;
-          } catch {
-            if (errBody) msg += `: ${errBody.slice(0, 300)}`;
-          }
-          yield { type: 'error', error: msg };
+          yield { type: 'error', error: formatResponsesApiError(status, errBody) };
           return;
         }
 
@@ -303,6 +296,37 @@ export class OpenAIResponsesProvider implements LLMProvider {
     }
     return out;
   }
+}
+
+/**
+ * Format a Responses API error into a user-readable string.
+ * Same severity differentiation as src/providers/openai.ts (issue #8):
+ * separate quota exhaustion from rate-limit pacing.
+ */
+export function formatResponsesApiError(status: number, body: string): string {
+  let message = '';
+  let type = '';
+  try {
+    const parsed = JSON.parse(body);
+    message = parsed?.error?.message || '';
+    type = parsed?.error?.type || '';
+  } catch {
+    message = body.slice(0, 200);
+  }
+
+  if (status === 401) {
+    return `Authentication failed (401): ${message || 'Invalid or missing API key'}. Set OPENAI_API_KEY or run: codebot --setup`;
+  }
+  if (status === 404) {
+    return `Model not found (404): ${message || 'Model not available on /v1/responses'}. Check the model name.`;
+  }
+  if (status === 429) {
+    if (type === 'insufficient_quota' || /quota/i.test(message)) {
+      return `Quota exhausted (429): ${message || 'Account or project budget reached.'} Top up at https://platform.openai.com/settings/organization/billing — for project keys (sk-proj-*) check the project's monthly budget.`;
+    }
+    return `Rate limited (429): ${message || 'Too many requests'}. Wait a moment and try again.`;
+  }
+  return `LLM error (${status})${message ? ': ' + message : ''}`;
 }
 
 /**

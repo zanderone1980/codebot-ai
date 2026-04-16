@@ -340,11 +340,13 @@ export class OpenAIProvider implements LLMProvider {
 
   /** Format API error responses into readable messages (not raw JSON) */
   private formatApiError(status: number | undefined, responseText: string, lastError: string): string {
-    // Try to extract a useful message from JSON error response
+    // Try to extract a useful message + machine-readable type from JSON error response.
     let errorMessage = '';
+    let errorType = '';
     try {
       const json = JSON.parse(responseText);
       errorMessage = json?.error?.message || json?.message || json?.error || '';
+      errorType = json?.error?.type || '';
     } catch {
       errorMessage = responseText.substring(0, 200);
     }
@@ -361,6 +363,13 @@ export class OpenAIProvider implements LLMProvider {
       return `Model not found (404): ${errorMessage || `"${this.config.model}" may not be available`}. Check the model name.`;
     }
     if (status === 429) {
+      // Issue #8: differentiate billing exhaustion ("add money") from request
+      // pacing ("wait and retry"). OpenAI returns error.type='insufficient_quota'
+      // for the former and 'rate_limit_exceeded' for the latter. Old code said
+      // "Wait a moment and try again" for both — wrong advice in the billing case.
+      if (errorType === 'insufficient_quota' || /quota/i.test(errorMessage)) {
+        return `Quota exhausted (429): ${errorMessage || 'Account or project budget reached.'} Top up at https://platform.openai.com/settings/organization/billing — for project keys (sk-proj-*) check the project's monthly budget.`;
+      }
       return `Rate limited (429): ${errorMessage || 'Too many requests'}. Wait a moment and try again.`;
     }
 
