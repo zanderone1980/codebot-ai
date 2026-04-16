@@ -17,7 +17,9 @@ import { BLOCKED_PATTERNS, FILTERED_ENV_VARS } from '../tools/execute';
 import { PROVIDER_DEFAULTS } from '../providers/registry';
 import { AnthropicProvider } from '../providers/anthropic';
 import { OpenAIProvider } from '../providers/openai';
-import { LLMProvider, Message } from '../types';
+import { LLMProvider, Message, Config } from '../types';
+import { loadConfig, pickProviderKey, normalizeProviderBaseUrl } from '../setup';
+import { createProvider } from '../cli/config';
 import { getProactiveEngine } from '../proactive';
 import { loadWorkflows, getWorkflow, resolveWorkflowPrompt, WORKFLOW_CATEGORIES } from '../workflows';
 
@@ -230,12 +232,42 @@ export function registerCommandRoutes(
 
 
   // ── POST /api/command/chat/reset — start a new conversation ──
+  //
+  // Also reloads the provider from ~/.codebot/config.json so that a model
+  // change from the dashboard dropdown takes effect immediately.  Without
+  // this, the agent keeps using the provider it was created with at startup
+  // (e.g. OpenAI chat-completions) even after the user selects gpt-5.4,
+  // which lives on the Responses API. The old code only cleared conversation
+  // history — the wrong provider was still firing.
   server.route('POST', '/api/command/chat/reset', async (_req, res) => {
     if (!agent) {
       DashboardServer.error(res, 503, 'Agent not available');
       return;
     }
-    agent.resetConversation();
+    try {
+      const saved = normalizeProviderBaseUrl(loadConfig());
+      const model = saved.model || 'qwen2.5-coder:32b';
+      const providerName = saved.provider || 'local';
+      const apiKey = pickProviderKey(saved, providerName);
+      let baseUrl = saved.baseUrl || '';
+      if (!baseUrl) {
+        const defaults = PROVIDER_DEFAULTS[providerName];
+        if (defaults) baseUrl = defaults.baseUrl;
+      }
+      const cfg: Config = {
+        model,
+        provider: providerName,
+        baseUrl,
+        apiKey,
+        maxIterations: 50,
+        autoApprove: false,
+      };
+      const newProvider = createProvider(cfg);
+      agent.setProvider(newProvider, model, providerName);
+    } catch {
+      // Provider reload failed — fall back to clearing history only.
+      agent.resetConversation();
+    }
     DashboardServer.json(res, { reset: true });
   });
 

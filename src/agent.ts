@@ -211,6 +211,24 @@ export class Agent {
     this.sessionStartedAt = new Date().toISOString();
   }
 
+  /**
+   * Hot-swap the LLM provider (e.g., when the dashboard model-picker changes).
+   *
+   * Also resets conversation state — there is no safe way to continue a
+   * conversation across provider boundaries since message formats differ.
+   * The dashboard always calls this as part of "new conversation" anyway.
+   */
+  setProvider(provider: LLMProvider, model: string, providerName?: string) {
+    this.provider = provider;
+    this.model = model;
+    // Context window varies by model — recreate to pick up the new value.
+    this.context = new ContextManager(model, provider);
+    // Rate-limiter and token tracker are per-provider/model metadata.
+    this.providerRateLimiter = new ProviderRateLimiter(providerName || 'local');
+    this.tokenTracker = new TokenTracker(model, providerName || 'unknown');
+    this.resetConversation();
+  }
+
   async *run(userMessage: string, images?: import('./types').ImageAttachment[]): AsyncGenerator<AgentEvent> {
     const userMsg: Message = { role: 'user', content: userMessage };
     if (images && images.length > 0) userMsg.images = images;
