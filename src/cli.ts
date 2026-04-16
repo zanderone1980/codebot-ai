@@ -32,6 +32,12 @@ import { VERSION } from './index';
 import { SolveCommand } from './solve';
 import { runTask } from './task-runner';
 import { Daemon } from './daemon';
+import {
+  ensureHeartbeatConfig,
+  setHeartbeatEnabled,
+  heartbeatStatus,
+  maybePing as heartbeatMaybePing,
+} from './heartbeat';
 
 // Decomposed modules
 import { parseArgs, showHelp } from './cli/args';
@@ -114,6 +120,33 @@ export async function main() {
   if (args.setup) {
     await runSetup();
   }
+
+  // ── Heartbeat (anonymous opt-in install ping) ──
+  // Handle the explicit subcommand first so it short-circuits before main flow.
+  if (args.heartbeat !== undefined) {
+    const v = String(args.heartbeat).toLowerCase();
+    if (v === 'on' || v === 'enable' || v === 'true') {
+      const cfg = setHeartbeatEnabled(true);
+      console.log(`heartbeat: enabled  (install age: ${cfg.firstSeenDate || 'just now'})`);
+      return;
+    }
+    if (v === 'off' || v === 'disable' || v === 'false') {
+      setHeartbeatEnabled(false);
+      console.log('heartbeat: disabled');
+      return;
+    }
+    if (v === 'status' || v === 'true') {
+      console.log(heartbeatStatus());
+      return;
+    }
+    console.log(`heartbeat: unknown value "${args.heartbeat}". Use on / off / status.`);
+    return;
+  }
+
+  // First-run prompt + daily ping. Both are silent on failure and never block.
+  // The ping fires-and-forgets — we don't await it before the main flow.
+  ensureHeartbeatConfig();
+  void heartbeatMaybePing(VERSION);
 
   // ── Standalone commands ──
   if (args['init-policy']) {

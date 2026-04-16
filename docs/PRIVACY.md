@@ -3,7 +3,7 @@
 ## CodeBot AI — Privacy & Data Handling
 
 **Effective date:** February 2026
-**Last updated:** February 2026
+**Last updated:** April 2026 (added Section 3a — Anonymous Heartbeat)
 
 ### Summary
 
@@ -64,6 +64,53 @@ Telemetry data does **not** include:
 - File paths or filenames
 - Personal information
 - API keys or credentials
+
+### 3a. Anonymous Heartbeat
+
+**Default: OFF**
+
+CodeBot AI includes an opt-in heartbeat mechanism so the project can count active installs without identifying users. **Disabled by default; you must explicitly enable it.**
+
+**Enable / disable:**
+```bash
+codebot --heartbeat on        # opt in
+codebot --heartbeat off       # opt out
+codebot --heartbeat status    # check current state
+```
+
+Or set `CODEBOT_HEARTBEAT_DISABLED=1` in your environment for a session-scoped kill switch.
+
+**What is sent (when enabled, once per day):**
+```json
+{
+  "installation_id": "<32-char hex, rotates daily>",
+  "version": "2.10.0",
+  "os": "darwin-arm64",
+  "node": "20",
+  "first_seen_week": "2026-W16",
+  "active_today": true
+}
+```
+
+That's the entire payload.
+
+**What is NOT sent — ever:**
+- Code, file paths, prompts, model output, API keys, environment variables, git remotes, repo names, commit hashes, or any other personal information
+
+**Per-day rotating ID:**
+```
+installation_id = sha256(installRoot + ":" + YYYY-MM-DD).slice(0, 32)
+```
+The `installRoot` is a one-time random UUID stored locally in `~/.codebot/heartbeat.json` and never leaves your machine. The hash incorporates today's UTC date, so the same install produces a different `installation_id` every day. This means the server can count distinct daily-active installs but **cannot link two pings** to the same install across different days.
+
+**Endpoint:** `https://codebot-stats.workers.dev/api/ping`. Override with `CODEBOT_HEARTBEAT_URL` to self-host. Source code for the stats worker lives in `proxy-stats/` so you can audit exactly what it does.
+
+**Inspect what would be sent:**
+```bash
+cat ~/.codebot/heartbeat.json
+```
+
+**Aggregated counts** (no per-install detail) are published at `https://codebot-stats.workers.dev/`.
 
 ### 4. VS Code Extension
 

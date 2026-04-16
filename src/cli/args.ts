@@ -255,6 +255,8 @@ ${c('Security & Policy:', 'bold')}
 ${c('Diagnostics:', 'bold')}
   --doctor             Run environment health check
   --dry-run, --estimate Estimate cost without executing
+  --heartbeat <on|off|status>
+                       Anonymous opt-in install ping (see docs/PRIVACY.md)
 
 ${c('Issue Solving:', 'bold')}
   --solve <url>          Solve a GitHub issue autonomously
