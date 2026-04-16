@@ -210,14 +210,17 @@ export class DashboardServer {
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let size = 0;
-      const MAX_BODY = 1024 * 1024; // 1MB limit
+      const MAX_BODY = 50 * 1024 * 1024; // 50MB limit (base64 images are large)
 
       req.on('error', reject);
 
       req.on('data', (chunk: Buffer) => {
         size += chunk.length;
         if (size > MAX_BODY) {
-          reject(new Error('Request body too large'));
+          const sizeMB = (size / (1024 * 1024)).toFixed(1);
+          const limitMB = (MAX_BODY / (1024 * 1024)).toFixed(0);
+          console.error(`[parseBody] Body too large: ${sizeMB}MB exceeds ${limitMB}MB limit`);
+          reject(new Error(`Request body too large (${sizeMB}MB, limit ${limitMB}MB)`));
           req.removeAllListeners('data');
           req.resume();
           return;
@@ -229,8 +232,11 @@ export class DashboardServer {
         try {
           const body = Buffer.concat(chunks).toString('utf-8');
           resolve(body ? JSON.parse(body) : null);
-        } catch {
-          reject(new Error('Invalid JSON body'));
+        } catch (e: any) {
+          const sizeKB = Math.round(size / 1024);
+          const detail = e?.message || 'unknown parse error';
+          console.error(`[parseBody] Failed to parse ${sizeKB}KB body: ${detail}`);
+          reject(new Error(`Invalid JSON body (${sizeKB}KB, ${detail})`));
         }
       });
     });

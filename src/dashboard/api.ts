@@ -256,8 +256,8 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     let body: { provider?: string; model?: string; apiKey?: string; baseUrl?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -294,8 +294,8 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     let body: Record<string, unknown>;
     try {
       body = (await DashboardServer.parseBody(req)) as Record<string, unknown>;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -359,8 +359,8 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
     let body: { content?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 

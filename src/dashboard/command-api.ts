@@ -182,8 +182,8 @@ export function registerCommandRoutes(
     let body: { tool?: string; args?: Record<string, unknown> };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -249,8 +249,8 @@ export function registerCommandRoutes(
     let body: { message?: string; mode?: 'simple' | 'detailed'; images?: Array<{ data: string; mediaType: string }> };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -331,8 +331,8 @@ export function registerCommandRoutes(
     let body: { action?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -395,8 +395,8 @@ export function registerCommandRoutes(
     let body: { command?: string; cwd?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -523,8 +523,8 @@ export function registerCommandRoutes(
     let body: Record<string, string>;
     try {
       body = (await DashboardServer.parseBody(req)) as Record<string, string>;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
@@ -586,8 +586,8 @@ export function registerCommandRoutes(
     let body: { sessionId?: string };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
-    } catch {
-      DashboardServer.error(res, 400, 'Invalid JSON body');
+    } catch (err: any) {
+      DashboardServer.error(res, 400, err.message || 'Invalid JSON body');
       return;
     }
 
