@@ -16,7 +16,7 @@ import { SessionManager } from '../history';
 import { decryptLine } from '../encryption';
 import { UserProfile } from '../user-profile';
 import { MemoryManager } from '../memory';
-import { loadConfig, saveConfig as saveSetupConfig, isFirstRun, detectLocalServers, SavedConfig } from '../setup';
+import { loadConfig, saveConfig as saveSetupConfig, isFirstRun, detectLocalServers, SavedConfig, isProviderDisabled } from '../setup';
 import { codebotPath } from '../paths';
 import { RiskScorer } from '../risk';
 
@@ -34,7 +34,22 @@ function detectAvailableProviders(): Record<string, boolean> {
     }
   } catch { /* no config */ }
 
+  // Load disabledProviders once so we can filter cleanly below.
+  let savedForDisable: SavedConfig = {};
+  try {
+    const configPath = codebotPath('config.json');
+    savedForDisable = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as SavedConfig;
+  } catch { /* no config */ }
+
   for (const [name, info] of Object.entries(PROVIDER_DEFAULTS)) {
+    // Hard block: providers the user explicitly banned are always unavailable,
+    // regardless of env vars or OAuth tokens. This prevents the dashboard
+    // from enabling Claude models just because CLAUDE_CODE_OAUTH_TOKEN is
+    // set for Claude Code (unrelated to CodeBot).
+    if (isProviderDisabled(savedForDisable, name)) {
+      available[name] = false;
+      continue;
+    }
     const envVal = process.env[info.envKey];
     const hasEnv = !!(envVal && envVal.length > 5);
     const hasConfig = (name === configProvider);
@@ -214,13 +229,19 @@ export function registerApiRoutes(server: DashboardServer, projectRoot?: string)
   });
 
   server.route('GET', '/api/setup/detect', async (_req, res) => {
-    // Detect available providers: env vars + local servers
+    // Detect available providers: env vars + local servers.
+    // Respects saved.disabledProviders so banned providers never surface as
+    // "available" in the onboarding flow.
+    const savedCfg = loadConfig();
     const envProviders: string[] = [];
     for (const [name, info] of Object.entries(PROVIDER_DEFAULTS)) {
+      if (isProviderDisabled(savedCfg, name)) continue;
       const envVal = process.env[info.envKey];
       if (envVal && envVal.length > 5) envProviders.push(name);
     }
-    if (process.env.CLAUDE_CODE_OAUTH_TOKEN) envProviders.push('anthropic');
+    if (process.env.CLAUDE_CODE_OAUTH_TOKEN && !isProviderDisabled(savedCfg, 'anthropic')) {
+      envProviders.push('anthropic');
+    }
 
     let localServers: Array<{ name: string; url: string; models: string[] }> = [];
     try {

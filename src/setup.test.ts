@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 
 // We test the exported functions from setup.ts
-import { autoDetect, pickBestLocalModel, loadConfig, saveConfig, isFirstRun, pickProviderKey, normalizeProviderBaseUrl } from './setup';
+import { autoDetect, pickBestLocalModel, loadConfig, saveConfig, isFirstRun, pickProviderKey, normalizeProviderBaseUrl, isProviderDisabled } from './setup';
 import type { AutoDetectResult, SavedConfig } from './setup';
 
 describe('normalizeProviderBaseUrl (issue #5 — stale baseUrl on provider switch)', () => {
@@ -106,6 +106,71 @@ describe('pickProviderKey (issue #6 — multi-provider key support)', () => {
     assert.strictEqual(pickProviderKey(cfg, 'groq'), 'q-key');
     assert.strictEqual(pickProviderKey(cfg, 'mistral'), 'm-key');
     assert.strictEqual(pickProviderKey(cfg, 'xai'), 'x-key');
+  });
+});
+
+describe('pickProviderKey — disabledProviders hard block', () => {
+  it('returns empty when provider is in disabledProviders, even if key is saved', () => {
+    const cfg: SavedConfig = {
+      anthropicApiKey: 'sk-ant-real',
+      apiKey: 'also-real',
+      disabledProviders: ['anthropic'],
+    };
+    // Both the specific field AND the generic fallback must be suppressed.
+    assert.strictEqual(pickProviderKey(cfg, 'anthropic'), '');
+  });
+
+  it('still returns keys for providers not in the disabled list', () => {
+    const cfg: SavedConfig = {
+      openaiApiKey: 'sk-proj-real',
+      anthropicApiKey: 'sk-ant-real',
+      disabledProviders: ['anthropic'],
+    };
+    assert.strictEqual(pickProviderKey(cfg, 'openai'), 'sk-proj-real');
+    assert.strictEqual(pickProviderKey(cfg, 'anthropic'), '');
+  });
+
+  it('ignores disabledProviders when it is missing or not an array', () => {
+    const cfg1: SavedConfig = { anthropicApiKey: 'a' };
+    const cfg2: SavedConfig = { anthropicApiKey: 'a', disabledProviders: [] };
+    assert.strictEqual(pickProviderKey(cfg1, 'anthropic'), 'a');
+    assert.strictEqual(pickProviderKey(cfg2, 'anthropic'), 'a');
+  });
+
+  it('can disable multiple providers at once', () => {
+    const cfg: SavedConfig = {
+      anthropicApiKey: 'a', openaiApiKey: 'o', geminiApiKey: 'g',
+      disabledProviders: ['anthropic', 'gemini'],
+    };
+    assert.strictEqual(pickProviderKey(cfg, 'anthropic'), '');
+    assert.strictEqual(pickProviderKey(cfg, 'gemini'), '');
+    assert.strictEqual(pickProviderKey(cfg, 'openai'), 'o');
+  });
+});
+
+describe('isProviderDisabled', () => {
+  it('returns true for banned providers', () => {
+    assert.strictEqual(
+      isProviderDisabled({ disabledProviders: ['anthropic'] }, 'anthropic'),
+      true,
+    );
+  });
+  it('returns false when provider is absent from the list', () => {
+    assert.strictEqual(
+      isProviderDisabled({ disabledProviders: ['anthropic'] }, 'openai'),
+      false,
+    );
+  });
+  it('returns false when disabledProviders is missing, undefined, or not an array', () => {
+    assert.strictEqual(isProviderDisabled({}, 'anthropic'), false);
+    assert.strictEqual(
+      isProviderDisabled({ disabledProviders: undefined as unknown as string[] }, 'anthropic'),
+      false,
+    );
+    assert.strictEqual(
+      isProviderDisabled({ disabledProviders: 'not-array' as unknown as string[] }, 'anthropic'),
+      false,
+    );
   });
 });
 

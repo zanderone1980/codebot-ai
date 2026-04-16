@@ -8,7 +8,7 @@ import { OpenAIResponsesProvider, modelRequiresResponsesApi } from '../providers
 import { AnthropicProvider } from '../providers/anthropic';
 import { detectProvider, PROVIDER_DEFAULTS } from '../providers/registry';
 import { Config, LLMProvider } from '../types';
-import { loadConfig, pickProviderKey } from '../setup';
+import { loadConfig, pickProviderKey, isProviderDisabled } from '../setup';
 
 const C = {
   reset: '\x1b[0m',
@@ -21,6 +21,22 @@ function c(text: string, style: keyof typeof C): string {
 }
 
 export function createProvider(config: Config): LLMProvider {
+  // Hard block: refuse to instantiate a provider the user banned.
+  // Throws a stub provider that yields a clear error message instead
+  // of silently routing elsewhere, so the user knows exactly why.
+  const saved = loadConfig();
+  if (isProviderDisabled(saved, config.provider)) {
+    return {
+      name: config.model,
+      async *chat() {
+        yield {
+          type: 'error',
+          error: `Provider "${config.provider}" is disabled in ~/.codebot/config.json (disabledProviders). Pick a different model/provider, or remove it from disabledProviders to re-enable.`,
+        };
+      },
+    } as LLMProvider;
+  }
+
   if (config.provider === 'anthropic') {
     return new AnthropicProvider({
       baseUrl: config.baseUrl,

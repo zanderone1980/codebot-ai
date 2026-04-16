@@ -31,6 +31,27 @@ export interface SavedConfig {
   autoApprove?: boolean;
   maxIterations?: number;
   firstRunComplete?: boolean;
+  /**
+   * Providers the user has explicitly banned from this install. When a
+   * provider name is in this list:
+   *   - pickProviderKey returns empty (no env/config fallback leaks)
+   *   - the dashboard /api/models/registry reports it unavailable
+   *   - createProvider refuses to instantiate it and throws
+   *   - the setup wizard won't ask for its key
+   *
+   * Typical use case: an Anthropic user is also a Claude Code user with
+   * CLAUDE_CODE_OAUTH_TOKEN set — without this flag, CodeBot would happily
+   * inherit that token and bill against their Anthropic budget on provider
+   * mismatches. Add `"disabledProviders": ["anthropic"]` to ~/.codebot/config.json
+   * to force CodeBot to stay OpenAI-only (or whatever else you want).
+   */
+  disabledProviders?: string[];
+}
+
+/** Return true if the user has explicitly banned this provider. */
+export function isProviderDisabled(saved: SavedConfig, provider: string): boolean {
+  if (!saved.disabledProviders || !Array.isArray(saved.disabledProviders)) return false;
+  return saved.disabledProviders.includes(provider);
 }
 
 /**
@@ -41,6 +62,11 @@ export interface SavedConfig {
  * code use the same precedence rule.
  */
 export function pickProviderKey(saved: SavedConfig, provider: string): string {
+  // Hard block: if the user banned this provider, never return a key.
+  // Stops env-var fallbacks (ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, etc.)
+  // from ever reaching an Anthropic call when the user has opted out.
+  if (isProviderDisabled(saved, provider)) return '';
+
   const fieldMap: Record<string, keyof SavedConfig> = {
     anthropic: 'anthropicApiKey',
     openai: 'openaiApiKey',
