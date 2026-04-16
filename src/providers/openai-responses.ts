@@ -307,19 +307,24 @@ export class OpenAIResponsesProvider implements LLMProvider {
 
 /**
  * Heuristic: which models should route through the Responses API rather than
- * chat-completions? Today (2026-04): gpt-5.x family, codex variants.
+ * chat-completions?
  *
- * This is intentionally a simple prefix check — easier to extend than a
- * registry diff, and the set is small.
+ * Verified by direct probe to OpenAI on 2026-04-15: the entire gpt-5.x
+ * family answers the Responses API. The chat-completions endpoint also
+ * accepts gpt-5.1 / gpt-5-mini / gpt-5-nano but in practice they reason
+ * extensively before producing tool calls and frequently exhaust their
+ * output budget on reasoning, so 0 tool calls come back. Responses API
+ * handles their reasoning + tool-call format natively.
+ *
+ * Net: we route the entire gpt-5.x family here. The older OpenAIProvider
+ * still handles gpt-4o*, gpt-4.1*, o1/o3/o4 (which work fine on chat).
+ *
+ * Simple prefix check — easier to extend than a registry diff.
  */
 export function modelRequiresResponsesApi(model: string): boolean {
   if (!model) return false;
   const m = model.toLowerCase();
-  if (m.startsWith('gpt-5.4')) return true;
-  if (m.startsWith('gpt-5.3')) return true;
-  if (m.startsWith('gpt-5.2')) return true;
-  if (m.startsWith('gpt-5.1-codex')) return true;
-  if (m.startsWith('gpt-5-codex')) return true;
-  // gpt-5.1 (non-codex), gpt-5-mini, gpt-5-nano are on chat-completions, not here.
+  // gpt-5.x — entire family routes here.
+  if (m.startsWith('gpt-5')) return true;
   return false;
 }
