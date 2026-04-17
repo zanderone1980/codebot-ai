@@ -157,12 +157,14 @@ def run_one_task(
             )
 
         # Inner helper: invoke codebot once with a given prompt. Returns
-        # (returncode, stderr_tail, stdout_tail) for logging. Patch is
-        # captured separately via `git diff` after the call.
+        # the subprocess returncode for logging. Patch is captured
+        # separately via `git diff` after the call. `--max-iterations 75`
+        # bumps the agent's per-task budget above the 50-default since
+        # SWE-bench tasks routinely need more steps (Tier 2.2).
         def invoke_codebot(prompt: str, label: str) -> int:
-            log(f"invoking codebot --auto --model {model} ({label})")
+            log(f"invoking codebot --auto --model {model} --max-iterations 75 ({label})")
             proc = subprocess.run(
-                [codebot_bin, "--auto", "--model", model, prompt],
+                [codebot_bin, "--auto", "--model", model, "--max-iterations", "75", prompt],
                 cwd=str(workdir),
                 capture_output=True,
                 text=True,
@@ -182,6 +184,99 @@ def run_one_task(
                 capture_output=True, text=True, timeout=30,
             )
             return r.stdout if r.returncode == 0 else ""
+
+        # Tier 2.1 (v1): test-driven inner loop. Run the FAIL_TO_PASS
+        # tests against the patched code. If they fail with informative
+        # output, do one more codebot pass with the test output appended
+        # so the model can see what's wrong and iterate.
+        #
+        # **Honest scope of v1**: this runs pytest in the harness venv
+        # against the cloned source. Most SWE-bench tasks need a specific
+        # Python version and per-repo deps that the harness venv doesn't
+        # have (e.g. Django 3.0 needs distutils, removed in Python 3.14;
+        # astropy needs cython/numpy/scipy at specific versions). For
+        # those tasks the loop correctly detects "no signal" and submits
+        # the patch as-is — it does not feed bogus feedback to CodeBot.
+        # In the 50-task slice this means the loop currently fires
+        # usefully for 0-2 tasks at most.
+        #
+        # **Tier 2.1 v2 (designed, not built)**: run pytest INSIDE the
+        # SWE-bench Docker image for the task (the same image the eval
+        # phase uses). That gives real signal for every task, at the cost
+        # of ~2-3 min per inner iteration. See bench/swe/TIER2_DOCKER.md.
+        # Patterns that mean "pytest didn't actually exercise the test
+        # logic" — environment / collection issues, not real failures.
+        # Treat these as NO-SIGNAL: returning False here would feed a
+        # bogus "tests are failing" prompt to CodeBot, which is worse
+        # than not running the loop at all.
+        NO_SIGNAL_MARKERS = (
+            "No module named",          # pytest itself, or repo deps
+            "ModuleNotFoundError",
+            "ImportError",
+            "ERROR collecting",
+            "errors during collection",
+            "Hint: make sure your test modules",
+            "DJANGO_SETTINGS_MODULE",   # Django tests need settings
+            "no tests ran",
+            "ERRORS",                   # pytest's banner when collection errors
+        )
+
+        def run_failing_tests(test_names: list[str]) -> tuple[bool, str]:
+            """Try to run the FAIL_TO_PASS tests in the workdir.
+
+            Returns (signal_says_pass, output_tail).
+
+            signal_says_pass is True if EITHER pytest reported all-pass
+            OR we got no real signal (env/collection issues). It is False
+            ONLY when pytest actually ran the tests and they failed.
+            False is what triggers the test-feedback retry, so this gate
+            must be conservative — false-positives mean we waste an LLM
+            call (and in the worst case make the patch worse) on bogus
+            feedback."""
+            if not test_names:
+                return True, ""
+            # SWE-bench test names come in two formats:
+            #   pytest-style: "tests/module/test_x.py::test_y"
+            #   unittest-style (Django): "test_name (module.tests.ClassName)"
+            # The unittest form needs translation. Rough heuristic: if it
+            # has " (" and ends with ")", treat as unittest format and
+            # translate to pytest's "module/path/tests.py::Class::method".
+            translated: list[str] = []
+            for raw in test_names[:5]:
+                if " (" in raw and raw.endswith(")"):
+                    method, _, rest = raw.partition(" (")
+                    klass_path = rest.rstrip(")")
+                    parts = klass_path.split(".")
+                    if len(parts) >= 2:
+                        klass = parts[-1]
+                        modpath = "/".join(parts[:-1]) + ".py"
+                        # Try common Django test layout: tests/<modpath>
+                        candidate = "tests/" + modpath
+                        translated.append(f"{candidate}::{klass}::{method.strip()}")
+                        continue
+                translated.append(raw)
+            cmd = [
+                sys.executable, "-m", "pytest",
+                "--tb=short", "-x", "--no-header", "-q",
+            ] + translated
+            try:
+                proc = subprocess.run(
+                    cmd, cwd=str(workdir), capture_output=True, text=True,
+                    timeout=120,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError):
+                log("test-loop: pytest invocation failed at process level — no signal")
+                return True, ""
+            tail = (proc.stdout + "\n" + proc.stderr)[-2000:]
+            if proc.returncode == 0:
+                log("test-loop: pytest exit 0 — tests pass")
+                return True, ""
+            for marker in NO_SIGNAL_MARKERS:
+                if marker in tail:
+                    log(f"test-loop: no signal (matched {marker!r}) — skipping retry")
+                    return True, ""
+            log(f"test-loop: real failure signal (pytest exit {proc.returncode})")
+            return False, tail
 
         # First attempt: stock problem statement.
         invoke_codebot(problem_statement, "attempt-1")
@@ -210,6 +305,40 @@ def run_one_task(
             patch = capture_diff()
             retried = True
 
+        # Tier 2.1: test-driven loop. Now that we have a patch, see if
+        # the FAIL_TO_PASS tests actually pass. If not, give CodeBot one
+        # more pass with the test output. Only fires when both:
+        #   (a) we have a non-empty patch
+        #   (b) FAIL_TO_PASS tests are listed AND running them produces
+        #       informative failure output (not a collection/import error)
+        # so most-common no-signal cases (missing deps) are no-ops.
+        test_loop_used = False
+        if patch.strip():
+            ftp_raw = instance.get("FAIL_TO_PASS", "[]")
+            try:
+                ftp_tests = json.loads(ftp_raw) if isinstance(ftp_raw, str) else list(ftp_raw)
+            except (json.JSONDecodeError, TypeError):
+                ftp_tests = []
+            if ftp_tests:
+                log(f"running {len(ftp_tests)} FAIL_TO_PASS tests against patched code")
+                ok, tail = run_failing_tests(ftp_tests)
+                if not ok:
+                    log("FAIL_TO_PASS tests still failing — feeding output back for one more pass")
+                    test_loop_used = True
+                    feedback_prompt = (
+                        problem_statement
+                        + "\n\n--- Your previous patch did not make the failing tests pass.\n"
+                        + "Test runner output (tail):\n"
+                        + "```\n" + tail.strip() + "\n```\n\n"
+                        + "Update your patch so these tests pass. The current diff is\n"
+                        + "already in the working tree; adjust it (don't re-do the\n"
+                        + "whole change) using edit_file."
+                    )
+                    invoke_codebot(feedback_prompt, "attempt-3-test-feedback")
+                    patch = capture_diff()
+                else:
+                    log("FAIL_TO_PASS tests passed (or no signal) — submitting patch")
+
         elapsed = time.monotonic() - started
         if not patch.strip():
             log(f"WARN: empty diff after {elapsed:.1f}s (retry={retried}) — codebot did not modify anything")
@@ -222,7 +351,7 @@ def run_one_task(
                 log_excerpt="\n".join(log_lines[-30:]),
             )
 
-        log(f"OK — diff size {len(patch)} bytes, elapsed {elapsed:.1f}s, retry={retried}")
+        log(f"OK — diff size {len(patch)} bytes, elapsed {elapsed:.1f}s, retry={retried}, test_loop={test_loop_used}")
         return patch, TaskResult(
             instance_id=instance_id,
             success=True,

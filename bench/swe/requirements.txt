@@ -16,3 +16,4 @@ tqdm>=4.66.0
 
 # JSON schema validation for predictions file
 jsonschema>=4.17.0
+pytest>=8.0.0
