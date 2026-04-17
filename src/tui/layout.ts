@@ -245,8 +245,11 @@ export class LayoutEngine {
 
   private recalculatePositions(): void {
     const { rows, cols } = getTerminalSize();
-    const ids = [...this.panels.keys()];
-    const count = ids.length;
+    // Iterate Map values directly — preserves insertion order and avoids
+    // the keys→lookup→non-null-assert pattern that the 7 `!` operators
+    // here used to rely on.
+    const panels = [...this.panels.values()];
+    const count = panels.length;
 
     if (count === 0) return;
 
@@ -255,40 +258,28 @@ export class LayoutEngine {
 
     if (count === 1) {
       // Single panel: full screen minus status bar
-      const panel = this.panels.get(ids[0])!;
-      panel.position = { top: 1, left: 1, width: cols, height: availableH };
+      panels[0].position = { top: 1, left: 1, width: cols, height: availableH };
     } else if (count === 2) {
       // Two panels: left/right split
       const leftW = Math.floor(cols * this.config.splitRatio);
       const rightW = cols - leftW;
-
-      const p1 = this.panels.get(ids[0])!;
-      p1.position = { top: 1, left: 1, width: leftW, height: availableH };
-
-      const p2 = this.panels.get(ids[1])!;
-      p2.position = { top: 1, left: leftW + 1, width: rightW, height: availableH };
+      panels[0].position = { top: 1, left: 1, width: leftW, height: availableH };
+      panels[1].position = { top: 1, left: leftW + 1, width: rightW, height: availableH };
     } else if (count === 3) {
       // Three panels: left column + right column (top/bottom)
       const leftW = Math.floor(cols * this.config.splitRatio);
       const rightW = cols - leftW;
       const bottomH = this.config.bottomPanelHeight;
       const topH = availableH - bottomH;
-
-      const p1 = this.panels.get(ids[0])!;
-      p1.position = { top: 1, left: 1, width: leftW, height: availableH };
-
-      const p2 = this.panels.get(ids[1])!;
-      p2.position = { top: 1, left: leftW + 1, width: rightW, height: topH };
-
-      const p3 = this.panels.get(ids[2])!;
-      p3.position = { top: topH + 1, left: leftW + 1, width: rightW, height: bottomH };
+      panels[0].position = { top: 1, left: 1, width: leftW, height: availableH };
+      panels[1].position = { top: 1, left: leftW + 1, width: rightW, height: topH };
+      panels[2].position = { top: topH + 1, left: leftW + 1, width: rightW, height: bottomH };
     } else {
       // 4+ panels: grid layout (2x2)
       const halfW = Math.floor(cols / 2);
       const halfH = Math.floor(availableH / 2);
-      let idx = 0;
-      for (const id of ids) {
-        const panel = this.panels.get(id)!;
+      for (let idx = 0; idx < Math.min(4, count); idx++) {
+        const panel = panels[idx];
         const gridRow = Math.floor(idx / 2);
         const gridCol = idx % 2;
         panel.position = {
@@ -297,8 +288,6 @@ export class LayoutEngine {
           width: gridCol === 1 ? cols - halfW : halfW,
           height: gridRow === 1 ? availableH - halfH : halfH,
         };
-        idx++;
-        if (idx >= 4) break; // Max 4 panels in grid
       }
     }
   }

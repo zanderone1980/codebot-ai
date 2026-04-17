@@ -111,21 +111,26 @@ export class AppConnectorTool implements Tool {
 
     let credential = args.credential as string;
 
-    // Try env var if no credential provided
-    if (!credential && connector.envKey && process.env[connector.envKey]) {
-      credential = process.env[connector.envKey]!;
+    // Try env var if no credential provided. Bind the env value to a
+    // local so TS narrows it away from `string | undefined` and we
+    // don't need `process.env[key]!`.
+    if (!credential && connector.envKey) {
+      const envVal = process.env[connector.envKey];
+      if (envVal) credential = envVal;
     }
 
-    // For multi-key auth (Jira), bundle env vars
+    // For multi-key auth (Jira), bundle env vars. Same trick — read
+    // each env value into a local and guard it; skip the bundle if any
+    // key is missing instead of asserting non-null.
     if (!credential && connector.requiredEnvKeys) {
-      const allPresent = connector.requiredEnvKeys.every(k => !!process.env[k]);
-      if (allPresent) {
-        const bundle: Record<string, string> = {};
-        for (const k of connector.requiredEnvKeys) {
-          bundle[k] = process.env[k]!;
-        }
-        credential = JSON.stringify(bundle);
+      const bundle: Record<string, string> = {};
+      let allPresent = true;
+      for (const k of connector.requiredEnvKeys) {
+        const v = process.env[k];
+        if (!v) { allPresent = false; break; }
+        bundle[k] = v;
       }
+      if (allPresent) credential = JSON.stringify(bundle);
     }
 
     if (!credential) {

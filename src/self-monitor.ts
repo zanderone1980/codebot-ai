@@ -376,9 +376,10 @@ export class SelfMonitor {
       }
     }
 
-    const fixActions = results
-      .filter(r => r.fixAction)
-      .map(r => r.fixAction!);
+    // flatMap composes the filter+narrow in one pass — avoids the
+    // `.filter(...).map(r => r.fixAction!)` pattern where TS can't see
+    // that the filter guarantees non-undefined.
+    const fixActions = results.flatMap(r => (r.fixAction ? [r.fixAction] : []));
 
     const overall = this.computeOverall(results);
 

@@ -673,22 +673,32 @@ export async function autoDetect(): Promise<AutoDetectResult> {
   if (localServers.length > 0) {
     const allModels = localServers.flatMap(s => s.models);
     if (allModels.length > 0) {
+      // pickBestLocalModel can return undefined (e.g., if the registry
+      // has no matching entry). Guard explicitly instead of forcing `!`.
       const bestModel = pickBestLocalModel(allModels);
-      const server = localServers.find(s => s.models.includes(bestModel!));
-      return {
-        type: 'auto-start',
-        model: bestModel,
-        provider: 'openai', // Local servers use OpenAI-compatible API
-        baseUrl: server?.url || localServers[0].url,
-        localServers,
-        detectedKeys,
-      };
+      if (bestModel) {
+        const server = localServers.find(s => s.models.includes(bestModel));
+        return {
+          type: 'auto-start',
+          model: bestModel,
+          provider: 'openai', // Local servers use OpenAI-compatible API
+          baseUrl: server?.url || localServers[0].url,
+          localServers,
+          detectedKeys,
+        };
+      }
     }
   }
 
   // 5. Auto-start: env API key?
   for (const prov of PROVIDER_PRIORITY) {
-    if (detectedKeys.has(prov)) {
+    // Bind the env-key name once so TS narrows it and we avoid the
+    // previous `detectedKeys.get(prov)!` non-null assertion — which
+    // would have produced `process.env[undefined]` (→ undefined) if
+    // detectedKeys mutated between the `.has(prov)` check and the
+    // `.get(prov)` read.
+    const envKey = detectedKeys.get(prov);
+    if (envKey) {
       const rec = RECOMMENDED_MODELS[prov];
       const defaults = PROVIDER_DEFAULTS[prov];
       return {
@@ -696,7 +706,7 @@ export async function autoDetect(): Promise<AutoDetectResult> {
         model: rec.model,
         provider: prov,
         baseUrl: defaults?.baseUrl,
-        apiKey: process.env[detectedKeys.get(prov)!],
+        apiKey: process.env[envKey],
         localServers,
         detectedKeys,
       };

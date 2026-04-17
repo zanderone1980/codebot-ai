@@ -80,8 +80,13 @@ export class BatchEditTool implements Tool {
         }
       }
 
-      if (!byFile.has(filePath)) byFile.set(filePath, []);
-      byFile.get(filePath)!.push(edit);
+      // Lookup-or-create in one place so we never need `!` on the get().
+      let list = byFile.get(filePath);
+      if (!list) {
+        list = [];
+        byFile.set(filePath, list);
+      }
+      list.push(edit);
     }
 
     for (const [filePath, fileEdits] of byFile) {
