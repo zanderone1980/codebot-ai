@@ -5,6 +5,7 @@ import { EditFileTool } from './edit';
 import { ExecuteTool } from './execute';
 import { GlobTool } from './glob';
 import { GrepTool } from './grep';
+import { FindSymbolTool } from './find-symbol';
 import { ThinkTool } from './think';
 import { DelegateTool } from './delegate';
 import { MemoryTool } from './memory';
@@ -61,6 +62,7 @@ export const TOOL_TIERS: Record<string, 'core' | 'standard' | 'labs'> = {
   execute: 'core',
   glob: 'core',
   grep: 'core',
+  find_symbol: 'core',
   git: 'core',
   test_runner: 'core',
   think: 'core',
@@ -103,6 +105,8 @@ export class ToolRegistry {
     this.register(new ExecuteTool(projectRoot));
     this.register(new GlobTool(projectRoot));
     this.register(new GrepTool(projectRoot));
+    // RFC 001 Part A — symbol-based localization, complements GrepTool
+    this.register(new FindSymbolTool(projectRoot));
     this.register(new ThinkTool());
     this.register(new MemoryTool(projectRoot));
     // Web & browser
