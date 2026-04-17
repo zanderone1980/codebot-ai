@@ -34,3 +34,9 @@ bench/swe/predictions-*.json
 bench/swe/predictions-*.run.json
 bench/swe/logs/
 bench/swe/.venv/
+
+# Mined SWE-bench lessons (derived from runs, regenerable)
+bench/swe/seed-lessons.json
+bench/swe/codebot-ai-2.10.0.tier2-*.json
+bench/swe/predictions-tier*.json
+bench/swe/predictions-tier*.run.json
