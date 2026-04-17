@@ -28,3 +28,9 @@ bench/swe/.venv/
 bench/swe/predictions-*.json
 bench/swe/runs/
 bench/swe/logs/
+
+# SWE-bench run artifacts
+bench/swe/predictions-*.json
+bench/swe/predictions-*.run.json
+bench/swe/logs/
+bench/swe/.venv/
