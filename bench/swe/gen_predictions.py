@@ -115,11 +115,16 @@ def run_one_task(
     try:
         log(f"clone {repo} @ {base_commit[:8]}")
         clone_url = f"https://github.com/{repo}.git"
+        # Partial clone (--filter=blob:none) avoids fetching 100s of MB of
+        # historical blobs we'll never read. Astropy went from ~120s full
+        # clone (which timed out 11/50 times in the 2026-04-16 run) to ~5s
+        # with this flag. The base_commit checkout below will lazily
+        # fetch only the blobs needed for that revision.
         clone = subprocess.run(
-            ["git", "clone", "--quiet", clone_url, str(workdir)],
+            ["git", "clone", "--quiet", "--filter=blob:none", clone_url, str(workdir)],
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=300,
         )
         if clone.returncode != 0:
             err = f"git clone failed: {clone.stderr.strip()[:200]}"
@@ -151,65 +156,79 @@ def run_one_task(
                 log_excerpt="\n".join(log_lines[-20:]),
             )
 
-        log(f"invoking codebot --auto --model {model}")
-        # We pipe the problem_statement as the task. --auto skips approvals.
-        # CWD is the cloned repo so all of CodeBot's tools operate inside it.
-        # NOTE: do NOT pass unknown flags — the args parser would eat the
-        # problem_statement as the value of an unknown flag (real bug found
-        # on first smoke test).
-        codebot_proc = subprocess.run(
-            [codebot_bin, "--auto", "--model", model, problem_statement],
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
-            timeout=timeout_sec,
-            env={**os.environ, "CI": "1", "TERM": "dumb"},  # suppress animations
-        )
-        # Always log codebot's exit + last bit of stderr so we can see what happened.
-        log(f"codebot exited with code {codebot_proc.returncode}")
-        if codebot_proc.stderr:
-            log(f"stderr tail: {codebot_proc.stderr[-300:].strip()}")
-        if codebot_proc.stdout:
-            log(f"stdout tail: {codebot_proc.stdout[-300:].strip()}")
-        log("capturing git diff")
-        diff = subprocess.run(
-            ["git", "-C", str(workdir), "diff", base_commit],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        if diff.returncode != 0:
-            err = f"git diff failed: {diff.stderr.strip()[:200]}"
-            log(err)
-            return None, TaskResult(
-                instance_id=instance_id,
-                success=False,
-                elapsed_sec=time.monotonic() - started,
-                diff_size_bytes=0,
-                error=err,
-                log_excerpt="\n".join(log_lines[-20:]),
+        # Inner helper: invoke codebot once with a given prompt. Returns
+        # (returncode, stderr_tail, stdout_tail) for logging. Patch is
+        # captured separately via `git diff` after the call.
+        def invoke_codebot(prompt: str, label: str) -> int:
+            log(f"invoking codebot --auto --model {model} ({label})")
+            proc = subprocess.run(
+                [codebot_bin, "--auto", "--model", model, prompt],
+                cwd=str(workdir),
+                capture_output=True,
+                text=True,
+                timeout=timeout_sec,
+                env={**os.environ, "CI": "1", "TERM": "dumb"},
             )
+            log(f"codebot ({label}) exited code={proc.returncode}")
+            if proc.stderr:
+                log(f"stderr tail ({label}): {proc.stderr[-300:].strip()}")
+            if proc.stdout:
+                log(f"stdout tail ({label}): {proc.stdout[-300:].strip()}")
+            return proc.returncode
 
-        patch = diff.stdout
+        def capture_diff() -> str:
+            r = subprocess.run(
+                ["git", "-C", str(workdir), "diff", base_commit],
+                capture_output=True, text=True, timeout=30,
+            )
+            return r.stdout if r.returncode == 0 else ""
+
+        # First attempt: stock problem statement.
+        invoke_codebot(problem_statement, "attempt-1")
+        log("capturing git diff")
+        patch = capture_diff()
+
+        # Tier 1.2: force-diff retry. If CodeBot finished cleanly but
+        # didn't edit any file, give it one more pass with a sharper
+        # instruction. The 2026-04-16 50-task run had 6/50 empty diffs
+        # where the agent ran 4-10 iterations and made tool calls but
+        # never committed an edit. A single retry with explicit
+        # forcing language closes the most common case.
+        retried = False
+        if not patch.strip():
+            log("first attempt produced empty diff — retrying with forced-edit prompt")
+            forced_prompt = (
+                problem_statement
+                + "\n\n--- IMPORTANT ---\n"
+                + "You must produce a code change. Use edit_file or write_file to modify\n"
+                + "at least one source file in this repository before ending. If, after\n"
+                + "investigating, the task is genuinely impossible, output a single line\n"
+                + "starting with `IMPOSSIBLE:` and a one-sentence reason. Do not stop\n"
+                + "without either an edit or that line."
+            )
+            invoke_codebot(forced_prompt, "attempt-2-forced")
+            patch = capture_diff()
+            retried = True
+
         elapsed = time.monotonic() - started
         if not patch.strip():
-            log(f"WARN: empty diff after {elapsed:.1f}s — codebot did not modify anything")
+            log(f"WARN: empty diff after {elapsed:.1f}s (retry={retried}) — codebot did not modify anything")
             return None, TaskResult(
                 instance_id=instance_id,
                 success=False,
                 elapsed_sec=elapsed,
                 diff_size_bytes=0,
-                error="empty_diff",
-                log_excerpt="\n".join(log_lines[-20:]),
+                error="empty_diff_after_retry" if retried else "empty_diff",
+                log_excerpt="\n".join(log_lines[-30:]),
             )
 
-        log(f"OK — diff size {len(patch)} bytes, elapsed {elapsed:.1f}s")
+        log(f"OK — diff size {len(patch)} bytes, elapsed {elapsed:.1f}s, retry={retried}")
         return patch, TaskResult(
             instance_id=instance_id,
             success=True,
             elapsed_sec=elapsed,
             diff_size_bytes=len(patch),
-            log_excerpt="\n".join(log_lines[-20:]),
+            log_excerpt="\n".join(log_lines[-30:]),
         )
 
     except subprocess.TimeoutExpired:
