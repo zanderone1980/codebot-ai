@@ -6,7 +6,7 @@
 
 [![npm version](https://img.shields.io/npm/v/codebot-ai.svg?style=flat-square&color=6366f1)](https://www.npmjs.com/package/codebot-ai)
 [![license](https://img.shields.io/npm/l/codebot-ai.svg?style=flat-square)](https://github.com/Ascendral/codebot-ai/blob/main/LICENSE)
-![tests](https://img.shields.io/badge/tests-1493%20passing-22c55e?style=flat-square)
+![tests](https://img.shields.io/badge/tests-1571%20passing-22c55e?style=flat-square)
 
 <!-- TODO: Replace with screenshot or gif of dashboard -->
 
@@ -43,9 +43,9 @@ codebot --solve https://github.com/you/repo/issues/42
 
 ## Key Features
 
-- **Governance-first** — every tool call passes through a constitutional safety engine (CORD) that risk-scores actions across 14 dimensions before execution
+- **Governance-first** — every tool call passes through a constitutional safety engine (CORD) that risk-scores actions using 7 weighted factors (6 heuristic + 1 constitutional) before execution
 - **Any LLM, anywhere** — 8 providers: run fully local with Ollama/LM Studio/vLLM, or connect to Anthropic, OpenAI, Google, DeepSeek, Groq, Mistral, xAI
-- **32 built-in tools** — code editing, shell, Chrome automation, Git, Docker, databases, web search, deep research, scheduled routines, and more
+- **35 built-in tools** — code editing, shell, Chrome automation, Git, Docker, databases, web search, deep research, scheduled routines, and more
 - **Cryptographic audit trail** — SHA-256 hash-chained logs with SARIF export for CI integration
 
 ## Comparison
@@ -67,7 +67,7 @@ See the --solve pipeline in action: [Live Demo](https://ascendral.github.io/code
 ```
 User --> Agent Loop --> Tool Router --> CORD Safety Engine --> Execution
               |                              |                    |
-         8 LLM Providers              14-dimension risk      32 tools
+         8 LLM Providers              7-factor risk         35 tools
          (local + cloud)              scoring + audit      (code, shell,
                                                             browser, git...)
 ```
