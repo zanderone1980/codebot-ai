@@ -48,6 +48,7 @@ import { DeepResearchTool } from './research';
 import { SkillForgeTool } from './skill-forge';
 import { DecomposeGoalTool } from './decompose-goal';
 import { PluginForgeTool } from './plugin-forge';
+import { log } from '../logger';
 
 export { EditFileTool } from './edit';
 
@@ -132,7 +133,7 @@ export class ToolRegistry {
       vault = new VaultManager();
       connectorRegistry = new ConnectorRegistry(vault);
     } catch (err) {
-      console.warn('[ToolRegistry] Vault/ConnectorRegistry init failed:', err);
+      log.warn('[ToolRegistry] Vault/ConnectorRegistry init failed:', err);
     }
 
     if (vault && connectorRegistry) {
@@ -152,7 +153,7 @@ export class ToolRegistry {
         try {
           connectorRegistry.register(c.create());
         } catch (err) {
-          console.warn(`[ToolRegistry] ${c.name} connector failed to register:`, err);
+          log.warn(`[ToolRegistry] ${c.name} connector failed to register:`, err);
         }
       }
       this.register(new AppConnectorTool(vault, connectorRegistry));

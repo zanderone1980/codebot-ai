@@ -3,6 +3,7 @@ import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { codebotPath } from './paths';
+import { log } from './logger';
 
 /**
  * MCP (Model Context Protocol) client.
@@ -190,31 +191,31 @@ function mcpToolToTool(connection: MCPConnection, def: MCPToolDef): Tool {
 /** Validate MCP config structure (lightweight, no external deps) */
 function validateMcpConfig(config: unknown, configPath: string): MCPConfig | null {
   if (!config || typeof config !== 'object') {
-    console.warn(`MCP warning: ${configPath} is not a valid object`);
+    log.warn(`MCP warning: ${configPath} is not a valid object`);
     return null;
   }
   const c = config as Record<string, unknown>;
   if (!Array.isArray(c.servers)) {
-    console.warn(`MCP warning: ${configPath} missing "servers" array`);
+    log.warn(`MCP warning: ${configPath} missing "servers" array`);
     return null;
   }
   const known = new Set(['servers']);
   for (const key of Object.keys(c)) {
     if (!known.has(key)) {
-      console.warn(`MCP warning: ${configPath} has unknown field "${key}"`);
+      log.warn(`MCP warning: ${configPath} has unknown field "${key}"`);
     }
   }
   for (let i = 0; i < c.servers.length; i++) {
     const s = c.servers[i] as Record<string, unknown>;
     if (!s || typeof s !== 'object') {
-      console.warn(`MCP warning: ${configPath} servers[${i}] is not an object — skipping`);
+      log.warn(`MCP warning: ${configPath} servers[${i}] is not an object — skipping`);
       continue;
     }
     if (typeof s.name !== 'string' || !s.name) {
-      console.warn(`MCP warning: ${configPath} servers[${i}] missing "name"`);
+      log.warn(`MCP warning: ${configPath} servers[${i}] missing "name"`);
     }
     if (typeof s.command !== 'string' || !s.command) {
-      console.warn(`MCP warning: ${configPath} servers[${i}] missing "command"`);
+      log.warn(`MCP warning: ${configPath} servers[${i}] missing "command"`);
     }
   }
   return config as MCPConfig;
@@ -240,7 +241,7 @@ export async function loadMCPTools(projectRoot?: string): Promise<{ tools: Tool[
       config = validateMcpConfig(raw, configPath);
       if (!config) continue;
     } catch {
-      console.warn(`MCP warning: failed to parse ${configPath}`);
+      log.warn(`MCP warning: failed to parse ${configPath}`);
       continue;
     }
 
@@ -256,7 +257,7 @@ export async function loadMCPTools(projectRoot?: string): Promise<{ tools: Tool[
 
         connections.push(conn);
       } catch (err) {
-        console.error(`MCP server "${serverConfig.name}" failed: ${err instanceof Error ? err.message : String(err)}`);
+        log.error(`MCP server "${serverConfig.name}" failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }

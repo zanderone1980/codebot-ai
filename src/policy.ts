@@ -11,6 +11,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { codebotPath } from './paths';
 import { ToolCapabilities, CapabilityChecker } from './capabilities';
+import { log } from './logger';
 
 // ── Policy Schema ──
 
@@ -230,7 +231,7 @@ function validatePolicy(obj: unknown): boolean {
   // Warn about unknown top-level fields (catches typos like "filesytem")
   for (const key of Object.keys(p)) {
     if (!KNOWN_POLICY_FIELDS.has(key)) {
-      console.warn(`Policy warning: unknown field "${key}" — did you mean one of: ${[...KNOWN_POLICY_FIELDS].join(', ')}?`);
+      log.warn(`Policy warning: unknown field "${key}" — did you mean one of: ${[...KNOWN_POLICY_FIELDS].join(', ')}?`);
     }
   }
 
@@ -239,7 +240,7 @@ function validatePolicy(obj: unknown): boolean {
   if (fs_policy?.writable_paths && Array.isArray(fs_policy.writable_paths)) {
     for (const wp of fs_policy.writable_paths as string[]) {
       if (wp.startsWith('/') || wp.startsWith('~') || wp.includes('..')) {
-        console.warn(`Policy warning: writable_path "${wp}" uses absolute/home/parent path — this may be unsafe.`);
+        log.warn(`Policy warning: writable_path "${wp}" uses absolute/home/parent path — this may be unsafe.`);
       }
     }
   }

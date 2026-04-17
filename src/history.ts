@@ -6,6 +6,7 @@ import { deriveSessionKey, signMessage, verifyMessage, verifyMessages, Integrity
 import { codebotPath } from './paths';
 import { warnNonFatal } from './warn';
 import { encryptLine, decryptLine } from './encryption';
+import { log } from './logger';
 
 
 
@@ -106,7 +107,7 @@ export class SessionManager {
       }
     }
     if (dropped > 0) {
-      console.warn(`Warning: Dropped ${dropped} tampered message(s) from session ${this.sessionId.substring(0, 8)}.`);
+      log.error(`Warning: Dropped ${dropped} tampered message(s) from session ${this.sessionId.substring(0, 8)}.`);
     }
     return messages;
   }

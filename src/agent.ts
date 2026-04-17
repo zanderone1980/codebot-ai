@@ -25,6 +25,7 @@ import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
 import { TaskStateStore } from './task-state';
+import { log } from './logger';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
 type AskPermissionFn = (
@@ -130,7 +131,7 @@ export class Agent {
         this.constitutional = new ConstitutionalLayer(opts.constitutional);
         this.constitutional.start();
       } catch (e) {
-        console.warn(`[CodeBot] Failed to initialize constitutional layer: ${(e as Error).message}`);
+        log.warn(`[CodeBot] Failed to initialize constitutional layer: ${(e as Error).message}`);
       }
     }
 
@@ -147,7 +148,7 @@ export class Agent {
       this.stateEngine = new AgentStateEngine(this.projectRoot);
       if (!this.stateEngine.isActive) this.stateEngine = null;
     } catch (e) {
-      console.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
+      log.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
     }
 
     const costLimit = this.policyEnforcer.getCostLimitUsd();
@@ -160,7 +161,7 @@ export class Agent {
         this.tools.register(plugin);
       }
     } catch (e) {
-      console.warn(`[CodeBot] Failed to initialize plugins: ${(e as Error).message}`);
+      log.warn(`[CodeBot] Failed to initialize plugins: ${(e as Error).message}`);
     }
 
     // Connectors, GraphicsTool, and AppConnectorTool are registered by ToolRegistry
@@ -179,7 +180,7 @@ export class Agent {
         this.tools.register(skillToTool(skill, toolExec));
       }
     } catch (e) {
-      console.warn(`[CodeBot] Failed to initialize skills: ${(e as Error).message}`);
+      log.warn(`[CodeBot] Failed to initialize skills: ${(e as Error).message}`);
     }
 
     this.refreshSystemPrompt();
@@ -526,7 +527,7 @@ export class Agent {
               sparkChallenged = true;
             }
           } catch (e) {
-            console.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
+            log.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
           }
         }
 
@@ -820,7 +821,7 @@ export class Agent {
     try {
       this.stateEngine.finalizeSession();
     } catch (e) {
-      console.warn(`[CodeBot] Failed to finalize state engine: ${(e as Error).message}`);
+      log.warn(`[CodeBot] Failed to finalize state engine: ${(e as Error).message}`);
     }
   }
 

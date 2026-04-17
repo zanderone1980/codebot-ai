@@ -3,6 +3,7 @@ import * as path from 'path';
 import { codebotPath } from './paths';
 import * as crypto from 'crypto';
 import { Tool } from './types';
+import { log } from './logger';
 
 /**
  * Plugin system for CodeBot.
@@ -49,7 +50,7 @@ function validateManifest(manifest: Record<string, unknown>, fileName: string): 
   const known = new Set(['name', 'version', 'hash', 'description', 'author', 'permissions']);
   for (const key of Object.keys(manifest)) {
     if (!known.has(key)) {
-      console.warn(`Plugin warning (${fileName}): unknown manifest field "${key}"`);
+      log.warn(`Plugin warning (${fileName}): unknown manifest field "${key}"`);
     }
   }
   return null; // valid
@@ -124,7 +125,7 @@ export function loadPlugins(projectRoot?: string): Tool[] {
         // Security: verify plugin against manifest hash
         const manifestPath = path.join(dir, 'plugin.json');
         if (!fs.existsSync(manifestPath)) {
-          console.error(`Plugin skipped (${entry.name}): no plugin.json manifest found. Create one with: { "name": "...", "version": "...", "hash": "sha256:..." }`);
+          log.error(`Plugin skipped (${entry.name}): no plugin.json manifest found. Create one with: { "name": "...", "version": "...", "hash": "sha256:..." }`);
           continue;
         }
 
@@ -132,13 +133,13 @@ export function loadPlugins(projectRoot?: string): Tool[] {
         try {
           manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
         } catch {
-          console.error(`Plugin skipped (${entry.name}): invalid plugin.json manifest`);
+          log.error(`Plugin skipped (${entry.name}): invalid plugin.json manifest`);
           continue;
         }
 
         const validationError = validateManifest(manifest as unknown as Record<string, unknown>, entry.name);
         if (validationError) {
-          console.error(validationError);
+          log.error(validationError);
           continue;
         }
 
@@ -148,13 +149,13 @@ export function loadPlugins(projectRoot?: string): Tool[] {
         // Safety check: scan source for blocked APIs before loading
         const safetyError = isPluginSafe(pluginContent.toString('utf-8'));
         if (safetyError) {
-          console.error(`Plugin blocked (${entry.name}): ${safetyError}`);
+          log.error(`Plugin blocked (${entry.name}): ${safetyError}`);
           continue;
         }
         const computedHash = 'sha256:' + crypto.createHash('sha256').update(pluginContent).digest('hex');
 
         if (computedHash !== manifest.hash) {
-          console.error(`Plugin skipped (${entry.name}): hash mismatch. Expected ${manifest.hash}, got ${computedHash}. Plugin may have been tampered with.`);
+          log.error(`Plugin skipped (${entry.name}): hash mismatch. Expected ${manifest.hash}, got ${computedHash}. Plugin may have been tampered with.`);
           continue;
         }
 
@@ -167,13 +168,13 @@ export function loadPlugins(projectRoot?: string): Tool[] {
           // Validate tool parameter schema
           const schemaError = validateToolSchema(plugin.parameters, entry.name);
           if (schemaError) {
-            console.error(`Plugin skipped (${entry.name}): invalid parameter schema — ${schemaError}`);
+            log.error(`Plugin skipped (${entry.name}): invalid parameter schema — ${schemaError}`);
             continue;
           }
           plugins.push(plugin);
         }
       } catch (err) {
-        console.error(`Plugin load error (${entry.name}): ${err instanceof Error ? err.message : String(err)}`);
+        log.error(`Plugin load error (${entry.name}): ${err instanceof Error ? err.message : String(err)}`);
       }
     }
   }
