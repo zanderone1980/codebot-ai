@@ -472,63 +472,70 @@
 
       <!-- Vault Panel -->
       <div id="panel-vault" class="panel">
-        <div class="panel-header">
-          <h2>Vault Mode</h2>
-          <span class="panel-sub">Research assistant over a folder of markdown notes</span>
-        </div>
+        <div class="panel-header"><h2>Vault Mode</h2></div>
         <div class="settings-content">
           <div class="settings-section">
-            <h3>Current state</h3>
+            <h3>Current State</h3>
             <div class="settings-row">
               <label>Status</label>
-              <div id="vault-status-display" style="color: var(--muted);">Loading…</div>
+              <div id="vault-status-display" style="color: var(--text-secondary); flex: 1;">Loading…</div>
             </div>
           </div>
+
           <div class="settings-section">
             <h3>Enable Vault Mode</h3>
-            <p style="color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 12px;">
-              Point CodeBot at a folder of markdown notes. It will answer your
-              questions by reading the files and citing which ones it consulted.
-              By default: read-only, no network calls, hash-chained audit log
-              of every file it opens.
+            <p style="color: var(--text-secondary); font-size: 0.9em; line-height: 1.55; margin: 0 0 16px;">
+              Point CodeBot at a folder of markdown notes. It will answer
+              your questions by reading the files and citing which ones it
+              consulted. By default: read-only, no network calls, hash-chained
+              audit log of every file it opens.
             </p>
+
             <div class="settings-row">
               <label>Vault path</label>
               <input
                 id="vault-path-input"
                 type="text"
-                placeholder="/Users/you/Documents/my-notes or ~/Notes"
-                style="width: 100%; box-sizing: border-box;"
+                placeholder="/Users/you/Documents/notes"
+                style="flex: 1;"
               />
             </div>
+
             <div class="settings-row">
-              <label style="display: flex; align-items: center; gap: 8px;">
-                <input id="vault-writable-toggle" type="checkbox" />
-                <span>Allow writes (create / edit notes)</span>
-              </label>
+              <label>Allow writes</label>
+              <div style="flex: 1; display: flex; align-items: center; gap: 8px;">
+                <input id="vault-writable-toggle" type="checkbox" style="width: 16px; height: 16px; flex: 0 0 auto;" />
+                <span style="color: var(--text-secondary); font-size: 0.85em;">
+                  Let CodeBot create or edit notes when you ask
+                </span>
+              </div>
             </div>
+
             <div class="settings-row">
-              <label style="display: flex; align-items: center; gap: 8px;">
-                <input id="vault-network-toggle" type="checkbox" />
-                <span>Allow network (web_fetch / http_client)</span>
-              </label>
+              <label>Allow network</label>
+              <div style="flex: 1; display: flex; align-items: center; gap: 8px;">
+                <input id="vault-network-toggle" type="checkbox" style="width: 16px; height: 16px; flex: 0 0 auto;" />
+                <span style="color: var(--text-secondary); font-size: 0.85em;">
+                  Enable web_fetch / http_client inside Vault Mode
+                </span>
+              </div>
             </div>
-            <div class="settings-row" style="gap: 8px; display: flex;">
-              <button id="vault-enable-btn" class="primary-btn">Enable Vault Mode</button>
-              <button id="vault-disable-btn" class="secondary-btn" style="display: none;">
-                Disable (return to coding agent)
-              </button>
+
+            <div style="display: flex; gap: 8px; margin-top: 14px;">
+              <button id="vault-enable-btn" class="settings-btn primary" style="margin-top: 0;">Enable Vault Mode</button>
+              <button id="vault-disable-btn" class="settings-btn" style="display: none;">Disable</button>
             </div>
-            <div id="vault-feedback" style="margin-top: 12px; font-size: 13px;"></div>
+            <div id="vault-feedback" class="settings-status"></div>
           </div>
+
           <div class="settings-section">
-            <h3>What Vault Mode does</h3>
-            <ul style="color: var(--muted); font-size: 13px; line-height: 1.6; padding-left: 20px; margin: 0;">
+            <h3>What Vault Mode Does</h3>
+            <ul style="color: var(--text-secondary); font-size: 0.9em; line-height: 1.7; padding-left: 20px; margin: 0;">
               <li>Swaps the coding-agent prompt for a research-assistant prompt.</li>
-              <li>Disables shell / docker / ssh / git tools entirely.</li>
-              <li>Disables write_file / edit_file unless "Allow writes" is on.</li>
-              <li>Disables web_fetch / http_client unless "Allow network" is on.</li>
-              <li>Every file read is still hash-chained in the audit log.</li>
+              <li>Strips shell, Docker, SSH, and Git tools from the registry.</li>
+              <li>Read-only by default — no <code>write_file</code> / <code>edit_file</code> unless you opt in.</li>
+              <li>Offline by default — no <code>web_fetch</code> / <code>http_client</code> unless you opt in.</li>
+              <li>Every file read is hash-chained in the audit log.</li>
               <li>Automatically skips <code>.obsidian/</code>, <code>.git/</code>, <code>node_modules/</code>.</li>
             </ul>
           </div>

@@ -1522,7 +1522,7 @@ const App = {
         }
       } else {
         // Inactive
-        if (display) display.innerHTML = '<span style="color: var(--muted);">Not active &mdash; coding agent mode</span>';
+        if (display) display.innerHTML = '<span style="color: var(--text-secondary);">Not active &mdash; coding agent mode</span>';
         if (enableBtn) enableBtn.textContent = 'Enable Vault Mode';
         if (disableBtn) disableBtn.style.display = 'none';
         if (banner) banner.style.display = 'none';
@@ -1578,7 +1578,7 @@ const App = {
         body: JSON.stringify({ vaultPath: '' }),
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
-      if (feedback) feedback.innerHTML = '<span style="color: var(--muted);">Vault Mode disabled &mdash; coding agent restored.</span>';
+      if (feedback) feedback.innerHTML = '<span style="color: var(--text-secondary);">Vault Mode disabled &mdash; coding agent restored.</span>';
       await this.vaultRefreshStatus();
     } catch (err) {
       if (feedback) feedback.innerHTML = '<span style="color: #ff6b6b;">' + this.esc(err && err.message ? err.message : String(err)) + '</span>';
