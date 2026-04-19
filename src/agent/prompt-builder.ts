@@ -14,6 +14,7 @@ import { CrossSessionLearning } from '../cross-session';
 import { ExperientialMemory } from '../experiential-memory';
 import { TaskStateStore } from '../task-state';
 import { VERSION } from '../version';
+import { buildVaultSystemPrompt, VaultPromptOpts } from './vault-prompt';
 
 export function buildSystemPrompt(opts: {
   projectRoot: string;
@@ -25,7 +26,20 @@ export function buildSystemPrompt(opts: {
   crossSession?: CrossSessionLearning;
   experientialMemory?: ExperientialMemory;
   taskState?: TaskStateStore;
+  /**
+   * When set, the agent is running in Vault Mode (--vault). We return a
+   * focused research-assistant prompt instead of the full coding-agent
+   * prompt below. All other prompt machinery (memory, spark, cross-
+   * session) is intentionally skipped in vault mode — the agent's job is
+   * just to answer from the vault's notes, not to remember past coding
+   * sessions.
+   */
+  vaultMode?: VaultPromptOpts;
 }): string {
+  if (opts.vaultMode) {
+    return buildVaultSystemPrompt(opts.vaultMode);
+  }
+
   const promptMessages = opts.messages.filter((message) => message.role !== 'system');
   const lastMessage = promptMessages.length > 0 ? promptMessages[promptMessages.length - 1]?.content : '';
   const lastUserMessage = [...promptMessages].reverse().find((message) => message.role === 'user')?.content || '';

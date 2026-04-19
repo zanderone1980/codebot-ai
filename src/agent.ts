@@ -89,6 +89,7 @@ export class Agent {
   private lastExecutedTools: string[] = [];
   private askPermission: AskPermissionFn;
   private onMessage?: (message: Message) => void;
+  private vaultMode?: { vaultPath: string; writable: boolean; networkAllowed: boolean };
 
   constructor(opts: {
     provider: LLMProvider;
@@ -100,15 +101,27 @@ export class Agent {
     askPermission?: AskPermissionFn;
     onMessage?: (message: Message) => void;
     constitutional?: { enabled?: boolean; vigilEnabled?: boolean; hardBlockEnabled?: boolean };
+    /**
+     * Vault Mode — when set, the agent behaves as a read-only research
+     * assistant over a folder of markdown notes rather than an
+     * autonomous coding agent. The system prompt, tool set, and default
+     * permissions all shift. See src/agent/vault-prompt.ts.
+     */
+    vaultMode?: {
+      vaultPath: string;
+      writable: boolean;
+      networkAllowed: boolean;
+    };
   }) {
     this.provider = opts.provider;
     this.model = opts.model;
     this.projectRoot = opts.projectRoot || process.cwd();
+    this.vaultMode = opts.vaultMode;
 
     // Load policy FIRST — tools need it for filesystem/git enforcement
     this.policyEnforcer = new PolicyEnforcer(loadPolicy(this.projectRoot), this.projectRoot);
 
-    this.tools = new ToolRegistry(this.projectRoot, this.policyEnforcer);
+    this.tools = new ToolRegistry(this.projectRoot, this.policyEnforcer, { vaultMode: this.vaultMode });
     this.context = new ContextManager(opts.model, opts.provider);
 
     // Use policy-defined max iterations as default, CLI overrides
@@ -809,6 +822,9 @@ export class Agent {
         crossSession: this.crossSession,
         experientialMemory: this.experientialMemory,
         taskState: this.taskState,
+        vaultMode: this.vaultMode
+          ? { ...this.vaultMode }
+          : undefined,
       }),
     };
 

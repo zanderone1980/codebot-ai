@@ -388,6 +388,47 @@ export async function main() {
   const provider = createProvider(config);
   setVerbose(!!args.verbose);
 
+  // ── Vault Mode ─────────────────────────────────────────────────────
+  // When --vault <path> is set, the agent becomes a read-only research
+  // assistant over a folder of markdown notes. We chdir into the vault
+  // so file tools operate there, force autoApprove (read-only by default
+  // anyway), and construct a vaultMode option object to pass to Agent +
+  // ToolRegistry. See src/agent/vault-prompt.ts + src/tools/index.ts.
+  let vaultModeOpts: { vaultPath: string; writable: boolean; networkAllowed: boolean } | undefined;
+  if (typeof args.vault === 'string' && args.vault.length > 0) {
+    const rawVaultPath = args.vault as string;
+    // Expand ~ manually — Node doesn't
+    const expanded = rawVaultPath.startsWith('~')
+      ? rawVaultPath.replace(/^~/, require('os').homedir())
+      : rawVaultPath;
+    const vaultPath = require('path').resolve(expanded);
+    const fs = require('fs');
+    if (!fs.existsSync(vaultPath)) {
+      console.error(c(`Vault path does not exist: ${vaultPath}`, 'red'));
+      process.exit(2);
+    }
+    if (!fs.statSync(vaultPath).isDirectory()) {
+      console.error(c(`Vault path is not a directory: ${vaultPath}`, 'red'));
+      process.exit(2);
+    }
+    try { process.chdir(vaultPath); } catch (err) {
+      console.error(c(`Could not chdir to vault: ${(err as Error).message}`, 'red'));
+      process.exit(2);
+    }
+    vaultModeOpts = {
+      vaultPath,
+      writable: !!args['vault-writable'],
+      networkAllowed: !!args['vault-allow-network'],
+    };
+    // Vault mode implies autoApprove — the agent is read-only by default
+    // and there's no destructive default surface to gate interactively.
+    config.autoApprove = true;
+    const readonlyLabel = vaultModeOpts.writable ? 'writable' : 'read-only';
+    const netLabel = vaultModeOpts.networkAllowed ? 'network: on' : 'network: off';
+    console.log(c(`  Vault Mode: ${vaultPath} (${readonlyLabel}, ${netLabel})`, 'dim'));
+  }
+
+
   if (args.deterministic) {
     provider.temperature = 0;
     console.log(c('  Deterministic mode: temperature=0', 'dim'));
@@ -442,6 +483,7 @@ export async function main() {
     maxIterations: config.maxIterations,
     autoApprove: config.autoApprove,
     onMessage: (msg: Message) => session.save(msg),
+    vaultMode: vaultModeOpts,
   });
 
   agent.setAskPermission(async (tool, args, risk, sandbox) => {

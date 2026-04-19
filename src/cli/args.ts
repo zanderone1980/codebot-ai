@@ -90,6 +90,28 @@ export function parseArgs(argv: string[]): Record<string, string | boolean> {
       result.dashboard = true;
       continue;
     }
+    // Vault Mode — turn CodeBot into a read-only research assistant over a
+    // folder of markdown notes (Obsidian vault, plain directory, whatever).
+    //   --vault <path>            : path to the vault
+    //   --vault-writable          : allow edit_file / write_file tools
+    //   --vault-allow-network     : allow web_fetch / http_client tools
+    if (arg === '--vault') {
+      const next = argv[i + 1];
+      if (!next || next.startsWith('--')) {
+        throw new Error('--vault requires a path argument, e.g. --vault ~/Documents/my-notes');
+      }
+      result.vault = next;
+      i++;
+      continue;
+    }
+    if (arg === '--vault-writable') {
+      result['vault-writable'] = true;
+      continue;
+    }
+    if (arg === '--vault-allow-network') {
+      result['vault-allow-network'] = true;
+      continue;
+    }
     if (arg === '--daemon') {
       result.daemon = true;
       continue;
@@ -241,6 +263,10 @@ ${c('Options:', 'bold')}
   --api-key <key>      API key (or set provider-specific env var)
   --dashboard          Start web dashboard on port ${DEFAULT_DASHBOARD_PORT}
   --daemon             Start persistent background daemon
+  --vault <path>       Vault Mode: research-assistant over a folder of markdown notes
+                       (read-only by default, no network calls, full audit log)
+  --vault-writable     Allow edit_file / write_file in vault mode
+  --vault-allow-network  Allow web_fetch / http_client in vault mode
   --host <addr>        Dashboard bind address (default: 127.0.0.1, use 0.0.0.0 for LAN)
   --tui                Full-screen TUI mode with panels
   --no-stream          Suppress streaming progress indicators

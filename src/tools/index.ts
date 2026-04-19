@@ -93,43 +93,85 @@ export const TOOL_TIERS: Record<string, 'core' | 'standard' | 'labs'> = {
   app: 'labs',
 };
 
+/**
+ * Tools available in Vault Mode (read-only notes agent).
+ * Everything NOT in here is dropped from the registry when --vault is set.
+ * See docs/rfcs/… for the full Vault Mode spec.
+ */
+const VAULT_CORE_TOOLS = new Set([
+  'read_file', 'glob', 'grep', 'find_symbol', 'think', 'memory',
+  'pdf_extract', 'image_info', 'multi_search',
+]);
+/** Adds when --vault-writable is passed. */
+const VAULT_WRITE_TOOLS = new Set(['write_file', 'edit_file', 'batch_edit']);
+/** Adds when --vault-allow-network is passed. */
+const VAULT_NETWORK_TOOLS = new Set(['web_fetch', 'web_search', 'http_client']);
+
+export interface ToolRegistryOpts {
+  vaultMode?: {
+    vaultPath: string;
+    writable: boolean;
+    networkAllowed: boolean;
+  };
+}
+
 export class ToolRegistry {
   private tools: Map<string, Tool> = new Map();
+  private readonly vaultMode?: ToolRegistryOpts['vaultMode'];
 
-  constructor(projectRoot?: string, policyEnforcer?: PolicyEnforcer) {
+  constructor(projectRoot?: string, policyEnforcer?: PolicyEnforcer, opts?: ToolRegistryOpts) {
+    this.vaultMode = opts?.vaultMode;
+
+    /**
+     * Gate every register() call when in vault mode. Drops tools that
+     * don't fit the vault context (shell, docker, git-write, connectors,
+     * etc.) and optionally the write/network sets unless their opt-in
+     * flags were set.
+     */
+    const allow = (toolName: string): boolean => {
+      if (!this.vaultMode) return true;
+      if (VAULT_CORE_TOOLS.has(toolName)) return true;
+      if (this.vaultMode.writable && VAULT_WRITE_TOOLS.has(toolName)) return true;
+      if (this.vaultMode.networkAllowed && VAULT_NETWORK_TOOLS.has(toolName)) return true;
+      return false;
+    };
+    const regIf = (tool: Tool): void => {
+      if (allow(tool.name)) this.register(tool);
+    };
+
     // Core file tools — policy-enforced tools receive the enforcer
-    this.register(new ReadFileTool(projectRoot));
-    this.register(new WriteFileTool(policyEnforcer, projectRoot));
-    this.register(new EditFileTool(policyEnforcer, projectRoot));
-    this.register(new BatchEditTool(policyEnforcer, projectRoot));
-    this.register(new ExecuteTool(projectRoot));
-    this.register(new GlobTool(projectRoot));
-    this.register(new GrepTool(projectRoot));
+    regIf(new ReadFileTool(projectRoot));
+    regIf(new WriteFileTool(policyEnforcer, projectRoot));
+    regIf(new EditFileTool(policyEnforcer, projectRoot));
+    regIf(new BatchEditTool(policyEnforcer, projectRoot));
+    regIf(new ExecuteTool(projectRoot));
+    regIf(new GlobTool(projectRoot));
+    regIf(new GrepTool(projectRoot));
     // RFC 001 Part A — symbol-based localization, complements GrepTool
-    this.register(new FindSymbolTool(projectRoot));
-    this.register(new ThinkTool());
-    this.register(new MemoryTool(projectRoot));
+    regIf(new FindSymbolTool(projectRoot));
+    regIf(new ThinkTool());
+    regIf(new MemoryTool(projectRoot));
     // Web & browser
-    this.register(new WebFetchTool());
-    this.register(new WebSearchTool());
-    this.register(new BrowserTool());
-    this.register(new RoutineTool());
+    regIf(new WebFetchTool());
+    regIf(new WebSearchTool());
+    regIf(new BrowserTool());
+    regIf(new RoutineTool());
     // v1.4.0 — intelligence & dev tools
-    this.register(new GitTool(policyEnforcer));
-    this.register(new CodeAnalysisTool());
-    this.register(new MultiSearchTool());
-    this.register(new TaskPlannerTool());
-    this.register(new DiffViewerTool());
-    this.register(new DockerTool());
-    this.register(new DatabaseTool());
-    this.register(new TestRunnerTool());
-    this.register(new HttpClientTool());
-    this.register(new ImageInfoTool());
-    this.register(new SshRemoteTool());
-    this.register(new NotificationTool());
-    this.register(new PdfExtractTool());
-    this.register(new PackageManagerTool());
-    this.register(new CodeReviewTool());
+    regIf(new GitTool(policyEnforcer));
+    regIf(new CodeAnalysisTool());
+    regIf(new MultiSearchTool());
+    regIf(new TaskPlannerTool());
+    regIf(new DiffViewerTool());
+    regIf(new DockerTool());
+    regIf(new DatabaseTool());
+    regIf(new TestRunnerTool());
+    regIf(new HttpClientTool());
+    regIf(new ImageInfoTool());
+    regIf(new SshRemoteTool());
+    regIf(new NotificationTool());
+    regIf(new PdfExtractTool());
+    regIf(new PackageManagerTool());
+    regIf(new CodeReviewTool());
     // v2.5.0 — App Connectors
     let vault: VaultManager | undefined;
     let connectorRegistry: ConnectorRegistry | undefined;
@@ -160,16 +202,16 @@ export class ToolRegistry {
           log.warn(`[ToolRegistry] ${c.name} connector failed to register:`, err);
         }
       }
-      this.register(new AppConnectorTool(vault, connectorRegistry));
+      regIf(new AppConnectorTool(vault, connectorRegistry));
     }
 
     // Non-connector tools — always register regardless of connector status
-    this.register(new GraphicsTool());
-    this.register(new DeepResearchTool());
-    this.register(new SkillForgeTool());
-    this.register(new DecomposeGoalTool());
-    this.register(new PluginForgeTool());
-    this.register(new DelegateTool());
+    regIf(new GraphicsTool());
+    regIf(new DeepResearchTool());
+    regIf(new SkillForgeTool());
+    regIf(new DecomposeGoalTool());
+    regIf(new PluginForgeTool());
+    regIf(new DelegateTool());
   }
 
   register(tool: Tool) {

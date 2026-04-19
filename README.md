@@ -64,6 +64,29 @@ An 8-phase pipeline runs autonomously:
 
 Every phase writes to the hash-chained log. If the agent does anything unexpected, you can prove it after the fact.
 
+## Second workflow — `--vault` (research assistant over your notes)
+
+Point CodeBot at a folder of markdown notes and ask questions:
+
+```bash
+codebot --vault ~/Documents/my-notes "what did I capture about Q3 strategy?"
+```
+
+CodeBot reads your notes, synthesizes an answer, and **cites the files it actually consulted**. Read-only by default — it won't edit or create anything. No network calls unless you opt in. Every file it opens goes into the same hash-chained audit log: you can prove exactly which notes the AI touched.
+
+```bash
+# Interactive mode — open a session over the vault and ask follow-ups
+codebot --vault ~/Documents/my-notes
+
+# Allow CodeBot to create or edit notes when you ask it to
+codebot --vault ~/Documents/my-notes --vault-writable
+
+# Allow outbound web_fetch / http_client when you want it to look something up
+codebot --vault ~/Documents/my-notes --vault-allow-network
+```
+
+Works with any markdown folder — Obsidian vaults, plain `~/notes`, dumped Evernote exports. `.obsidian/`, `.git/`, and `node_modules/` are automatically skipped.
+
 ## How CodeBot differs
 
 | | Cursor / Copilot | Aider | Devin | **CodeBot** |
