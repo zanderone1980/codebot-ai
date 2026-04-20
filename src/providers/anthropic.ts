@@ -193,6 +193,38 @@ export class AnthropicProvider implements LLMProvider {
     let currentBlockIndex = -1;
     let currentBlockType = '';
 
+    // ─── SSE diagnostic tap ───────────────────────────────────────────────
+    // Opt-in with CODEBOT_DEBUG_SSE=1. Writes every raw SSE chunk, every
+    // decoded event, every input_json_delta, and the final concatenated
+    // block.input to a per-stream file. This is the instrument for finding
+    // mid-stream chunk drops that corrupt tool-call JSON.
+    // Why opt-in: for long tool_use outputs this can be 10+ MB of data and
+    // slows down the hot path, so we do NOT want it on by default.
+    const debugSSE = process.env.CODEBOT_DEBUG_SSE === '1';
+    let debugLog: ((kind: string, payload: unknown) => void) | null = null;
+    if (debugSSE) {
+      try {
+        const fs = await import('fs');
+        const os = await import('os');
+        const path = await import('path');
+        const dir = path.join(os.homedir(), '.codebot', 'debug');
+        fs.mkdirSync(dir, { recursive: true });
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const file = path.join(dir, `sse-anthropic-${stamp}.jsonl`);
+        const stream = fs.createWriteStream(file, { flags: 'a' });
+        debugLog = (kind: string, payload: unknown) => {
+          try {
+            stream.write(JSON.stringify({ t: Date.now(), kind, payload }) + '\n');
+          } catch {
+            /* best-effort */
+          }
+        };
+        debugLog('session_start', { model: this.config.model, file });
+      } catch {
+        debugLog = null;
+      }
+    }
+
     try {
       while (true) {
         // Chunk gap before we declare the stream dead. 120s was too aggressive:
@@ -218,7 +250,15 @@ export class AnthropicProvider implements LLMProvider {
         const { done, value } = readResult;
         if (done) break;
 
-        buffer += decoder.decode(value, { stream: true });
+        const chunkText = decoder.decode(value, { stream: true });
+        if (debugLog) {
+          debugLog('raw_chunk', {
+            byteLen: value?.byteLength ?? 0,
+            textLen: chunkText.length,
+            text: chunkText,
+          });
+        }
+        buffer += chunkText;
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
@@ -240,7 +280,18 @@ export class AnthropicProvider implements LLMProvider {
           let data: Record<string, unknown>;
           try {
             data = JSON.parse(dataStr);
-          } catch {
+          } catch (parseErr) {
+            // This is the silent-drop site. If mid-stream chunks are being
+            // lost, they will be dropped HERE. Log every dropped SSE line
+            // when CODEBOT_DEBUG_SSE=1 is set.
+            if (debugLog) {
+              debugLog('sse_json_parse_fail', {
+                dataStr,
+                length: dataStr.length,
+                currentEvent,
+                error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              });
+            }
             continue;
           }
 
@@ -249,6 +300,14 @@ export class AnthropicProvider implements LLMProvider {
               const block = data.content_block as Record<string, unknown>;
               currentBlockIndex = data.index as number;
               currentBlockType = block?.type as string || '';
+              if (debugLog) {
+                debugLog('content_block_start', {
+                  index: currentBlockIndex,
+                  type: currentBlockType,
+                  id: block?.id,
+                  name: block?.name,
+                });
+              }
 
               if (currentBlockType === 'tool_use') {
                 toolBlocks.set(currentBlockIndex, {
@@ -278,7 +337,19 @@ export class AnthropicProvider implements LLMProvider {
                 yield { type: 'text', text: delta.text as string };
               } else if (deltaType === 'input_json_delta') {
                 const partial = delta.partial_json as string;
+                const eventIndex = data.index as number;
                 const block = toolBlocks.get(currentBlockIndex);
+                if (debugLog) {
+                  debugLog('input_json_delta', {
+                    currentBlockIndex,
+                    eventIndex,
+                    mismatch: eventIndex !== currentBlockIndex,
+                    partialLen: partial?.length ?? 0,
+                    partial,
+                    runningInputLen: block ? block.input.length + (partial?.length ?? 0) : -1,
+                    blockExists: !!block,
+                  });
+                }
                 if (block) {
                   block.input += partial;
                 }
@@ -290,6 +361,19 @@ export class AnthropicProvider implements LLMProvider {
             }
 
             case 'content_block_stop': {
+              if (debugLog) {
+                const idx = data.index as number;
+                const block = toolBlocks.get(idx);
+                debugLog('content_block_stop', {
+                  index: idx,
+                  currentBlockIndex,
+                  blockInputLen: block?.input.length ?? null,
+                  // Check if concatenated JSON parses at this point
+                  blockInputParses: block ? (() => {
+                    try { JSON.parse(block.input); return true; } catch { return false; }
+                  })() : null,
+                });
+              }
               if (currentBlockType === 'thinking') {
                 yield { type: 'thinking', text: '\n' };
               }
@@ -332,6 +416,15 @@ export class AnthropicProvider implements LLMProvider {
               // <tool>" — misleading, because the real cause is a partial stream.
               for (const [, block] of toolBlocks) {
                 const raw = block.input || '{}';
+                if (debugLog) {
+                  debugLog('tool_call_end_flush', {
+                    name: block.name,
+                    id: block.id,
+                    inputLen: raw.length,
+                    inputTail: raw.slice(-200),
+                    parses: (() => { try { JSON.parse(raw); return true; } catch { return false; } })(),
+                  });
+                }
                 try {
                   JSON.parse(raw);
                 } catch (err) {
@@ -376,6 +469,15 @@ export class AnthropicProvider implements LLMProvider {
     // surfaces here as a real "stream truncated" error instead.
     for (const [, block] of toolBlocks) {
       const raw = block.input || '{}';
+      if (debugLog) {
+        debugLog('tool_call_end_fallback_flush', {
+          name: block.name,
+          id: block.id,
+          inputLen: raw.length,
+          inputTail: raw.slice(-200),
+          parses: (() => { try { JSON.parse(raw); return true; } catch { return false; } })(),
+        });
+      }
       try {
         JSON.parse(raw);
       } catch (err) {
@@ -393,6 +495,9 @@ export class AnthropicProvider implements LLMProvider {
           function: { name: block.name, arguments: raw },
         } as ToolCall,
       };
+    }
+    if (debugLog) {
+      debugLog('session_end', { bufferRemainingLen: buffer.length, buffer });
     }
     yield { type: 'done' };
   }
