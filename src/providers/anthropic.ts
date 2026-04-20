@@ -107,6 +107,16 @@ export class AnthropicProvider implements LLMProvider {
     let lastError = '';
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      // IMPORTANT: this abort signal was previously AbortSignal.timeout(60_000),
+      // which is a hard 60-second deadline on the ENTIRE streaming response —
+      // not just headers. For heavy tool-use outputs (big file writes, long
+      // multi-tool plans) the model legitimately thinks >60s before the first
+      // content block, and the signal was aborting mid-stream with
+      // "The operation was aborted due to timeout", looking like an API stall
+      // when the real cause was our own client. We detach the signal after
+      // headers arrive so streaming can continue for as long as chunks do.
+      const connectCtrl = new AbortController();
+      const connectTimer = setTimeout(() => connectCtrl.abort(), 60_000);
       try {
         response = await fetch(`${baseUrl}/v1/messages`, {
           method: 'POST',
@@ -117,8 +127,11 @@ export class AnthropicProvider implements LLMProvider {
             ...(cachingEnabled ? { 'anthropic-beta': 'prompt-caching-2024-07-31' } : {}),
           },
           body: JSON.stringify(sanitizeForJSON(body)),
-          signal: AbortSignal.timeout(60_000),
+          signal: connectCtrl.signal,
         });
+        // Headers are in; stop the connect-phase deadline so the body stream
+        // is bounded only by CHUNK_TIMEOUT (per-chunk gap) below.
+        clearTimeout(connectTimer);
 
         if (response.ok || !isRetryable(null, response.status)) {
           break;
@@ -131,6 +144,7 @@ export class AnthropicProvider implements LLMProvider {
           continue;
         }
       } catch (err: unknown) {
+        clearTimeout(connectTimer);
         lastError = err instanceof Error ? err.message : String(err);
         if (attempt < MAX_RETRIES && isRetryable(err)) {
           const delay = getRetryDelay(attempt);
@@ -181,13 +195,20 @@ export class AnthropicProvider implements LLMProvider {
 
     try {
       while (true) {
-        const CHUNK_TIMEOUT = 120_000;
+        // Chunk gap before we declare the stream dead. 120s was too aggressive:
+        // heavy tool-use outputs (large file writes) can pause longer than that
+        // between SSE chunks while the model thinks, and we were killing real
+        // work mid-generation. 300s matches Anthropic's own keep-alive window
+        // and lines up with what larger models actually need on a cache-cold
+        // first call. The API sends `: heartbeat` every ~15s when it's alive,
+        // so a true 5-minute silence is a real stall worth aborting.
+        const CHUNK_TIMEOUT = 300_000;
         let readResult: { done: boolean; value?: Uint8Array };
         try {
           readResult = await Promise.race([
             reader.read(),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Stream chunk timeout after 120s')), CHUNK_TIMEOUT)
+              setTimeout(() => reject(new Error('Stream chunk timeout after 300s')), CHUNK_TIMEOUT)
             ),
           ]);
         } catch (err) {
