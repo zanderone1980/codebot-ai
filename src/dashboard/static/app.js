@@ -728,7 +728,15 @@ const App = {
           if (payload === '[DONE]') break;
           try {
             const ev = JSON.parse(payload);
-            if (ev.type === 'text') {
+            if (ev.type === 'queued') {
+              // Server is holding the SSE open; we're waiting our turn in the
+              // agent queue. Show the queued indicator — it gets replaced as
+              // soon as the first real event (text/tool_call) arrives.
+              contentEl.innerHTML =
+                '<div class="chat-queued"><span class="queue-icon">📋</span> Message queued — position #' +
+                (ev.position || '?') +
+                '. Agent will process it when ready.</div>';
+            } else if (ev.type === 'text') {
               fullText += ev.text || '';
               if (!App._renderRAF) {
                 App._renderRAF = requestAnimationFrame(function () {

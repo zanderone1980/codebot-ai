@@ -103,7 +103,11 @@ export function registerCommandRoutes(
   agent: Agent | null,
 ): void {
   let agentBusy = false;
-  const messageQueue: Array<{ message: string; mode?: 'simple' | 'detailed'; resolve: (v: unknown) => void }> = [];
+  // Each queue entry owns its own pending HTTP response. When its turn comes,
+  // processQueue() invokes run() which streams the agent output back on that
+  // response. Previously we stored a dangling Promise.resolve and the output
+  // was silently discarded — the UI sat on "Message queued" forever.
+  const messageQueue: Array<{ run: () => Promise<void>; cancelled: boolean }> = [];
   const statusClients: Set<http.ServerResponse> = new Set();
 
   /** Broadcast agent status to all SSE clients */
@@ -118,32 +122,19 @@ export function registerCommandRoutes(
   /** Process next queued message */
   async function processQueue() {
     if (agentBusy || messageQueue.length === 0 || !agent) return;
-    const next = messageQueue.shift()!;
-    broadcastStatus('working', { message: next.message });
-    agentBusy = true;
-    try {
-      let result = '';
-      for await (const event of agent.run(next.message)) {
-        if (event.type === 'text') result += (event as any).text || '';
-        if (event.type === 'tool_call') {
-          const tc = (event as any).toolCall;
-          broadcastStatus('working', { tool: tc?.name, action: tc?.args?.action || tc?.args?.command, message: next.message });
-        }
-        if (event.type === 'tool_result') {
-          const tr = (event as any).toolResult;
-          broadcastStatus('working', { toolDone: tr?.name, success: !tr?.is_error, message: next.message });
-        }
-        if (event.type === 'done' || event.type === 'error') break;
-      }
-      next.resolve({ result });
-    } catch (err: unknown) {
-      next.resolve({ error: err instanceof Error ? err.message : String(err) });
-    } finally {
-      agentBusy = false;
-      broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
-      // Process next in queue
-      if (messageQueue.length > 0) setTimeout(processQueue, 100);
+    // Skip cancelled entries (client disconnected while queued)
+    while (messageQueue.length > 0 && messageQueue[0].cancelled) messageQueue.shift();
+    if (messageQueue.length === 0) {
+      broadcastStatus('idle');
+      return;
     }
+    const next = messageQueue.shift()!;
+    try {
+      await next.run();
+    } catch {
+      // run() handles its own errors; nothing more to do here
+    }
+    // run() sets agentBusy back to false and chains setTimeout(processQueue)
   }
 
   // ── GET /api/command/status ──
@@ -348,71 +339,78 @@ export function registerCommandRoutes(
       return;
     }
 
-    if (agentBusy) {
-      // Queue the message instead of rejecting
-      const queuePromise = new Promise((resolve) => {
-        messageQueue.push({ message: body.message!, mode: body.mode, resolve });
-      });
-      broadcastStatus('queued', { position: messageQueue.length });
-      DashboardServer.json(res, {
-        queued: true,
-        position: messageQueue.length,
-        message: 'Message queued — agent will process it next',
-      });
-      // finally block's setTimeout already calls processQueue when agent finishes
-      queuePromise.catch(() => {});
-      return;
-    }
-
     // Simple mode: prepend plain-language instruction for non-technical users
     let userMessage = body.message || '';
     if (body.mode === 'simple') {
       userMessage = '[Respond in plain, simple language suitable for someone who is not a programmer. Be concise and friendly. Focus on results, not technical details.]\n\n' + userMessage;
     }
 
-    agentBusy = true;
-    broadcastStatus('working', { message: body.message });
-    DashboardServer.sseHeaders(res);
+    const chatImages = body.images?.map((img: { data: string; mediaType: string }) => ({
+      data: img.data,
+      mediaType: img.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+    }));
 
+    // Open SSE immediately — we hold this response open whether we run now
+    // or after waiting in the queue. Client receives {type:'queued'} while
+    // waiting, then real events when it's our turn.
+    DashboardServer.sseHeaders(res);
     let closed = false;
     res.on('close', () => { closed = true; });
 
-    // Heartbeat keeps connection alive through proxies/Safari
     const heartbeat = setInterval(() => {
       if (closed || res.writableEnded || res.destroyed) { clearInterval(heartbeat); return; }
       try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); closed = true; }
     }, 15_000);
 
-    try {
-      // Pass images through to agent if provided
-      const chatImages = body.images?.map((img: { data: string; mediaType: string }) => ({
-        data: img.data,
-        mediaType: img.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
-      }));
-      for await (const event of agent.run(userMessage, chatImages)) {
-        if (closed || res.writableEnded || res.destroyed) break;
-        DashboardServer.sseSend(res, event);
-        if (event.type === 'done' || event.type === 'error') break;
+    // Entry declared early so res.on('close') can mark it cancelled
+    let entry: { run: () => Promise<void>; cancelled: boolean } | null = null;
+    res.on('close', () => { if (entry) entry.cancelled = true; });
+
+    const runAgent = async () => {
+      if (closed || res.writableEnded || res.destroyed) {
+        clearInterval(heartbeat);
+        return;
       }
-    } catch (err: unknown) {
-      if (!closed && !res.writableEnded && !res.destroyed) {
-        DashboardServer.sseSend(res, {
-          type: 'error',
-          text: err instanceof Error ? err.message : String(err),
-        });
+      agentBusy = true;
+      broadcastStatus('working', { message: body.message });
+      try {
+        for await (const event of agent!.run(userMessage, chatImages)) {
+          if (closed || res.writableEnded || res.destroyed) break;
+          DashboardServer.sseSend(res, event);
+          if (event.type === 'done' || event.type === 'error') break;
+        }
+      } catch (err: unknown) {
+        if (!closed && !res.writableEnded && !res.destroyed) {
+          DashboardServer.sseSend(res, {
+            type: 'error',
+            text: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        clearInterval(heartbeat);
+        closed = true;
+        agentBusy = false;
+        broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
+        if (!res.writableEnded && !res.destroyed) {
+          res.write('data: [DONE]\n\n');
+          DashboardServer.sseClose(res);
+        }
+        // Process next in queue
+        if (messageQueue.length > 0) setTimeout(processQueue, 100);
       }
-    } finally {
-      clearInterval(heartbeat);
-      closed = true;
-      agentBusy = false;
-      broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
-      if (!res.writableEnded && !res.destroyed) {
-        res.write('data: [DONE]\n\n');
-        DashboardServer.sseClose(res);
-      }
-      // Process any queued messages
-      if (messageQueue.length > 0) setTimeout(processQueue, 100);
+    };
+
+    if (agentBusy) {
+      // Hold the SSE connection open and wait our turn. Let the client know.
+      entry = { run: runAgent, cancelled: false };
+      messageQueue.push(entry);
+      const position = messageQueue.length;
+      DashboardServer.sseSend(res, { type: 'queued', position });
+      broadcastStatus('queued', { position });
+      return;
     }
+
+    await runAgent();
   });
 
   // ── POST /api/command/quick-action (works standalone via exec) ──
