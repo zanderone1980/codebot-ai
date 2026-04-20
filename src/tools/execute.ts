@@ -3,6 +3,7 @@ import { Tool } from '../types';
 import { isCwdSafe } from '../security';
 import { sandboxExec, isDockerAvailable } from '../sandbox';
 import { PolicyEnforcer } from '../policy';
+import { envWithAugmentedPath } from '../path-augment';
 
 export const BLOCKED_PATTERNS = [
   // Destructive filesystem operations
@@ -148,7 +149,11 @@ export class ExecuteTool implements Tool {
     }
 
     // ── Host execution (existing path) ──
-    const safeEnv = { ...process.env };
+    // Electron launched from Finder/Dock inherits a minimal PATH that misses
+    // /opt/homebrew/bin, /usr/local/bin, ~/.cargo/bin, etc. That's why `which
+    // python3` fails inside the agent even though the user has python3. We
+    // augment PATH here so the execute tool sees the user's real toolchain.
+    const safeEnv = envWithAugmentedPath(process.env);
     for (const key of FILTERED_ENV_VARS) {
       delete safeEnv[key];
     }

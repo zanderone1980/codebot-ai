@@ -17,10 +17,13 @@
 import * as os from 'os';
 import * as fs from 'fs';
 import * as path from 'path';
+import { augmentedPath } from '../path-augment';
 
 /** Look up an executable on PATH. Returns the absolute path or null. */
 function whichSync(cmd: string): string | null {
-  const PATH = process.env.PATH || '';
+  // Use the same augmented PATH the execute tool uses so host-env facts
+  // match what the agent will actually see when it runs commands.
+  const PATH = augmentedPath(process.env.PATH);
   const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : [''];
   for (const dir of PATH.split(path.delimiter)) {
     if (!dir) continue;
