@@ -397,6 +397,14 @@ const App = {
         break;
       case 'vault':
         this.initVault();
+        // Force scroll to top so the page header and "Current State"
+        // aren't hidden above the viewport on Electron's default sizing.
+        // Without this the panel opens at whatever scrollTop it had the
+        // last time it was rendered, which on first-open is partway down.
+        setTimeout(() => {
+          var p = document.getElementById('panel-vault');
+          if (p) p.scrollTop = 0;
+        }, 0);
         break;
     }
   },

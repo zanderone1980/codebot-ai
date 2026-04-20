@@ -474,23 +474,17 @@
       <div id="panel-vault" class="panel">
         <div class="panel-header"><h2>Vault Mode</h2></div>
         <div class="settings-content">
-          <div class="settings-section">
-            <h3>Current State</h3>
-            <div class="settings-row">
-              <label>Status</label>
-              <div id="vault-status-display" style="color: var(--text-secondary); flex: 1;">Loading…</div>
-            </div>
-          </div>
+          <!-- Description (replaces the "Current State" section's h3 + row —
+               status is shown inline in the form area instead, saving ~80px
+               vertical space so the whole pane fits a single viewport). -->
+          <p style="color: var(--text-secondary); font-size: 0.9em; line-height: 1.55; margin: 0 0 20px;">
+            Point CodeBot at a folder of markdown notes. It answers your
+            questions by reading the files and citing which ones it consulted.
+            Read-only, offline, hash-chained audit log by default.
+          </p>
 
           <div class="settings-section">
-            <h3>Enable Vault Mode</h3>
-            <p style="color: var(--text-secondary); font-size: 0.9em; line-height: 1.55; margin: 0 0 16px;">
-              Point CodeBot at a folder of markdown notes. It will answer
-              your questions by reading the files and citing which ones it
-              consulted. By default: read-only, no network calls, hash-chained
-              audit log of every file it opens.
-            </p>
-
+            <h3>Configure</h3>
             <div class="settings-row">
               <label>Vault path</label>
               <input
@@ -500,43 +494,36 @@
                 style="flex: 1;"
               />
             </div>
-
             <div class="settings-row">
               <label>Allow writes</label>
               <div style="flex: 1; display: flex; align-items: center; gap: 8px;">
                 <input id="vault-writable-toggle" type="checkbox" style="width: 16px; height: 16px; flex: 0 0 auto;" />
-                <span style="color: var(--text-secondary); font-size: 0.85em;">
-                  Let CodeBot create or edit notes when you ask
-                </span>
+                <span style="color: var(--text-secondary); font-size: 0.85em;">Let CodeBot create or edit notes</span>
               </div>
             </div>
-
             <div class="settings-row">
               <label>Allow network</label>
               <div style="flex: 1; display: flex; align-items: center; gap: 8px;">
                 <input id="vault-network-toggle" type="checkbox" style="width: 16px; height: 16px; flex: 0 0 auto;" />
-                <span style="color: var(--text-secondary); font-size: 0.85em;">
-                  Enable web_fetch / http_client inside Vault Mode
-                </span>
+                <span style="color: var(--text-secondary); font-size: 0.85em;">Enable web_fetch / http_client</span>
               </div>
             </div>
-
-            <div style="display: flex; gap: 8px; margin-top: 14px;">
+            <div style="display: flex; gap: 8px; margin-top: 14px; align-items: center;">
               <button id="vault-enable-btn" class="settings-btn primary" style="margin-top: 0;">Enable Vault Mode</button>
               <button id="vault-disable-btn" class="settings-btn" style="display: none;">Disable</button>
+              <div id="vault-status-display" style="color: var(--text-secondary); font-size: 0.85em; flex: 1; text-align: right;">Not active</div>
             </div>
             <div id="vault-feedback" class="settings-status"></div>
           </div>
 
           <div class="settings-section">
-            <h3>What Vault Mode Does</h3>
-            <ul style="color: var(--text-secondary); font-size: 0.9em; line-height: 1.7; padding-left: 20px; margin: 0;">
-              <li>Swaps the coding-agent prompt for a research-assistant prompt.</li>
-              <li>Strips shell, Docker, SSH, and Git tools from the registry.</li>
-              <li>Read-only by default — no <code>write_file</code> / <code>edit_file</code> unless you opt in.</li>
-              <li>Offline by default — no <code>web_fetch</code> / <code>http_client</code> unless you opt in.</li>
-              <li>Every file read is hash-chained in the audit log.</li>
-              <li>Automatically skips <code>.obsidian/</code>, <code>.git/</code>, <code>node_modules/</code>.</li>
+            <h3>What It Does</h3>
+            <ul style="color: var(--text-secondary); font-size: 0.88em; line-height: 1.65; padding-left: 18px; margin: 0;">
+              <li>Research-assistant prompt with <em>mandatory citations</em>.</li>
+              <li>Strips shell, Docker, SSH, Git tools from the registry.</li>
+              <li>Read-only unless <em>Allow writes</em>. Offline unless <em>Allow network</em>.</li>
+              <li>Every file read still goes to the hash-chained audit log.</li>
+              <li>Skips <code>.obsidian/</code>, <code>.git/</code>, <code>node_modules/</code>.</li>
             </ul>
           </div>
         </div>
