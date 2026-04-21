@@ -55,8 +55,23 @@ describe('isPathSafe', () => {
     assert.strictEqual(result.safe, true);
   });
 
-  it('blocks paths outside project and home', () => {
-    const result = isPathSafe('/tmp/random/file.txt', PROJECT);
+  it('allows /tmp scratch paths (safe dev workflow)', () => {
+    const result = isPathSafe('/tmp/demo/file.txt', PROJECT);
+    assert.strictEqual(result.safe, true, `Reason: ${result.reason}`);
+  });
+
+  it('allows /var/tmp scratch paths', () => {
+    const result = isPathSafe('/var/tmp/demo.py', PROJECT);
+    assert.strictEqual(result.safe, true, `Reason: ${result.reason}`);
+  });
+
+  it('allows os.tmpdir() scratch paths', () => {
+    const result = isPathSafe(path.join(os.tmpdir(), 'demo.txt'), PROJECT);
+    assert.strictEqual(result.safe, true, `Reason: ${result.reason}`);
+  });
+
+  it('still blocks non-tmp paths outside project and home', () => {
+    const result = isPathSafe('/opt/random/file.txt', PROJECT);
     assert.strictEqual(result.safe, false);
     assert.ok(result.reason?.includes('outside'), `Reason should mention outside: ${result.reason}`);
   });
@@ -75,9 +90,13 @@ describe('isCwdSafe', () => {
     assert.ok(result.reason?.includes('does not exist'), `Reason: ${result.reason}`);
   });
 
-  it('rejects directory outside project and home', () => {
-    // /tmp exists on macOS/Linux
+  it('allows /tmp as CWD (safe scratch dir)', () => {
     const result = isCwdSafe('/tmp', PROJECT);
-    assert.strictEqual(result.safe, false);
+    assert.strictEqual(result.safe, true, `Reason: ${result.reason}`);
+  });
+
+  it('allows os.tmpdir() as CWD', () => {
+    const result = isCwdSafe(os.tmpdir(), PROJECT);
+    assert.strictEqual(result.safe, true, `Reason: ${result.reason}`);
   });
 });

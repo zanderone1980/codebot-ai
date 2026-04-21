@@ -47,8 +47,12 @@ export const BLOCKED_PATTERNS = [
 
   // Base64 decode pipes (obfuscated command execution)
   /base64\s+(-d|--decode)\s*\|/,
-  // Hex escape sequences (obfuscation)
-  /\\x[0-9a-fA-F]{2}.*\\x[0-9a-fA-F]{2}/,
+  // Hex-escape obfuscation: 4+ ADJACENT hex escapes is the signature of a
+  // hidden command (e.g. \x72\x6d\x20\x2d\x72\x66 = "rm -rf"). Scattered
+  // escapes like \x1b[32m...\x1b[0m (ANSI color codes) are legitimate and
+  // must NOT trip this. The prior `\xNN.*\xNN` greedy match blocked any
+  // Python script that printed colored terminal output.
+  /(?:\\x[0-9a-fA-F]{2}){4,}/,
   // Variable-based obfuscation
   /\$\{[^}]*rm\s/,
   /eval\s+.*\$/,
