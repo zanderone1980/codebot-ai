@@ -665,13 +665,138 @@ def _count_context_line_hits(value: str, context_tokens: List[str], texts: Dict[
     return hits
 
 
-def _collect_reference_texts(slice: "SessionSlice") -> Dict[str, str]:
-    """Return {path: text} for every reference-like doc the session read.
-    Re-reads from disk at audit time. Silently skips anything missing or
-    unreadable (the grounding check is all-or-nothing per doc — absence
-    of a readable file is just absence of grounding, not evidence).
+def _parse_iso_timestamp(s: Optional[str]) -> Optional[float]:
+    """Parse an ISO-8601 timestamp to a Unix epoch float, or None."""
+    if not isinstance(s, str) or not s:
+        return None
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _session_start_time(slice: "SessionSlice") -> Optional[float]:
+    """Earliest audit timestamp as a Unix epoch float, or None if no entry
+    has a parseable timestamp. Used to decide whether a reference doc's
+    last-commit time predates the session (trusted) or coincides with /
+    postdates it (planted — untrusted).
     """
-    out: Dict[str, str] = {}
+    ts: List[float] = []
+    for e in slice.entries:
+        t = _parse_iso_timestamp(e.get("timestamp"))
+        if t is not None:
+            ts.append(t)
+    return min(ts) if ts else None
+
+
+def _doc_touched_in_session(doc_path: str, ops: List[Dict[str, Any]]) -> bool:
+    """True if the session's edit ops include this doc path. A doc the
+    session itself wrote cannot ground the session's own edits — that is
+    self-grounding, indistinguishable from the attacker planting a
+    reference mid-session."""
+    for o in ops or []:
+        if o.get("path") == doc_path:
+            return True
+    return False
+
+
+def _is_in_git_repo(doc_path: str) -> bool:
+    """True iff the doc's parent directory is inside a git work tree."""
+    try:
+        parent = Path(doc_path).resolve().parent
+        r = subprocess.run(
+            ["git", "-C", str(parent), "rev-parse", "--is-inside-work-tree"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return r.returncode == 0 and r.stdout.strip() == "true"
+    except Exception:
+        return False
+
+
+def _doc_git_last_commit_time(doc_path: str) -> Optional[float]:
+    """Unix timestamp of the most recent commit that touches `doc_path`,
+    or None if the file isn't tracked / git is unavailable. A file that
+    sits in a git work tree with NO commit history is either untracked or
+    brand new — both are suspect as grounding sources.
+    """
+    try:
+        p = Path(doc_path).resolve()
+        r = subprocess.run(
+            ["git", "-C", str(p.parent), "log", "-1", "--format=%ct", "--", p.name],
+            capture_output=True, text=True, timeout=5,
+        )
+        if r.returncode != 0:
+            return None
+        s = (r.stdout or "").strip()
+        if not s:
+            return None
+        return float(s)
+    except Exception:
+        return None
+
+
+# Margin before session start within which a commit is treated as
+# "during session" (60 s absorbs clock-skew + the attacker racing to
+# commit just before starting the agent).
+_GIT_PROVENANCE_MARGIN_S = 60.0
+
+
+def _doc_trusted_for_grounding(
+    doc_path: str,
+    ops: List[Dict[str, Any]],
+    session_start: Optional[float],
+) -> Tuple[bool, str]:
+    """Decide whether a reference doc is trustworthy as a grounding source.
+
+    Distrust signals, any one disqualifies:
+      (1) The session itself wrote or edited this doc (self-grounding).
+      (2) The doc lives in a git work tree but has NO commit history
+          (untracked / planted, uncommitted).
+      (3) The doc lives in a git work tree and its last commit is within
+          or after the session window (planted right before/during).
+
+    Trust outcomes:
+      - Git shows a commit predating session_start by > margin → trusted.
+      - No session_start available (old audits without timestamps) and
+        no self-edit: trusted (no way to reason about provenance).
+      - Not in a git repo at all: trusted by default (same behaviour as
+        before the provenance check was added — so /tmp fixtures and
+        non-git workflows aren't broken; production sessions that run
+        inside real repos get the stronger check).
+
+    The trade-off in the non-git branch is explicit: outside a git repo
+    there is no mechanical way to distinguish an attacker-planted doc
+    from a legit one written two weeks ago. We don't claim one we can't
+    make.
+    """
+    if _doc_touched_in_session(doc_path, ops):
+        return (False, "self_edited_in_session")
+    if _is_in_git_repo(doc_path):
+        commit_t = _doc_git_last_commit_time(doc_path)
+        if commit_t is None:
+            return (False, "untracked_in_git_repo")
+        if session_start is not None and commit_t >= (session_start - _GIT_PROVENANCE_MARGIN_S):
+            return (False, f"git_commit_during_session(commit_epoch={commit_t:.0f})")
+        return (True, f"git_commit_predates_session(commit_epoch={commit_t:.0f})")
+    # Not in git — no provenance signal available.
+    return (True, "not_in_git_repo")
+
+
+def _classify_reference_docs(
+    slice: "SessionSlice",
+    ops: List[Dict[str, Any]],
+) -> Tuple[Dict[str, str], List[Dict[str, str]]]:
+    """Split the session's reference-doc reads into (trusted_texts, untrusted_records).
+
+    Trusted docs are returned as {path: text} for the grounding check to
+    use. Untrusted docs are returned with the reason they were filtered,
+    so the downstream finding can explain WHY grounding didn't happen.
+    """
+    trusted: Dict[str, str] = {}
+    untrusted: List[Dict[str, str]] = []
+    seen: set = set()
+    session_start = _session_start_time(slice)
     for e in slice.read_file_entries():
         args = e.get("args") or {}
         if isinstance(args, str):
@@ -682,14 +807,27 @@ def _collect_reference_texts(slice: "SessionSlice") -> Dict[str, str]:
         p = args.get("path")
         if not p or not _is_reference_doc(p):
             continue
-        if p in out:
+        if p in seen:
+            continue
+        seen.add(p)
+        ok, reason = _doc_trusted_for_grounding(p, ops, session_start)
+        if not ok:
+            untrusted.append({"path": p, "reason": reason})
             continue
         try:
-            out[p] = Path(p).read_text(encoding="utf-8", errors="replace")
+            trusted[p] = Path(p).read_text(encoding="utf-8", errors="replace")
         except Exception:
-            # file gone / unreadable — skip, no grounding claim
             continue
-    return out
+    return trusted, untrusted
+
+
+def _collect_reference_texts(slice: "SessionSlice") -> Dict[str, str]:
+    """Back-compat wrapper: return only trusted reference texts. New call
+    sites should prefer `_classify_reference_docs` so they can surface
+    the untrusted list.
+    """
+    trusted, _ = _classify_reference_docs(slice, [])
+    return trusted
 
 
 def _value_appears_in_any(value: str, texts: Dict[str, str]) -> List[str]:
@@ -1028,12 +1166,28 @@ def check_session(
 ) -> Dict[str, Any]:
     slice = read_audit_slice(audit_path, start_seq, end_seq)
     ops = extract_edit_operations(slice)
-    reference_texts = _collect_reference_texts(slice)
+    reference_texts, untrusted_refs = _classify_reference_docs(slice, ops)
     findings: List[Finding] = []
 
     findings.extend(check_tests_source_coedit(ops, reference_texts))
     findings.extend(check_literal_swap(ops))
     findings.extend(check_claim_diff_mismatch(final_message, ops, slice))
+    if untrusted_refs:
+        # Surface WHY docs were excluded from grounding so the operator can
+        # audit the provenance call. Severity is info — this finding is
+        # context for the (usually stronger) downstream lockstep verdict,
+        # not an independent block signal.
+        findings.append(Finding(
+            check="untrusted_grounding_source",
+            severity="info",
+            message=(
+                f"{len(untrusted_refs)} reference doc(s) read by the session "
+                "were excluded from grounding (self-edited, untracked in the "
+                "git work tree, or committed within the session window). "
+                "Planted reference docs would show up here."
+            ),
+            evidence={"untrusted": untrusted_refs},
+        ))
     if run_mutation:
         findings.extend(check_vacuous_tests(repo, ops))
 
