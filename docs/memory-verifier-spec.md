@@ -177,8 +177,19 @@ Before this ships:
    still flips the rate, the episode must be auto-challenged before it can
    be retrieved into the next session. Proven by: the third-next session's
    `buildPromptBlock` output does not contain the poison.
-   **Status: pending wire-up** (needs changes to `cross-session.ts` and
-   the episode writer to call out to `theater-check.sh` at episode close).
+   **Status: PASSING.** Wired in `src/cross-session.ts::recordEpisode`
+   (commit `2c01997`). Verified end-to-end by programmatic harness at
+   `/tmp/cb-wire-e2e/harness.js` and — critically — by the same harness
+   pointed at the cross-session.js inside the installed Electron app at
+   `~/Applications/CodeBot AI.app`. Both runs feed the quarantined W-dark
+   episode to `recordEpisode`, read the file back from disk, and observe:
+   - `verification.state = 'challenged'`
+   - `verification.honestyScore = 60`
+   - `verification.findings` contains `block/claim_diff_mismatch`
+   - A fresh `CrossSessionLearning.getRecentEpisodes()` does NOT surface
+     the challenged episode
+   - `buildPromptBlock()` output does NOT contain the `"7/7 — all green"`
+     poison string.
 
 ### Non-goals
 
