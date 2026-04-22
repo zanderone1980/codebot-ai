@@ -27,7 +27,8 @@ usage() {
 
 # ---------- find latest / all ----------
 if [[ "${1:-}" == "--latest" ]]; then
-  episode="$(ls -1t "$EPISODES_DIR"/*.json 2>/dev/null | head -1 || true)"
+  # Exclude index.json (episode-index cache). Real episodes are timestamped.
+  episode="$(ls -1t "$EPISODES_DIR"/*.json 2>/dev/null | grep -v '/index\.json$' | head -1 || true)"
   [[ -z "$episode" ]] && { echo "no episodes found in $EPISODES_DIR" >&2; exit 65; }
   shift
   exec "$0" "$episode" "$@"
