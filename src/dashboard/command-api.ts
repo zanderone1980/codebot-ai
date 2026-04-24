@@ -170,6 +170,22 @@ export function registerCommandRoutes(
   });
 
   // ── POST /api/command/tool/run ──
+  //
+  // SECURITY — do NOT call `tool.execute(body.args)` directly here.
+  //
+  // Before 2026-04-23 this route invoked the tool registry entry straight
+  // from HTTP, bypassing schema validation, policy allow-list, risk
+  // scoring, ConstitutionalLayer (CORD + VIGIL), SPARK, permission
+  // prompts, and AuditLogger. A dashboard token holder (or a compromised
+  // local process able to read the token) could drive any registered
+  // tool — `execute`, `write_file`, `docker`, `ssh_remote`, `delegate` —
+  // with zero CORD decisions and zero audit entries.
+  //
+  // Agent.runSingleTool() replays the exact same gate chain that the
+  // autonomous agent loop (src/agent.ts Phase 1) applies to LLM-proposed
+  // tool calls. `interactivePrompt: false` makes always-ask / prompt
+  // tools fail closed over HTTP — there is no user on the wire to
+  // answer a readline prompt.
   server.route('POST', '/api/command/tool/run', async (req, res) => {
     if (!agent) {
       DashboardServer.error(res, 503, 'Agent not available');
@@ -189,27 +205,55 @@ export function registerCommandRoutes(
       return;
     }
 
-    const tool = agent.getToolRegistry().get(body.tool);
-    if (!tool) {
+    // Fast 404 for unknown tools so the response shape stays aligned
+    // with the pre-fix behavior for that one case (dashboard UI relies on
+    // a 404 to show "tool not found" rather than a 200-with-error-body).
+    if (!agent.getToolRegistry().get(body.tool)) {
       DashboardServer.error(res, 404, `Tool "${body.tool}" not found`);
       return;
     }
 
-    const startMs = Date.now();
-    try {
-      const result = await tool.execute(body.args || {});
-      DashboardServer.json(res, {
-        result,
-        is_error: typeof result === 'string' && result.startsWith('Error:'),
-        duration_ms: Date.now() - startMs,
-      });
-    } catch (err: unknown) {
-      DashboardServer.json(res, {
-        result: err instanceof Error ? err.message : String(err),
-        is_error: true,
-        duration_ms: Date.now() - startMs,
-      });
+    // SECURITY — skill_* tools are composite: their `execute()` runs a
+    // pipeline of inner tool calls (execute / write_file / app / etc.).
+    // Even though those inner steps are now routed through runSingleTool
+    // in agent.ts (the gate chain replays for every step), we still
+    // refuse skill invocations on this endpoint:
+    //
+    // 1. The inner-step callback is wired with `interactivePrompt: true`
+    //    to match the autonomous-loop context (REPL / dashboard
+    //    permission UI). If an HTTP caller reaches it, any inner step
+    //    that needs a prompt would invoke askPermission — which on an
+    //    HTTP-request thread with no UI attached would fail closed at
+    //    best and hang the request at worst.
+    // 2. Defense in depth: the dashboard UI has its own skill launcher
+    //    (with an explicit plan + confirmation step) that does NOT go
+    //    through this endpoint. A generic token-holder driving
+    //    skill_* through this route is an attack shape, not a
+    //    legitimate UX.
+    //
+    // If a future dashboard surface genuinely needs to drive skills
+    // over HTTP, add a dedicated endpoint that does step-by-step
+    // confirmation; do not lift this guard.
+    if (body.tool.startsWith('skill_')) {
+      DashboardServer.error(
+        res,
+        403,
+        'Skill tools must be invoked via the skill launcher, not the generic tool runner.',
+      );
+      return;
     }
+
+    const startMs = Date.now();
+    const outcome = await agent.runSingleTool(body.tool, body.args || {}, {
+      interactivePrompt: false,
+    });
+    DashboardServer.json(res, {
+      result: outcome.result,
+      is_error: outcome.is_error,
+      blocked: outcome.blocked,
+      reason: outcome.reason,
+      duration_ms: Date.now() - startMs,
+    });
   });
 
   // ── GET /api/command/agent-status (SSE) ──

@@ -19,7 +19,7 @@ import { ConstitutionalLayer } from './constitutional';
 import { AgentStateEngine } from './spark-soul';
 import { UserProfile } from './user-profile';
 import { validateToolArgs, repairToolCallMessages } from './agent/message-repair';
-import { PreparedCall, ToolExecutorDeps, executeToolBatch, TOOL_TYPE_MAP } from './agent/tool-executor';
+import { PreparedCall, ToolExecutorDeps, executeToolBatch, executeSingleTool, TOOL_TYPE_MAP } from './agent/tool-executor';
 import { buildSystemPrompt } from './agent/prompt-builder';
 import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
@@ -185,10 +185,25 @@ export class Agent {
       const { loadSkills, skillToTool } = require('./skills');
       const skills = loadSkills();
       for (const skill of skills) {
-        const toolExec = async (name: string, args: Record<string, unknown>) => {
-          const t = this.tools.get(name);
-          if (!t) return `Error: tool "${name}" not found`;
-          return t.execute(args);
+        // SECURITY — skill inner steps MUST replay the full gate chain.
+        //
+        // The original callback called `t.execute(args)` directly, which
+        // meant a skill step running `execute`, `write_file`, `app`, etc.
+        // bypassed schema validation, policy, risk, CORD, SPARK,
+        // capability check, permission, and audit — a variant of the
+        // same bypass POST /api/command/tool/run had. Any skill shipped
+        // or user-defined could be a back-door to those layers.
+        //
+        // Routing through `runSingleTool` applies the same gates every
+        // other tool call goes through. `interactivePrompt: true`
+        // matches the agent-loop execution context (REPL readline or
+        // dashboard-injected permission UI); the HTTP endpoint blocks
+        // `skill_*` at the outer gate (see src/dashboard/command-api.ts)
+        // so no HTTP request ever reaches this callback.
+        const toolExec = async (name: string, args: Record<string, unknown>): Promise<string> => {
+          if (!this.tools.get(name)) return `Error: tool "${name}" not found`;
+          const outcome = await this.runSingleTool(name, args, { interactivePrompt: true });
+          return outcome.result;
         };
         this.tools.register(skillToTool(skill, toolExec));
       }
@@ -474,136 +489,48 @@ export class Agent {
 
       for (const tc of toolCalls) {
         const toolName = tc.function.name;
-        const tool = this.tools.get(toolName);
 
-        if (!tool) {
-          prepared.push({
-            tc,
-            tool: null as unknown as Tool,
-            args: {},
-            denied: false,
-            error: `Error: Unknown tool "${toolName}"`,
-          });
-          continue;
-        }
-
-        // Policy check: is this tool allowed?
-        const policyCheck = this.policyEnforcer.isToolAllowed(toolName);
-        if (!policyCheck.allowed) {
-          this.auditLogger.log({ tool: toolName, action: 'policy_block', args: {}, reason: policyCheck.reason });
-          prepared.push({ tc, tool, args: {}, denied: false, error: `Error: ${policyCheck.reason}` });
-          continue;
-        }
-
+        // Parse JSON args up front — LLM-produced tool calls carry args as
+        // a JSON string; _prepareToolCall expects an object.
         let args: Record<string, unknown>;
         try {
           args = JSON.parse(tc.function.arguments);
         } catch {
-          prepared.push({ tc, tool, args: {}, denied: false, error: `Error: Invalid JSON arguments for ${toolName}` });
+          const tool = this.tools.get(toolName);
+          prepared.push({
+            tc,
+            tool: (tool || null) as unknown as Tool,
+            args: {},
+            denied: false,
+            error: `Error: Invalid JSON arguments for ${toolName}`,
+          });
           continue;
         }
 
-        // Arg validation against schema
-        const validationError = validateToolArgs(args, tool.parameters);
-        if (validationError) {
-          prepared.push({ tc, tool, args, denied: false, error: `Error: ${validationError} for ${toolName}` });
-          continue;
+        const { prepared: p, riskAssessment } = await this._prepareToolCall(
+          toolName,
+          args,
+          { interactivePrompt: true },
+        );
+        // Preserve the LLM-provided tool_call id so the downstream
+        // tool-result message carries the correct tool_call_id for the
+        // provider round-trip.
+        p.tc = tc;
+
+        // Yield a tool_call event only when the gate chain got as far as
+        // computing a risk score — i.e. the tool exists, policy allowed
+        // it, and args validated. Earlier bailouts (unknown tool, policy
+        // block, schema error) go straight to a tool_result error, same
+        // as before this refactor.
+        if (riskAssessment) {
+          yield {
+            type: 'tool_call',
+            toolCall: { name: toolName, args },
+            risk: { score: riskAssessment.score, level: riskAssessment.level },
+          };
         }
 
-        // Compute risk score before execution
-        const policyPermission = this.policyEnforcer.getToolPermission(toolName);
-        let effectivePermission = policyPermission || tool.permission;
-        const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
-        yield {
-          type: 'tool_call',
-          toolCall: { name: toolName, args },
-          risk: { score: riskAssessment.score, level: riskAssessment.level },
-        };
-
-        // Log risk breakdown for high-risk calls
-        if (riskAssessment.score > 50) {
-          const breakdown = riskAssessment.factors.map((f) => `${f.name}=${f.rawScore}`).join(', ');
-          this.auditLogger.log({
-            tool: toolName,
-            action: 'execute',
-            args,
-            result: `risk:${riskAssessment.score}`,
-            reason: breakdown,
-          });
-        }
-
-        // Constitutional safety check (CORD + VIGIL)
-        // Retry prevention: if the same tool+args were already blocked, deny immediately
-        const blockKey = `${toolName}:${JSON.stringify(args)}`;
-        if (this.cordBlockedKeys.has(blockKey)) {
-          prepared.push({ tc, tool, args, denied: true, error: 'Blocked by safety policy.' });
-          continue;
-        }
-        if (this.constitutional) {
-          const cordResult = this.constitutional.evaluateAction({
-            tool: toolName,
-            args,
-            type: TOOL_TYPE_MAP[toolName] || 'unknown',
-          });
-
-          if (cordResult.decision === 'BLOCK') {
-            this.trackCordBlock(blockKey);
-            this.auditLogger.log({
-              tool: toolName,
-              action: 'constitutional_block',
-              args,
-              reason: cordResult.explanation || 'Constitutional violation',
-            });
-            this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'constitutional' });
-            prepared.push({ tc, tool, args, denied: true, error: `Blocked by safety policy.` });
-            continue;
-          }
-
-          if (cordResult.decision === 'CHALLENGE') {
-            effectivePermission = 'always-ask';
-          }
-        }
-
-        // SPARK adaptive safety — learned judgment overrides autoApprove
-        let sparkChallenged = false;
-        if (this.stateEngine) {
-          try {
-            const sparkResult = this.stateEngine.evaluateTool(toolName, args);
-            if (sparkResult.decision === 'BLOCK') {
-              prepared.push({ tc, tool, args, denied: false, error: 'Error: Blocked by SPARK: ' + sparkResult.reason });
-              continue;
-            }
-            if (sparkResult.decision === 'CHALLENGE') {
-              effectivePermission = 'always-ask';
-              sparkChallenged = true;
-            }
-          } catch (e) {
-            log.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
-          }
-        }
-
-        // Permission check: policy override > tool default
-        // autoApprove bypasses ALL permission levels (autonomous/dashboard mode)
-        // EXCEPTION: SPARK's learned CHALLENGE overrides autoApprove — the system
-        // has learned from repeated failures that this category needs human review
-        const needsPermission =
-          sparkChallenged ||
-          (!this.autoApprove && (effectivePermission === 'always-ask' || effectivePermission === 'prompt'));
-
-        let denied = false;
-        if (needsPermission) {
-          const approved = await this.askPermission(toolName, args, riskAssessment, {
-            sandbox: this.policyEnforcer.getSandboxMode() === 'docker',
-            network: this.policyEnforcer.isNetworkAllowed(),
-          });
-          if (!approved) {
-            denied = true;
-            this.auditLogger.log({ tool: toolName, action: 'deny', args, reason: 'User denied permission' });
-            this.metricsCollector.increment('permission_denials_total', { tool: toolName });
-          }
-        }
-
-        prepared.push({ tc, tool, args, denied });
+        prepared.push(p);
       }
 
       // ── Phase 2: Execute tools (parallel where possible) ──
@@ -708,6 +635,254 @@ export class Agent {
   /** Get the token tracker for session summary / CLI display */
   getTokenTracker(): TokenTracker {
     return this.tokenTracker;
+  }
+
+  /**
+   * Validate + gate a single tool call through the full security chain:
+   *   schema validation → policy allow-list → risk scoring → CORD
+   *   (constitutional) → SPARK → permission.
+   *
+   * Returns a PreparedCall (with `denied` or `error` set when blocked) and
+   * the RiskAssessment (or null if we bailed before scoring — unknown
+   * tool, policy block, schema error). Audit entries for policy /
+   * constitutional / permission denials are written before return.
+   *
+   * Shared by the agent loop (`run()` Phase 1) and public `runSingleTool`
+   * so dashboard / IPC / script callers replay the exact same gates as
+   * autonomous-loop tool calls. Before 2026-04-23 the dashboard tool
+   * runner called `tool.execute(args)` directly on the registry entry,
+   * skipping this chain entirely — that bypass is what `runSingleTool`
+   * closes.
+   *
+   * @param opts.interactivePrompt — when false, tools that would require
+   *   a permission prompt (`always-ask` / `prompt` / SPARK challenge)
+   *   are auto-denied (fail-closed). Dashboard HTTP callers must pass
+   *   false because there is no user to prompt over the wire.
+   */
+  private async _prepareToolCall(
+    toolName: string,
+    args: Record<string, unknown>,
+    opts: { interactivePrompt: boolean },
+  ): Promise<{ prepared: PreparedCall; riskAssessment: RiskAssessment | null }> {
+    const tc: ToolCall = {
+      id: `call_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      type: 'function',
+      function: { name: toolName, arguments: JSON.stringify(args) },
+    };
+
+    const tool = this.tools.get(toolName);
+    if (!tool) {
+      return {
+        prepared: {
+          tc,
+          tool: null as unknown as Tool,
+          args,
+          denied: false,
+          error: `Error: Unknown tool "${toolName}"`,
+        },
+        riskAssessment: null,
+      };
+    }
+
+    // Policy allow-list
+    const policyCheck = this.policyEnforcer.isToolAllowed(toolName);
+    if (!policyCheck.allowed) {
+      this.auditLogger.log({ tool: toolName, action: 'policy_block', args, reason: policyCheck.reason });
+      return {
+        prepared: { tc, tool, args, denied: false, error: `Error: ${policyCheck.reason}` },
+        riskAssessment: null,
+      };
+    }
+
+    // Schema validation
+    const validationError = validateToolArgs(args, tool.parameters);
+    if (validationError) {
+      return {
+        prepared: { tc, tool, args, denied: false, error: `Error: ${validationError} for ${toolName}` },
+        riskAssessment: null,
+      };
+    }
+
+    // Risk scoring
+    const policyPermission = this.policyEnforcer.getToolPermission(toolName);
+    let effectivePermission = policyPermission || tool.permission;
+    const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
+
+    if (riskAssessment.score > 50) {
+      const breakdown = riskAssessment.factors.map((f) => `${f.name}=${f.rawScore}`).join(', ');
+      this.auditLogger.log({
+        tool: toolName,
+        action: 'execute',
+        args,
+        result: `risk:${riskAssessment.score}`,
+        reason: breakdown,
+      });
+    }
+
+    // CORD retry prevention — previously blocked tool+args combo denies
+    // immediately without re-invoking the constitutional layer.
+    const blockKey = `${toolName}:${JSON.stringify(args)}`;
+    if (this.cordBlockedKeys.has(blockKey)) {
+      return {
+        prepared: { tc, tool, args, denied: true, error: 'Blocked by safety policy.' },
+        riskAssessment,
+      };
+    }
+
+    // Constitutional (CORD + VIGIL)
+    if (this.constitutional) {
+      const cordResult = this.constitutional.evaluateAction({
+        tool: toolName,
+        args,
+        type: TOOL_TYPE_MAP[toolName] || 'unknown',
+      });
+
+      if (cordResult.decision === 'BLOCK') {
+        this.trackCordBlock(blockKey);
+        this.auditLogger.log({
+          tool: toolName,
+          action: 'constitutional_block',
+          args,
+          reason: cordResult.explanation || 'Constitutional violation',
+        });
+        this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'constitutional' });
+        return {
+          prepared: { tc, tool, args, denied: true, error: 'Blocked by safety policy.' },
+          riskAssessment,
+        };
+      }
+
+      if (cordResult.decision === 'CHALLENGE') {
+        effectivePermission = 'always-ask';
+      }
+    }
+
+    // SPARK adaptive safety — learned judgment overrides autoApprove
+    let sparkChallenged = false;
+    if (this.stateEngine) {
+      try {
+        const sparkResult = this.stateEngine.evaluateTool(toolName, args);
+        if (sparkResult.decision === 'BLOCK') {
+          return {
+            prepared: { tc, tool, args, denied: false, error: 'Error: Blocked by SPARK: ' + sparkResult.reason },
+            riskAssessment,
+          };
+        }
+        if (sparkResult.decision === 'CHALLENGE') {
+          effectivePermission = 'always-ask';
+          sparkChallenged = true;
+        }
+      } catch (e) {
+        log.warn(`[CodeBot] Failed to initialize state engine: ${(e as Error).message}`);
+      }
+    }
+
+    // Permission: policy override > tool default.
+    // autoApprove bypasses `always-ask`/`prompt` EXCEPT when SPARK
+    // raised a CHALLENGE (learned override).
+    const needsPermission =
+      sparkChallenged ||
+      (!this.autoApprove && (effectivePermission === 'always-ask' || effectivePermission === 'prompt'));
+
+    let denied = false;
+    if (needsPermission) {
+      if (!opts.interactivePrompt) {
+        // Non-interactive caller (dashboard HTTP, IPC, scripts) — fail
+        // closed instead of trying to prompt a user that isn't there.
+        this.auditLogger.log({
+          tool: toolName,
+          action: 'deny',
+          args,
+          reason: 'Non-interactive caller; tool requires permission prompt',
+        });
+        this.metricsCollector.increment('permission_denials_total', { tool: toolName });
+        denied = true;
+      } else {
+        const approved = await this.askPermission(toolName, args, riskAssessment, {
+          sandbox: this.policyEnforcer.getSandboxMode() === 'docker',
+          network: this.policyEnforcer.isNetworkAllowed(),
+        });
+        if (!approved) {
+          denied = true;
+          this.auditLogger.log({ tool: toolName, action: 'deny', args, reason: 'User denied permission' });
+          this.metricsCollector.increment('permission_denials_total', { tool: toolName });
+        }
+      }
+    }
+
+    return { prepared: { tc, tool, args, denied }, riskAssessment };
+  }
+
+  /**
+   * Public single-tool entry point for non-LLM callers (dashboard HTTP,
+   * IPC, scripts). Replays the full security chain — schema, policy,
+   * risk, CORD, SPARK, permission, audit — then executes the tool and
+   * returns the result.
+   *
+   * Dashboard tool-runner callsites must route through this method
+   * instead of `agent.getToolRegistry().get(name).execute(args)` — the
+   * latter completely skips the gate chain and was the bypass fixed in
+   * the 2026-04-23 security work.
+   *
+   * @param opts.interactivePrompt — defaults to false. Callers that can
+   *   block for an async user prompt may set this true; dashboard HTTP
+   *   should leave it false so always-ask tools fail closed.
+   */
+  async runSingleTool(
+    toolName: string,
+    args: Record<string, unknown>,
+    opts: { interactivePrompt?: boolean } = {},
+  ): Promise<{
+    result: string;
+    is_error: boolean;
+    blocked: boolean;
+    reason?: string;
+    durationMs?: number;
+  }> {
+    const { prepared } = await this._prepareToolCall(
+      toolName,
+      args ?? {},
+      { interactivePrompt: opts.interactivePrompt ?? false },
+    );
+
+    if (prepared.error) {
+      return {
+        result: prepared.error,
+        is_error: true,
+        blocked: prepared.denied,
+        reason: prepared.error,
+      };
+    }
+    if (prepared.denied) {
+      return {
+        result: 'Error: Blocked by safety policy.',
+        is_error: true,
+        blocked: true,
+        reason: 'Denied by policy / CORD / SPARK / permission gate',
+      };
+    }
+
+    const deps: ToolExecutorDeps = {
+      cache: this.cache,
+      rateLimiter: this.rateLimiter,
+      metricsCollector: this.metricsCollector,
+      auditLogger: this.auditLogger,
+      tokenTracker: this.tokenTracker,
+      stateEngine: this.stateEngine,
+      lastExecutedTools: this.lastExecutedTools,
+      ensureBranch: () => this.ensureBranch(),
+      checkToolCapabilities: (t, a) => this.checkToolCapabilities(t, a),
+      experientialMemory: this.experientialMemory,
+      currentTask: this.sessionGoal,
+    };
+
+    const output = await executeSingleTool(prepared, deps);
+    return {
+      result: output.content,
+      is_error: !!output.is_error,
+      blocked: false,
+      durationMs: output.durationMs,
+    };
   }
 
   /** Get the policy enforcer for inspection */
