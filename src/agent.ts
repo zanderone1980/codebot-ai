@@ -185,10 +185,25 @@ export class Agent {
       const { loadSkills, skillToTool } = require('./skills');
       const skills = loadSkills();
       for (const skill of skills) {
-        const toolExec = async (name: string, args: Record<string, unknown>) => {
-          const t = this.tools.get(name);
-          if (!t) return `Error: tool "${name}" not found`;
-          return t.execute(args);
+        // SECURITY — skill inner steps MUST replay the full gate chain.
+        //
+        // The original callback called `t.execute(args)` directly, which
+        // meant a skill step running `execute`, `write_file`, `app`, etc.
+        // bypassed schema validation, policy, risk, CORD, SPARK,
+        // capability check, permission, and audit — a variant of the
+        // same bypass POST /api/command/tool/run had. Any skill shipped
+        // or user-defined could be a back-door to those layers.
+        //
+        // Routing through `runSingleTool` applies the same gates every
+        // other tool call goes through. `interactivePrompt: true`
+        // matches the agent-loop execution context (REPL readline or
+        // dashboard-injected permission UI); the HTTP endpoint blocks
+        // `skill_*` at the outer gate (see src/dashboard/command-api.ts)
+        // so no HTTP request ever reaches this callback.
+        const toolExec = async (name: string, args: Record<string, unknown>): Promise<string> => {
+          if (!this.tools.get(name)) return `Error: tool "${name}" not found`;
+          const outcome = await this.runSingleTool(name, args, { interactivePrompt: true });
+          return outcome.result;
         };
         this.tools.register(skillToTool(skill, toolExec));
       }

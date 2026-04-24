@@ -184,4 +184,125 @@ describe('POST /api/command/tool/run — security gate chain', () => {
     );
     assert.strictEqual(res.status, 404, `expected 404, got ${res.status}: ${res.body}`);
   });
+
+  // ── Skill bypass (reviewer-flagged P1) ──
+  //
+  // Skill tools are composite: their `execute()` runs a pipeline of
+  // inner tool calls. Before this patch the inner-step callback called
+  // `t.execute(args)` directly, so a skill step running `execute`,
+  // `write_file`, etc. bypassed every gate on that inner step — a
+  // variant of the same bypass as the outer endpoint.
+  //
+  // Two layers close this: (a) block skill_* on the HTTP endpoint, (b)
+  // route the inner-step callback through runSingleTool so the gate
+  // chain replays for every step when invoked autonomously.
+
+  it('rejects skill_* invocations with 403 on /api/command/tool/run', async () => {
+    const { port, token } = await startServer();
+    // `standup-summary` is a built-in skill, always registered.
+    const toolName = 'skill_standup-summary';
+    assert.ok(
+      agent!.getToolRegistry().get(toolName),
+      'expected skill_standup-summary to be registered (built-in)',
+    );
+
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/tool/run`,
+      'POST',
+      token,
+      { tool: toolName, args: { channel: '#test' } },
+    );
+    assert.strictEqual(res.status, 403, `expected 403, got ${res.status}: ${res.body}`);
+    assert.match(
+      res.body,
+      /skill/i,
+      `expected error body to mention skills, got: ${res.body}`,
+    );
+  });
+
+  it('skill inner steps replay the gate chain — each step writes an audit entry', async () => {
+    // Isolate the CodeBot home so we can drop a fixture skill without
+    // touching the user's ~/.codebot/skills. Must be set BEFORE the
+    // Agent is constructed, because loadSkills() fires in the
+    // constructor.
+    const origHome = process.env.CODEBOT_HOME;
+    const cbHome = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-test-home-'));
+    process.env.CODEBOT_HOME = cbHome;
+    fs.mkdirSync(path.join(cbHome, 'skills'), { recursive: true });
+
+    // A minimal skill: one step that reads a fixture file. read_file is
+    // permission:'auto' and does NOT hit a CORD hard-block, so the
+    // inner step should pass through cleanly and — critically — go
+    // through executeSingleTool which writes a read_file audit entry.
+    // Pre-patch (`t.execute()` direct call) wrote no audit entry for
+    // the inner step.
+    const fixtureDirLocal = fs.mkdtempSync(path.join(os.tmpdir(), 'cb-test-skill-'));
+    const fixtureFile = path.join(fixtureDirLocal, 'note.txt');
+    fs.writeFileSync(fixtureFile, 'skill-inner-step-reached\n');
+
+    fs.writeFileSync(
+      path.join(cbHome, 'skills', 'test-read.json'),
+      JSON.stringify({
+        name: 'test-read',
+        description: 'Read a fixture file — test harness skill',
+        parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+        steps: [{ tool: 'read_file', args: { path: '{{input.path}}' } }],
+      }),
+    );
+
+    try {
+      // Fresh agent so loadSkills() picks up the fixture skill.
+      //
+      // `constitutional.enabled: false` — CORD currently returns a
+      // score-based BLOCK for any `skill_*` tool (score ~22, regardless
+      // of inner step). With CORD on, the outer skill invocation would
+      // never reach its inner steps, so we couldn't verify the
+      // inner-step gate chain is now wired. That CORD aggressiveness
+      // against skills is a separate issue tracked outside this PR.
+      // Disabling CORD here isolates the test to exactly what this
+      // patch changes: the inner-step callback writing audit entries.
+      const localAgent = new Agent({
+        provider: makeStubProvider(),
+        model: 'stub-model',
+        providerName: 'stub',
+        projectRoot: fixtureDirLocal,
+        autoApprove: true,
+        constitutional: { enabled: false },
+      });
+      const sessionId = localAgent.getAuditLogger().getSessionId();
+
+      const reg = localAgent.getToolRegistry();
+      assert.ok(
+        reg.get('skill_test-read'),
+        `expected skill_test-read to be registered; got skills=${reg.all().map(t => t.name).filter(n => n.startsWith('skill_')).join(',')}`,
+      );
+
+      const outcome = await localAgent.runSingleTool(
+        'skill_test-read',
+        { path: fixtureFile },
+        { interactivePrompt: true },
+      );
+
+      // Inner step should have passed through executeSingleTool, which
+      // writes an audit entry for read_file. Pre-patch code wrote NONE
+      // for inner steps.
+      const entries = localAgent.getAuditLogger().query({ sessionId });
+      const innerReadEntries = entries.filter(e => e.tool === 'read_file');
+      assert.ok(
+        innerReadEntries.length > 0,
+        `expected ≥1 audit entry for inner read_file step, got entries=${JSON.stringify(entries.map(e => ({ tool: e.tool, action: e.action })))}; outcome=${JSON.stringify(outcome)}`,
+      );
+
+      // Sanity: the outer skill tool returned the inner result.
+      assert.ok(
+        String(outcome.result).includes('skill-inner-step-reached'),
+        `expected outer skill result to contain inner read output, got: ${outcome.result}`,
+      );
+    } finally {
+      if (origHome === undefined) delete process.env.CODEBOT_HOME;
+      else process.env.CODEBOT_HOME = origHome;
+      try { fs.rmSync(cbHome, { recursive: true }); } catch { /* ignore */ }
+      try { fs.rmSync(fixtureDirLocal, { recursive: true }); } catch { /* ignore */ }
+    }
+  });
 });

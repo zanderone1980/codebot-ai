@@ -213,6 +213,36 @@ export function registerCommandRoutes(
       return;
     }
 
+    // SECURITY — skill_* tools are composite: their `execute()` runs a
+    // pipeline of inner tool calls (execute / write_file / app / etc.).
+    // Even though those inner steps are now routed through runSingleTool
+    // in agent.ts (the gate chain replays for every step), we still
+    // refuse skill invocations on this endpoint:
+    //
+    // 1. The inner-step callback is wired with `interactivePrompt: true`
+    //    to match the autonomous-loop context (REPL / dashboard
+    //    permission UI). If an HTTP caller reaches it, any inner step
+    //    that needs a prompt would invoke askPermission — which on an
+    //    HTTP-request thread with no UI attached would fail closed at
+    //    best and hang the request at worst.
+    // 2. Defense in depth: the dashboard UI has its own skill launcher
+    //    (with an explicit plan + confirmation step) that does NOT go
+    //    through this endpoint. A generic token-holder driving
+    //    skill_* through this route is an attack shape, not a
+    //    legitimate UX.
+    //
+    // If a future dashboard surface genuinely needs to drive skills
+    // over HTTP, add a dedicated endpoint that does step-by-step
+    // confirmation; do not lift this guard.
+    if (body.tool.startsWith('skill_')) {
+      DashboardServer.error(
+        res,
+        403,
+        'Skill tools must be invoked via the skill launcher, not the generic tool runner.',
+      );
+      return;
+    }
+
     const startMs = Date.now();
     const outcome = await agent.runSingleTool(body.tool, body.args || {}, {
       interactivePrompt: false,
