@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, before } from 'node:test';
 import * as assert from 'node:assert';
 import { ConstitutionalLayer } from './index';
 import { CordAdapter } from './adapter';
@@ -224,5 +224,59 @@ describe('ConstitutionalLayer — metrics', () => {
     assert.ok(metrics.recentDecisions.length <= 100);
 
     layer.stop();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// cord-engine sibling-prefix bypass (2026-04-23 patch)
+//
+// Stock cord-engine@4.3.0 checks sandbox allow-list membership with
+// `abs.startsWith(allowPath)`. That is a prefix string match, not a path
+// containment check, so `/tmp/project2/file.txt` passes a scope locked to
+// `/tmp/project`. patches/cord-engine+4.3.0.patch rewrites the check to
+// use `path.relative` on each allowPaths entry in both cord.js
+// (isPathAllowed) and sandbox.js (validatePath).
+//
+// We exercise SandboxedExecutor directly because it is the callable
+// surface most likely to be wired into an agent runtime — its
+// constructor accepts repoRoot + allowPaths so we can build a tight
+// scope and prove the fix holds.
+// ───────────────────────────────────────────────────────────────────────────
+describe('cord-engine sibling-prefix bypass — SandboxedExecutor (2026-04-23 patch)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { SandboxedExecutor } = require('cord-engine') as {
+    SandboxedExecutor: new (opts: {
+      repoRoot: string;
+      allowPaths?: string[];
+    }) => { validatePath: (p: string) => string };
+  };
+  const SCOPE_ROOT = '/tmp/project';
+  let sandbox: { validatePath: (p: string) => string };
+
+  before(() => {
+    sandbox = new SandboxedExecutor({
+      repoRoot: SCOPE_ROOT,
+      allowPaths: [SCOPE_ROOT],
+    });
+  });
+
+  it('allows the scope root itself', () => {
+    assert.doesNotThrow(() => sandbox.validatePath(SCOPE_ROOT));
+  });
+
+  it('allows a nested path under the scope', () => {
+    assert.doesNotThrow(() => sandbox.validatePath('/tmp/project/src/file.txt'));
+  });
+
+  it('BLOCKS sibling prefix /tmp/project2/file.txt (the real bypass)', () => {
+    assert.throws(() => sandbox.validatePath('/tmp/project2/file.txt'), /SANDBOX:/);
+  });
+
+  it('BLOCKS sibling prefix /tmp/project-old/file.txt', () => {
+    assert.throws(() => sandbox.validatePath('/tmp/project-old/file.txt'), /SANDBOX:/);
+  });
+
+  it('BLOCKS system path /etc/passwd', () => {
+    assert.throws(() => sandbox.validatePath('/etc/passwd'), /SANDBOX:/);
   });
 });

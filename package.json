@@ -20,7 +20,8 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "postbuild": "node -e \"require('fs').cpSync('src/dashboard/static','dist/dashboard/static',{recursive:true})\"",
     "prepublishOnly": "npm run build",
-    "pretest": "npm run build"
+    "pretest": "npm run build",
+    "postinstall": "patch-package"
   },
   "keywords": [
     "autonomous-agent",
@@ -88,6 +89,8 @@
     "eslint": "^10.0.2",
     "eslint-config-prettier": "^10.1.8",
     "flatted": "^3.4.2",
+    "patch-package": "^8.0.1",
+    "postinstall-postinstall": "^2.1.0",
     "prettier": "^3.8.1",
     "typescript": "^5.5.0"
   },

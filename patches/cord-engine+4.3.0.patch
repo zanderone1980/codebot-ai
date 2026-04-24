@@ -1,0 +1,49 @@
+diff --git a/node_modules/cord-engine/cord/cord.js b/node_modules/cord-engine/cord/cord.js
+index a5cd8a2..738d6b7 100644
+--- a/node_modules/cord-engine/cord/cord.js
++++ b/node_modules/cord-engine/cord/cord.js
+@@ -251,9 +251,17 @@ function ensureIntentLock() {
+ function isPathAllowed(targetPath, scope, repoRoot) {
+   if (!targetPath) return true;
+   const abs = path.resolve(targetPath);
+-  if (!abs.startsWith(repoRoot)) return false;
++  // v4.3.0 containment bug — `abs.startsWith(dir)` matches sibling
++  // prefixes: "/tmp/project2" starts with "/tmp/project" even though
++  // the trees are unrelated. Use path.relative to force a true parent
++  // relationship on each allowPaths entry.
++  const relToRoot = path.relative(repoRoot, abs);
++  if (relToRoot.startsWith("..") || path.isAbsolute(relToRoot)) return false;
+   if (!scope?.allowPaths || scope.allowPaths.length === 0) return false;
+-  return scope.allowPaths.some((p) => abs.startsWith(path.resolve(p)));
++  return scope.allowPaths.some((p) => {
++    const rel = path.relative(path.resolve(p), abs);
++    return !rel.startsWith("..") && !path.isAbsolute(rel);
++  });
+ }
+ 
+ function isNetworkAllowed(target = "", scope) {
+diff --git a/node_modules/cord-engine/cord/sandbox.js b/node_modules/cord-engine/cord/sandbox.js
+index 107db84..beb1bcf 100644
+--- a/node_modules/cord-engine/cord/sandbox.js
++++ b/node_modules/cord-engine/cord/sandbox.js
+@@ -65,8 +65,18 @@ class SandboxedExecutor {
+       ? path.resolve(filePath)
+       : path.resolve(this.repoRoot, filePath);
+ 
+-    // Check against allow-list
+-    const allowed = this.allowPaths.some(p => abs.startsWith(p));
++    // Check against allow-list.
++    // v4.3.0 containment bug — `abs.startsWith(dir)` matches sibling
++    // prefixes: "/tmp/project2" starts with "/tmp/project" even though
++    // the trees are unrelated. Use path.relative so a true parent
++    // relationship is required. The path.relative containment check
++    // below (line 81+) already catches it as a second gate, but relying
++    // on a second check as the rescue means one refactor away from
++    // silent loss of containment. Harden both gates so they agree.
++    const allowed = this.allowPaths.some(p => {
++      const rel = path.relative(p, abs);
++      return !rel.startsWith("..") && !path.isAbsolute(rel);
++    });
+     if (!allowed) {
+       throw new Error(`SANDBOX: Path outside allowed scope: ${abs}`);
+     }
