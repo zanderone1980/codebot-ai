@@ -558,8 +558,24 @@ export function registerCommandRoutes(
     // patterns, but this guarantees a 403 before any SSE headers go
     // out for the obvious bad cases, and keeps the standalone path
     // working unchanged if the agent is unavailable.
+    //
+    // Audit honesty: when the agent is attached, log the block through
+    // the agent's audit logger so the claim "dangerous command blocked
+    // and audited" is actually true on this code path. If the request
+    // never reaches `runStreamingTool`, nothing downstream will ever
+    // write that entry for us. Standalone mode has no audit logger —
+    // that is a known gap and is exactly what `guarded:false` warns
+    // about in the init event.
     for (const pattern of BLOCKED_PATTERNS) {
       if (pattern.test(body.command)) {
+        if (agent) {
+          agent.getAuditLogger().log({
+            tool: 'execute',
+            action: 'policy_block',
+            args: { command: body.command, ...(typeof body.cwd === 'string' ? { cwd: body.cwd } : {}) },
+            reason: 'inline BLOCKED_PATTERNS pre-check (dashboard /api/command/exec)',
+          });
+        }
         DashboardServer.error(res, 403, 'Blocked: dangerous command pattern detected');
         return;
       }

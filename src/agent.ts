@@ -941,6 +941,21 @@ export class Agent {
       };
     }
 
+    // Fine-grained capability check — the buffered path runs this
+    // inside executeSingleTool() (src/agent/tool-executor.ts:79), but
+    // `_prepareToolCall` does NOT. Without this call, a policy like
+    //   tools.capabilities.execute.shell_commands: ['npm']
+    // would block `npm install` via the buffered tool runner but let
+    // `git status` stream through /api/command/exec unchecked. Mirror
+    // the exact contract: audit `capability_block`, bump the same
+    // metric tag the buffered path uses, return a blocked outcome.
+    const capBlock = this.checkToolCapabilities(toolName, args);
+    if (capBlock) {
+      this.auditLogger.log({ tool: toolName, action: 'capability_block', args, reason: capBlock });
+      this.metricsCollector.increment('security_blocks_total', { tool: toolName, type: 'capability' });
+      return { blocked: true, reason: capBlock, errorCode: 'capability_block' };
+    }
+
     // Allow evidence — `_prepareToolCall` doesn't audit allows, so we
     // write exec_start here. This is the authoritative record that the
     // gate chain approved this specific args payload for streaming.

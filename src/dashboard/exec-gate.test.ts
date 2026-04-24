@@ -27,12 +27,16 @@ import type { LLMProvider, AgentEvent } from '../types';
  * exec_error (sandbox_required, spawn_error, etc.).
  *
  * Required coverage:
- *   1. dangerous command blocked, audited, no stdout
+ *   1. dangerous command blocked, audited (inline-regex 403 now writes
+ *      a `policy_block` audit entry in agent-backed mode), no stdout
  *   2. safe command streams stdout + exit 0, audits exec_start + exec_complete
  *   3. cwd outside project blocked
  *   4. sandbox-required streaming returns 501 and writes exec_error, no host spawn
  *   5. standalone agent=null still streams with init {mode:'standalone', guarded:false} and keeps regex block
  *   6. ExecuteTool preflight parity for accepted/rejected cases
+ *   7. fine-grained capability check blocks streaming for disallowed
+ *      shell_commands prefix (mirrors the buffered path's capability
+ *      gate — /api/command/exec must not bypass it)
  */
 
 function sseRequest(
@@ -168,24 +172,33 @@ describe('POST /api/command/exec — gate chain', () => {
       `expected no stdout events on block, got events=${JSON.stringify(res.events)}`,
     );
 
-    // Regex pre-check short-circuits before reaching the gate chain, so
-    // we don't expect an audit entry in this specific case. But if the
-    // inline wall is ever removed, the gate-chain path must fire. Prove
-    // that too: send an evasive variant that the inline regex does NOT
-    // match but that CORD / preflight should catch inside the tool.
-    // (The pre-check list is conservative; the tool repeats it.)
+    // Audit honesty: agent-backed mode now writes a `policy_block`
+    // audit entry before returning the inline-regex 403. Without this
+    // entry the PR claim "dangerous command blocked AND audited" is a
+    // lie on the inline-wall code path. The entry must carry the
+    // command so forensics can reconstruct what was attempted.
+    const earlyEntries = agent!.getAuditLogger().query({ sessionId: sessionId! });
+    const earlyBlocks = earlyEntries.filter(
+      (e) => e.tool === 'execute' && e.action === 'policy_block',
+    );
+    assert.ok(
+      earlyBlocks.length >= 1,
+      `expected ≥1 policy_block audit entry for inline-regex 403, got entries=${JSON.stringify(earlyEntries.map((e) => ({ tool: e.tool, action: e.action })))}`,
+    );
+    assert.strictEqual(
+      (earlyBlocks[0].args as { command?: string }).command,
+      'rm -rf /',
+      `expected audit entry to record the attempted command, got: ${JSON.stringify(earlyBlocks[0].args)}`,
+    );
+
+    // Gate-chain allow path: send a benign command that the inline
+    // regex does NOT match, prove it reaches the tool and produces the
+    // `exec_start` allow-evidence entry.
     const res2 = await sseRequest(
       `http://127.0.0.1:${port}/api/command/exec`,
       token,
-      // `rm -rf /etc` — destructive but not exactly matching the `/`
-      // root-delete regex in BLOCKED_PATTERNS. Whether this is caught
-      // depends on CORD. What we assert here is the property that
-      // matters: if the command reaches the tool and is rejected, an
-      // audit entry exists. If it streams, it was allowed (and that
-      // is a separate issue for CORD tuning, not this bypass fix).
       { command: 'echo via-gate-chain' },
     );
-    // sanity: that one reaches the gate chain
     assert.strictEqual(res2.status, 200, `expected 200 on allowed command, got ${res2.status}`);
     const entries = agent!.getAuditLogger().query({ sessionId: sessionId! });
     const execEntries = entries.filter((e) => e.tool === 'execute');
@@ -432,5 +445,108 @@ describe('POST /api/command/exec — gate chain', () => {
     } finally {
       try { fs.rmSync(root, { recursive: true }); } catch { /* ignore */ }
     }
+  });
+
+  // ── Test 7: fine-grained capability check blocks streaming ──────────
+  //
+  // The buffered tool runner (`executeSingleTool`) calls
+  // `checkToolCapabilities` after `_prepareToolCall`. The streaming path
+  // (`runStreamingTool`) must do the same, otherwise a policy that
+  // restricts execute.shell_commands to e.g. 'npm' would block
+  // `git status` via `runSingleTool` but let it stream through
+  // /api/command/exec. This test proves the capability gate is enforced
+  // on the streaming path and the block is audited as `capability_block`.
+  it('blocks streaming exec when command prefix is outside capability allow-list', async () => {
+    const { port, token, sessionId } = await startServer({
+      policy: {
+        version: '1',
+        tools: {
+          capabilities: {
+            execute: {
+              // Only `echo` prefix is allowed. The gate chain's policy
+              // allow-list is empty (= all tools enabled), inline
+              // BLOCKED_PATTERNS does not match `ls`, and CORD is
+              // disabled in startServer(). The ONLY thing standing
+              // between `ls /tmp` and a host spawn is the capability
+              // check inside runStreamingTool.
+              shell_commands: ['echo'],
+            },
+          },
+        },
+      },
+    });
+
+    // Allowed prefix — must reach the tool and stream.
+    const okRes = await sseRequest(
+      `http://127.0.0.1:${port}/api/command/exec`,
+      token,
+      { command: 'echo capability-allowed' },
+    );
+    assert.strictEqual(okRes.status, 200, `expected 200, got ${okRes.status}: ${okRes.raw}`);
+    const okExit = okRes.events.find((e) => e.type === 'exit');
+    assert.ok(okExit, `expected exit event for allowed prefix, got: ${JSON.stringify(okRes.events)}`);
+    assert.strictEqual(okExit!.code, 0);
+
+    // Disallowed prefix — `ls` is not in shell_commands. Must be
+    // blocked at the agent layer, must emit a blocked SSE event, must
+    // NOT stream stdout, must NOT emit an exit event.
+    const badRes = await sseRequest(
+      `http://127.0.0.1:${port}/api/command/exec`,
+      token,
+      { command: 'ls /tmp' },
+    );
+    assert.strictEqual(badRes.status, 200, `expected 200 SSE, got ${badRes.status}: ${badRes.raw}`);
+    const blocked = badRes.events.find((e) => e.type === 'blocked');
+    assert.ok(
+      blocked,
+      `expected blocked SSE event for capability-denied command, got events=${JSON.stringify(badRes.events)}`,
+    );
+    assert.match(
+      String(blocked!.reason),
+      /shell_commands|cannot run|capability/i,
+      `expected capability-shaped reason, got: ${blocked!.reason}`,
+    );
+    assert.ok(
+      !badRes.events.some((e) => e.type === 'stdout'),
+      'capability-blocked command must not stream any stdout',
+    );
+    assert.ok(
+      !badRes.events.some((e) => e.type === 'exit'),
+      'capability-blocked command must not spawn a process — no exit event',
+    );
+
+    // Audit — a `capability_block` entry for the execute tool with the
+    // attempted command. No `exec_start` for the blocked command (that
+    // would mean the block happened AFTER allow evidence was written,
+    // which is wrong).
+    const entries = agent!.getAuditLogger().query({ sessionId: sessionId! });
+    const capBlocks = entries.filter(
+      (e) => e.tool === 'execute' && e.action === 'capability_block',
+    );
+    assert.ok(
+      capBlocks.length >= 1,
+      `expected ≥1 capability_block audit entry, got ${JSON.stringify(entries.map((e) => ({ tool: e.tool, action: e.action })))}`,
+    );
+    const capBlock = capBlocks.find(
+      (e) => (e.args as { command?: string }).command === 'ls /tmp',
+    );
+    assert.ok(
+      capBlock,
+      `expected capability_block entry for 'ls /tmp', got: ${JSON.stringify(capBlocks.map((e) => e.args))}`,
+    );
+
+    // No exec_start for the blocked command — allow evidence must not
+    // precede a block.
+    const starts = entries.filter(
+      (e) =>
+        e.tool === 'execute' &&
+        e.action === 'exec_start' &&
+        (e.args as { command?: string }).command === 'ls /tmp',
+    );
+    assert.strictEqual(
+      starts.length,
+      0,
+      `exec_start must not be written for capability-blocked command, got ${JSON.stringify(starts)}`,
+    );
   });
 });
