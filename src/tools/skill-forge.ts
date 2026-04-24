@@ -37,12 +37,30 @@ interface ForgedSkill {
   updated_at: string;
 }
 
+/**
+ * Validate a skill *name* — must be usable as a filename AND safe to
+ * interpolate into path.join without escaping the skills dir. Single
+ * source of truth used by every op that touches `<name>.json` on disk.
+ *
+ * 2026-04-23 hardening: before this, only _create called the pattern
+ * (indirectly via validateSkill). reinforceSkill / _delete / _inspect
+ * accepted a raw `name` and did `path.join(skillsDir, \`${name}.json\`)`
+ * — a name of `../../../tmp/pwn` resolved OUTSIDE the skills dir, so
+ * the agent could unlink / read / overwrite arbitrary .json files on
+ * the user's machine. Traversal closed by routing every op through
+ * isValidSkillName first.
+ */
+const SKILL_NAME_RE = /^[a-zA-Z0-9_-]+$/;
+function isValidSkillName(name: unknown): name is string {
+  return typeof name === 'string' && name.length > 0 && SKILL_NAME_RE.test(name);
+}
+
 /** Validate a skill definition before writing */
 function validateSkill(skill: Record<string, unknown>): string | null {
   if (!skill.name || typeof skill.name !== 'string') {
     return 'Skill must have a non-empty string "name"';
   }
-  if (!/^[a-zA-Z0-9_-]+$/.test(skill.name)) {
+  if (!isValidSkillName(skill.name)) {
     return 'Skill name must only contain a-z, 0-9, hyphens, and underscores';
   }
   if (!skill.description || typeof skill.description !== 'string') {
@@ -100,6 +118,7 @@ function listSkills(): ForgedSkill[] {
 
 /** Reinforce a skill (bump confidence and use_count) */
 function reinforceSkill(name: string, success: boolean): string {
+  if (!isValidSkillName(name)) return `Error: invalid skill name — must match ${SKILL_NAME_RE}`;
   const skillPath = path.join(codebotPath('skills'), `${name}.json`);
   if (!fs.existsSync(skillPath)) return `Skill "${name}" not found`;
 
@@ -248,6 +267,7 @@ export class SkillForgeTool implements Tool {
 
   private _delete(name: string): string {
     if (!name) return 'Must provide skill name to delete';
+    if (!isValidSkillName(name)) return `Error: invalid skill name — must match ${SKILL_NAME_RE}`;
     const skillPath = path.join(codebotPath('skills'), `${name}.json`);
     if (!fs.existsSync(skillPath)) return `Skill "${name}" not found`;
 
@@ -257,6 +277,7 @@ export class SkillForgeTool implements Tool {
 
   private _inspect(name: string): string {
     if (!name) return 'Must provide skill name to inspect';
+    if (!isValidSkillName(name)) return `Error: invalid skill name — must match ${SKILL_NAME_RE}`;
     const skillPath = path.join(codebotPath('skills'), `${name}.json`);
     if (!fs.existsSync(skillPath)) return `Skill "${name}" not found`;
 

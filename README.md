@@ -158,7 +158,7 @@ Custom tools via `.codebot/plugins/` · MCP servers via `.codebot/mcp.json` · [
 ## The honest limits
 
 - **Not a Cursor replacement.** No tab-completion, no inline suggestions, no in-editor UX.
-- **Autonomous ≠ perfect.** SWE-bench Verified pass rate is 34% unattended. Humans still need to review PRs.
+- **Autonomous ≠ perfect.** SWE-bench Verified pass rate is 34% unattended on our 50-task slice (17/50, Docker-scored, run 2026-04-16; [full report](docs/benchmarks/swe-bench-verified-2026-04-16-50tasks.md)). Humans still need to review PRs.
 - **Local LLM quality is LLM-dependent.** A 7B model won't solve what gpt-5.4 solves. You pick the tradeoff.
 - **Policy enforcement is safety, not a guarantee.** CORD + risk scoring reduce the blast radius of agent mistakes; they don't eliminate them. Use git, use branches, use CI.
 

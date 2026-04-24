@@ -1,4 +1,6 @@
 import { Tool } from '../types';
+import { validateAndPinOutboundUrl } from '../net-guard';
+import { fetch as undiciFetch } from 'undici';
 
 export class NotificationTool implements Tool {
   name = 'notification';
@@ -71,16 +73,33 @@ export class NotificationTool implements Tool {
   }
 
   private async post(url: string, payload: Record<string, unknown>): Promise<string> {
+    // 2026-04-23 hardening: webhook URL comes straight from the agent.
+    // Without the pin, nothing stopped `notification webhook http://169.254.169.254/...`
+    // from exfiltrating cloud-metadata creds, or `http://localhost:8000/admin`
+    // from hitting the user's own services. Same SSRF posture as web_fetch.
+    const pin = await validateAndPinOutboundUrl(url);
+    if (pin.blockReason) {
+      return `Error: webhook URL blocked for security (${pin.blockReason}).`;
+    }
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 15_000);
 
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
+      const res = pin.dispatcher
+        ? await undiciFetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+            dispatcher: pin.dispatcher,
+          })
+        : await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
       clearTimeout(timer);
 
       if (res.ok) return `Notification sent (${res.status}).`;

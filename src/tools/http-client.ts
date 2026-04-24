@@ -1,5 +1,6 @@
 import { Tool } from '../types';
-import { validateOutboundUrl } from '../net-guard';
+import { validateAndPinOutboundUrl } from '../net-guard';
+import { fetch as undiciFetch } from 'undici';
 
 export class HttpClientTool implements Tool {
   name = 'http_client';
@@ -22,26 +23,29 @@ export class HttpClientTool implements Tool {
     const url = args.url as string;
     if (!url) return 'Error: url is required';
 
-    // P2-1 fix: was `this.isBlocked(parsedUrl)` — literal hostname
-    // string match only, which missed DNS→private-IP redirects. Now
-    // goes through validateOutboundUrl which does literal + DNS
-    // resolution check. The legacy isBlocked method below is kept
-    // for backwards compat but no longer the first line of defense.
-    let parsedUrl: URL;
+    // P2-1 fix (2025): literal + DNS check. validateOutboundUrl caught
+    // hostnames that resolved to private IPs — not just literal loopbacks.
+    //
+    // 2026-04-23 (external review): the P2-1 check resolved once here and
+    // `fetch` resolved again before connecting. A DNS-rebinding attacker
+    // could return a public IP on the first query and a private IP on the
+    // second. Fixed by `validateAndPinOutboundUrl`: resolves once,
+    // deny-lists, and hands back a dispatcher whose connect-time lookup is
+    // pinned to the already-validated IP. No second resolve.
     try {
-      parsedUrl = new URL(url);
+      new URL(url);
     } catch {
       return `Error: invalid URL: ${url}`;
     }
-    const blockReason = await validateOutboundUrl(url);
-    if (blockReason) {
+    const pin = await validateAndPinOutboundUrl(url);
+    if (pin.blockReason) {
       // Keep the legacy wording ("blocked for security") that downstream
       // tooling/tests grep for; append the specific reason in parens.
-      if (/^Invalid URL/.test(blockReason)) return `Error: invalid URL: ${url}`;
-      if (/^Blocked protocol/.test(blockReason)) {
-        return `Error: requests to unsupported protocols are blocked for security (${blockReason}).`;
+      if (/^Invalid URL/.test(pin.blockReason)) return `Error: invalid URL: ${url}`;
+      if (/^Blocked protocol/.test(pin.blockReason)) {
+        return `Error: requests to unsupported protocols are blocked for security (${pin.blockReason}).`;
       }
-      return `Error: requests to private/local addresses are blocked for security (${blockReason}).`;
+      return `Error: requests to private/local addresses are blocked for security (${pin.blockReason}).`;
     }
 
     const method = ((args.method as string) || 'GET').toUpperCase();
@@ -68,12 +72,23 @@ export class HttpClientTool implements Tool {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const res = await fetch(url, {
-        method,
-        headers,
-        body: ['GET', 'HEAD'].includes(method) ? undefined : body,
-        signal: controller.signal,
-      });
+      // Use undici's fetch when we have a pinned dispatcher so the IP we
+      // validated is the IP that gets dialed. Fall back to the global
+      // fetch only for IP-literal URLs where no pin is needed.
+      const res = pin.dispatcher
+        ? await undiciFetch(url, {
+            method,
+            headers,
+            body: ['GET', 'HEAD'].includes(method) ? undefined : body,
+            signal: controller.signal,
+            dispatcher: pin.dispatcher,
+          })
+        : await fetch(url, {
+            method,
+            headers,
+            body: ['GET', 'HEAD'].includes(method) ? undefined : body,
+            signal: controller.signal,
+          });
 
       const contentType = res.headers.get('content-type') || '';
       let responseBody: string;
@@ -111,12 +126,4 @@ export class HttpClientTool implements Tool {
     }
   }
 
-  private isBlocked(url: URL): boolean {
-    const host = url.hostname.toLowerCase();
-    if (url.protocol === 'file:') return true;
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0') return true;
-    if (host === '169.254.169.254') return true; // cloud metadata
-    if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
-    return false;
-  }
 }

@@ -7,6 +7,8 @@
  */
 
 import { Tool } from '../types';
+import { validateAndPinOutboundUrl } from '../net-guard';
+import { fetch as undiciFetch } from 'undici';
 
 const TIMEOUT = 30_000;
 const MAX_SOURCES = 8;
@@ -77,14 +79,29 @@ async function webSearch(query: string): Promise<SearchResult[]> {
 }
 
 async function fetchPageContent(url: string): Promise<string> {
+  // 2026-04-23 hardening: URLs here come from DuckDuckGo result parsing,
+  // which means attackers who seed SEO (or flip a DNS record for a crawled
+  // domain) can steer the research tool at loopback / metadata / private
+  // IPs. Treat every fetched URL as untrusted and pin to the resolved IP.
+  const pin = await validateAndPinOutboundUrl(url);
+  if (pin.blockReason) {
+    return `[blocked: ${pin.blockReason}]`;
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT);
 
   try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'CodeBot-Research/1.0' },
-      signal: controller.signal,
-    });
+    const res = pin.dispatcher
+      ? await undiciFetch(url, {
+          headers: { 'User-Agent': 'CodeBot-Research/1.0' },
+          signal: controller.signal,
+          dispatcher: pin.dispatcher,
+        })
+      : await fetch(url, {
+          headers: { 'User-Agent': 'CodeBot-Research/1.0' },
+          signal: controller.signal,
+        });
     clearTimeout(timer);
 
     if (!res.ok) return '';

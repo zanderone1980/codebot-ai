@@ -262,3 +262,66 @@ describe('SkillForge — shared metadata compatibility', () => {
     assert.ok(result.includes('Origin: promoted'));
   });
 });
+
+// ── 2026-04-23 sweep: path-traversal regression tests ──────────────────
+//
+// Before this sweep, only _create validated the skill name against
+// /^[a-zA-Z0-9_-]+$/. reinforceSkill / _delete / _inspect accepted any
+// string and did `path.join(skillsDir, \`${name}.json\`)` — so a name of
+// `../../../tmp/pwn` let the agent unlink, read, or overwrite .json
+// files outside the skills dir. These tests prove every op now rejects
+// traversal before touching the filesystem.
+describe('SkillForge Tool — path-traversal protection (2026-04-23)', () => {
+  const tmpDir = path.join(os.tmpdir(), 'codebot-forge-trav-' + Date.now());
+  const skillsDir = path.join(tmpDir, 'skills');
+  // A canary file OUTSIDE the skills dir — the traversal, if it worked,
+  // would target something like this.
+  const canaryOutside = path.join(tmpDir, 'should-stay-safe.json');
+  let forge: SkillForgeTool;
+
+  before(() => {
+    process.env.CODEBOT_HOME = tmpDir;
+    fs.mkdirSync(skillsDir, { recursive: true });
+    fs.writeFileSync(canaryOutside, '{"canary":"do not touch"}');
+    forge = new SkillForgeTool();
+  });
+
+  after(() => {
+    delete process.env.CODEBOT_HOME;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  const traversalNames = [
+    '../should-stay-safe',           // one level up, existing file
+    '../../etc/passwd',              // classic
+    '..\\windows\\traversal',        // backslash variant
+    'a/b',                           // embedded slash
+    'a.b',                           // dot (would let ".json" land mid-name)
+    ' ',                             // whitespace only
+  ];
+
+  for (const bad of traversalNames) {
+    it(`rejects traversal on reinforce: "${bad}"`, async () => {
+      const before = fs.existsSync(canaryOutside) ? fs.readFileSync(canaryOutside, 'utf-8') : null;
+      const result = await forge.execute({ action: 'reinforce', name: bad, success: true });
+      assert.match(result, /invalid skill name|Must provide|not found/i, `got: ${result}`);
+      if (before !== null) {
+        assert.strictEqual(fs.readFileSync(canaryOutside, 'utf-8'), before, 'canary must not be overwritten');
+      }
+    });
+
+    it(`rejects traversal on delete: "${bad}"`, async () => {
+      const canaryExisted = fs.existsSync(canaryOutside);
+      const result = await forge.execute({ action: 'delete', name: bad });
+      assert.match(result, /invalid skill name|Must provide|not found/i, `got: ${result}`);
+      if (canaryExisted) {
+        assert.ok(fs.existsSync(canaryOutside), 'canary must not be unlinked');
+      }
+    });
+
+    it(`rejects traversal on inspect: "${bad}"`, async () => {
+      const result = await forge.execute({ action: 'inspect', name: bad });
+      assert.match(result, /invalid skill name|Must provide|not found/i, `got: ${result}`);
+    });
+  }
+});

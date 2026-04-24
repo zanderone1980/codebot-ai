@@ -169,6 +169,56 @@ describe('POST /api/command/vault — dashboard vault control', () => {
     assert.strictEqual(agent!.getVaultMode(), null);
   });
 
+  it('disabling vault restores pre-vault projectRoot + cwd (2026-04-23 regression)', async () => {
+    // Regression test for external review finding: setVaultMode(null) was
+    // leaving projectRoot = vaultPath and cwd inside the vault, which meant
+    // the rehydrated coding agent came back with write-enabled tools rooted
+    // in the user's notes folder. Fixed by snapshotting pre-vault state on
+    // enable and restoring on disable.
+    const { port, token } = await startServer();
+    const preVaultRoot = agent!.getProjectRoot();
+    const preVaultCwd = process.cwd();
+    assert.notStrictEqual(preVaultRoot, fixtureVault, 'precondition: agent should not already be in the fixture vault');
+
+    // Enable
+    await request(
+      `http://127.0.0.1:${port}/api/command/vault`,
+      'POST',
+      token,
+      { vaultPath: fixtureVault! },
+    );
+    // Vault active: projectRoot moved into the vault, cwd moved too
+    assert.ok(
+      agent!.getProjectRoot() === fixtureVault ||
+        agent!.getProjectRoot() === fs.realpathSync(fixtureVault!),
+      `vault enable should move projectRoot into the vault, got ${agent!.getProjectRoot()}`,
+    );
+    assert.ok(
+      process.cwd() === fixtureVault || process.cwd() === fs.realpathSync(fixtureVault!),
+      `vault enable should chdir into the vault, got ${process.cwd()}`,
+    );
+
+    // Disable
+    await request(
+      `http://127.0.0.1:${port}/api/command/vault`,
+      'POST',
+      token,
+      { vaultPath: '' },
+    );
+
+    // projectRoot and cwd must be restored, not left inside the vault.
+    assert.strictEqual(
+      agent!.getProjectRoot(),
+      preVaultRoot,
+      'disabling vault must restore projectRoot to pre-vault value',
+    );
+    assert.strictEqual(
+      process.cwd(),
+      preVaultCwd,
+      'disabling vault must restore cwd to pre-vault value',
+    );
+  });
+
   it('POST with non-existent path returns 400', async () => {
     const { port, token } = await startServer();
     const res = await request(
@@ -192,6 +242,106 @@ describe('POST /api/command/vault — dashboard vault control', () => {
     );
     assert.strictEqual(res.status, 400);
     assert.match(res.body, /not a directory/);
+  });
+
+  it('POST /api/command/exec audits + blocks destructive commands (2026-04-23)', async () => {
+    // Regression test for external review finding: /api/command/exec used to
+    // be gated only by BLOCKED_PATTERNS regex, bypassing CORD. Now every
+    // attempt is audited and constitutionally checked.
+    const { port, token } = await startServer();
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/exec`,
+      'POST',
+      token,
+      { command: 'rm -rf /' },
+    );
+    assert.strictEqual(res.status, 403, 'rm -rf / must be blocked');
+    // Either CORD or BLOCKED_PATTERNS can catch this; the important
+    // assertion is that it's blocked AND an audit entry was written.
+    const auditor = agent!.getAuditLogger();
+    const entries = auditor.query({ tool: 'dashboard_exec' });
+    assert.ok(
+      entries.some(e => e.action === 'constitutional_block' || e.action === 'security_block'),
+      `expected a block entry in the audit log, got ${JSON.stringify(entries.map(e => e.action))}`,
+    );
+  });
+
+  it('POST /api/command/exec audits successful commands (2026-04-23)', async () => {
+    const { port, token } = await startServer();
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/exec`,
+      'POST',
+      token,
+      { command: 'echo hello' },
+    );
+    // SSE stream returns 200; we just need to confirm the execute entry
+    // made it into the audit log.
+    assert.strictEqual(res.status, 200);
+    const auditor = agent!.getAuditLogger();
+    const entries = auditor.query({ tool: 'dashboard_exec' });
+    assert.ok(
+      entries.some(e => e.action === 'execute' && typeof e.args.command === 'string' && (e.args.command as string).includes('echo hello')),
+      `expected execute entry for echo hello, got ${JSON.stringify(entries)}`,
+    );
+  });
+
+  it('POST /api/command/tool/run rejects unknown tool with 404 + audit (2026-04-23)', async () => {
+    // Regression test for external review finding: /tool/run used to call
+    // tool.execute(args) directly with no validation/CORD/audit. Now it
+    // routes through agent.evaluateToolCall() and audits the verdict.
+    const { port, token } = await startServer();
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/tool/run`,
+      'POST',
+      token,
+      { tool: 'definitely_not_a_real_tool', args: {} },
+    );
+    assert.strictEqual(res.status, 404);
+    const auditor = agent!.getAuditLogger();
+    const entries = auditor.query({ tool: 'dashboard_tool_run' });
+    assert.ok(
+      entries.some(e => e.action === 'deny'),
+      `expected a deny entry for unknown tool, got ${JSON.stringify(entries.map(e => e.action))}`,
+    );
+  });
+
+  it('POST /api/command/tool/run rejects missing required args with 400 + audit (2026-04-23)', async () => {
+    const { port, token } = await startServer();
+    // read_file requires `path` — send without it
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/tool/run`,
+      'POST',
+      token,
+      { tool: 'read_file', args: {} },
+    );
+    assert.strictEqual(res.status, 400);
+    const auditor = agent!.getAuditLogger();
+    const entries = auditor.query({ tool: 'dashboard_tool_run' });
+    assert.ok(
+      entries.some(e => e.action === 'deny'),
+      `expected a deny entry for missing args, got ${JSON.stringify(entries.map(e => e.action))}`,
+    );
+  });
+
+  it('POST /api/command/tool/run audits successful tool execution (2026-04-23)', async () => {
+    const { port, token } = await startServer();
+    // Valid read_file of the fixture's note.md
+    const res = await request(
+      `http://127.0.0.1:${port}/api/command/tool/run`,
+      'POST',
+      token,
+      { tool: 'read_file', args: { path: path.join(fixtureVault!, 'note.md') } },
+    );
+    assert.strictEqual(res.status, 200);
+    const body = JSON.parse(res.body);
+    assert.ok(!body.is_error, `expected success, got: ${JSON.stringify(body).slice(0, 300)}`);
+    assert.ok(body.risk, 'response must include risk assessment');
+    const auditor = agent!.getAuditLogger();
+    const entries = auditor.query({ tool: 'dashboard_tool_run' });
+    assert.ok(
+      entries.some(e => e.action === 'execute' && typeof e.args.tool === 'string' && e.args.tool === 'read_file'),
+      `expected execute entry for read_file, got ${JSON.stringify(entries.map(e => `${e.action}:${e.args.tool}`))}`,
+    );
   });
 
   it('POST expands ~ to homedir', async () => {

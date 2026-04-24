@@ -95,7 +95,8 @@
     "typescript": "^5.5.0"
   },
   "dependencies": {
-    "cord-engine": "^4.1.0"
+    "cord-engine": "^4.1.0",
+    "undici": "^8.1.0"
   },
   "optionalDependencies": {
     "@ai-operations/ops-storage": "^0.1.0",

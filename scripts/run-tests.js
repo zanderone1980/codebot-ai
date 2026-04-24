@@ -10,7 +10,7 @@
 
 const { readdirSync, statSync, existsSync } = require('fs');
 const { join } = require('path');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // ── Stale dist/ detection ──
 function checkDistFreshness() {
@@ -72,8 +72,12 @@ if (testFiles.length === 0) {
 
 console.log(`Found ${testFiles.length} test files`);
 
+// Use execFileSync (argv array), NOT execSync with an interpolated string.
+// A test path containing a space or shell metacharacter ($, ;, `, etc.)
+// would either break argv parsing or enable injection through the shell.
+// Found by external review 2026-04-23.
 try {
-  execSync(`node --test ${testFiles.join(' ')}`, { stdio: 'inherit' });
+  execFileSync('node', ['--test', ...testFiles], { stdio: 'inherit' });
 } catch (err) {
   process.exit(err.status || 1);
 }

@@ -1,6 +1,7 @@
 import { Tool } from '../types';
 import { cacheGet, cacheSet } from '../offline-cache';
-import { validateOutboundUrl } from '../net-guard';
+import { validateAndPinOutboundUrl } from '../net-guard';
+import { fetch as undiciFetch } from 'undici';
 
 export class WebFetchTool implements Tool {
   name = 'web_fetch';
@@ -101,14 +102,17 @@ export class WebFetchTool implements Tool {
     if (!url) return 'Error: url is required';
     const method = (args.method as string) || 'GET';
 
-    // P2-1 fix: was `this.validateUrl(url)` (literal string check only).
-    // Now does literal check AND DNS resolution — a hostname that
-    // points at a private IP gets blocked. validateOutboundUrl
-    // supersedes the private validateUrl below; kept the legacy
-    // method around for callers that invoke it directly, but the
-    // execution path now goes through the DNS-aware guard.
-    const urlError = await validateOutboundUrl(url);
-    if (urlError) return `Error: ${urlError}`;
+    // P2-1 (2025): literal + DNS check. validateOutboundUrl caught
+    // hostnames that resolved to private IPs — not just literal loopbacks.
+    //
+    // 2026-04-23 (external review): the P2-1 check resolved once here and
+    // `fetch` resolved again before connecting. A DNS-rebinding attacker
+    // could return a public IP on the first query and a private IP on the
+    // second. Fixed by `validateAndPinOutboundUrl`: it resolves once,
+    // deny-list-checks, and hands back a dispatcher whose connect-time
+    // lookup is pinned to the already-validated IP. No second resolve.
+    const pin = await validateAndPinOutboundUrl(url);
+    if (pin.blockReason) return `Error: ${pin.blockReason}`;
     const headers: Record<string, string> = (args.headers as Record<string, string>) || {};
 
     let body: string | undefined;
@@ -126,12 +130,23 @@ export class WebFetchTool implements Tool {
       const controller = new AbortController();
       const bodyTimeout = setTimeout(() => controller.abort(), 30_000);
 
-      const res = await fetch(url, {
-        method,
-        headers,
-        body,
-        signal: controller.signal,
-      });
+      // Use undici's fetch when we have a pinned dispatcher so the IP
+      // we validated is the IP that gets dialed. Fall back to the global
+      // fetch only for IP-literal URLs where no pin is needed.
+      const res = pin.dispatcher
+        ? await undiciFetch(url, {
+            method,
+            headers,
+            body,
+            signal: controller.signal,
+            dispatcher: pin.dispatcher,
+          })
+        : await fetch(url, {
+            method,
+            headers,
+            body,
+            signal: controller.signal,
+          });
 
       const contentType = res.headers.get('content-type') || '';
       let responseText: string;

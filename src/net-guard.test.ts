@@ -1,10 +1,15 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import * as assert from 'node:assert';
+import * as http from 'http';
+import { AddressInfo } from 'net';
+import { fetch as undiciFetch } from 'undici';
 import {
   ipIsPrivate,
   checkHostnameLiteral,
   resolveAndCheck,
   validateOutboundUrl,
+  validateAndPinOutboundUrl,
+  createPinnedDispatcher,
 } from './net-guard';
 
 describe('ipIsPrivate', () => {
@@ -121,5 +126,86 @@ describe('validateOutboundUrl — end-to-end', () => {
   it('allows public HTTPS URLs', async () => {
     const r = await validateOutboundUrl('https://example.com/');
     assert.strictEqual(r, null);
+  });
+});
+
+// ── 2026-04-23: IP-pinning (DNS rebinding / TOCTOU mitigation) ──────────
+//
+// Stand up a real HTTP server on 127.0.0.1:PORT and pin a dispatcher to
+// that IP. Then fetch an ARBITRARY hostname (one that definitely does
+// not resolve to 127.0.0.1) through the dispatcher. If the request
+// reaches the server, the pin worked — connect-time lookup used the
+// pinned IP instead of re-resolving the hostname.
+//
+// This is the concrete proof that closes the TOCTOU window: it doesn't
+// matter what DNS says between validation and connect, because connect
+// doesn't ask DNS.
+
+describe('createPinnedDispatcher — connect-time lookup uses pinned IP', () => {
+  let server: http.Server;
+  let port: number;
+  let hits: Array<{ url: string | undefined; host: string | undefined }> = [];
+
+  before(async () => {
+    server = http.createServer((req, res) => {
+      hits.push({ url: req.url, host: req.headers.host });
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('pinned-ok');
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    port = (server.address() as AddressInfo).port;
+  });
+
+  after(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('dispatcher dials the pinned IP regardless of hostname', async () => {
+    hits = [];
+    const dispatcher = createPinnedDispatcher('127.0.0.1', 4);
+    // This hostname is in the IANA "invalid" TLD — guaranteed not to
+    // resolve to 127.0.0.1 via real DNS. If the request lands on our
+    // server, it's because the dispatcher bypassed DNS entirely.
+    const res = await undiciFetch(`http://definitely-not-a-real-host.invalid:${port}/pin-test`, { dispatcher });
+    const body = await res.text();
+    assert.strictEqual(res.status, 200);
+    assert.strictEqual(body, 'pinned-ok');
+    assert.strictEqual(hits.length, 1, 'server should see exactly one request');
+    assert.strictEqual(hits[0].url, '/pin-test');
+    // The Host header still carries the original hostname — SNI/vhost
+    // routing keeps working, which is the whole point of pinning IP
+    // separately from hostname.
+    assert.match(hits[0].host || '', /definitely-not-a-real-host\.invalid/);
+  });
+});
+
+describe('validateAndPinOutboundUrl — contract', () => {
+  it('blocks non-http(s) protocol with null dispatcher', async () => {
+    const r = await validateAndPinOutboundUrl('file:///etc/passwd');
+    assert.match(r.blockReason!, /protocol/);
+    assert.strictEqual(r.dispatcher, null);
+    assert.strictEqual(r.resolvedIp, null);
+  });
+  it('blocks private literal IP with null dispatcher', async () => {
+    const r = await validateAndPinOutboundUrl('http://10.0.0.1/x');
+    assert.match(r.blockReason!, /10\.x/);
+    assert.strictEqual(r.dispatcher, null);
+  });
+  it('IP-literal public URL passes without a dispatcher (no pin needed)', async () => {
+    const r = await validateAndPinOutboundUrl('http://1.1.1.1/');
+    assert.strictEqual(r.blockReason, null);
+    assert.strictEqual(r.dispatcher, null, 'no dispatcher: IP is already the final address');
+    assert.strictEqual(r.resolvedIp, '1.1.1.1');
+  });
+  it('public hostname returns a dispatcher pinned to a resolved IP', async () => {
+    const r = await validateAndPinOutboundUrl('https://example.com/');
+    assert.strictEqual(r.blockReason, null);
+    assert.ok(r.dispatcher, 'expected a pinned dispatcher for public hostname');
+    assert.ok(r.resolvedIp && /^\d+\.\d+\.\d+\.\d+$|:/.test(r.resolvedIp), `expected IP, got ${r.resolvedIp}`);
+  });
+  it('hostname that resolves to loopback is blocked with null dispatcher', async () => {
+    const r = await validateAndPinOutboundUrl('http://localhost/');
+    assert.ok(r.blockReason, 'localhost must be blocked');
+    assert.strictEqual(r.dispatcher, null);
   });
 });

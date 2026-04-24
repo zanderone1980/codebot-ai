@@ -90,6 +90,17 @@ export class Agent {
   private askPermission: AskPermissionFn;
   private onMessage?: (message: Message) => void;
   private vaultMode?: { vaultPath: string; writable: boolean; networkAllowed: boolean };
+  /**
+   * Pre-vault snapshot used to restore the non-vault agent when vault mode
+   * is disabled via setVaultMode(null). Captured on the first enable.
+   *
+   * Without this, disabling vault mode from the dashboard leaves projectRoot
+   * pointing at the user's notes folder and cwd inside it — so the "normal"
+   * coding-agent tools come back with their full write-enabled set rooted in
+   * the vault. That is the bug flagged by the 2026-04-23 external review.
+   */
+  private preVaultProjectRoot: string | null = null;
+  private preVaultCwd: string | null = null;
 
   constructor(opts: {
     provider: LLMProvider;
@@ -181,6 +192,17 @@ export class Agent {
     // constructor (tools/index.ts) — single source of truth for all 12 connectors.
 
     // Load skills as tools (independent of connectors)
+    //
+    // 2026-04-23 hardening (sweep-of-sweeps): skills are composed tools.
+    // Before this fix the inner step dispatch called `t.execute(args)`
+    // directly — the skill was approved as a whole and then every
+    // sub-tool ran unchecked. If a skill declared
+    // `{tool: 'execute', args: {command: 'rm -rf /'}}`, none of CORD /
+    // capability / risk / audit fired on that inner call.
+    // Now every inner step routes through `evaluateToolCall()` — the
+    // same pipeline autonomous run() uses — and each step is audited
+    // under tool='skill_step' so the forensic trail shows both the
+    // outer skill invocation and each inner sub-tool call.
     try {
       const { loadSkills, skillToTool } = require('./skills');
       const skills = loadSkills();
@@ -188,7 +210,49 @@ export class Agent {
         const toolExec = async (name: string, args: Record<string, unknown>) => {
           const t = this.tools.get(name);
           if (!t) return `Error: tool "${name}" not found`;
-          return t.execute(args);
+          const verdict = this.evaluateToolCall(name, args);
+          if (!verdict.allowed) {
+            const auditAction: 'deny' | 'capability_block' | 'constitutional_block' =
+              verdict.category === 'capability_block' ? 'capability_block' :
+              verdict.category === 'constitutional_block' ? 'constitutional_block' :
+              'deny';
+            this.auditLogger.log({
+              tool: 'skill_step',
+              action: auditAction,
+              args: { tool: name, args, skill: skill.name },
+              reason: verdict.reason,
+            });
+            return `Error: Blocked by safety policy: ${verdict.reason || 'denied'}`;
+          }
+          this.auditLogger.log({
+            tool: 'skill_step',
+            action: 'execute',
+            args: { tool: name, args, skill: skill.name, risk: verdict.risk },
+          });
+          try {
+            const out = await t.execute(args);
+            const isErr = typeof out === 'string' && out.startsWith('Error:');
+            if (isErr) {
+              this.auditLogger.log({
+                tool: 'skill_step',
+                action: 'error',
+                args: { tool: name, skill: skill.name },
+                result: 'error',
+                reason: (out as string).slice(0, 500),
+              });
+            }
+            return out;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            this.auditLogger.log({
+              tool: 'skill_step',
+              action: 'error',
+              args: { tool: name, skill: skill.name },
+              result: 'error',
+              reason: msg,
+            });
+            return `Error: ${msg}`;
+          }
         };
         this.tools.register(skillToTool(skill, toolExec));
       }
@@ -265,17 +329,37 @@ export class Agent {
    */
   setVaultMode(vaultMode: { vaultPath: string; writable: boolean; networkAllowed: boolean } | null): void {
     if (vaultMode) {
+      // First enable: snapshot where the non-vault agent lives so we can
+      // restore on disable. Re-entrant enables (vault → different vault)
+      // must NOT overwrite the snapshot with the previous vault path.
+      if (this.preVaultProjectRoot === null) {
+        this.preVaultProjectRoot = this.projectRoot;
+        try { this.preVaultCwd = process.cwd(); } catch { this.preVaultCwd = this.projectRoot; }
+      }
       // chdir into the vault so read_file / grep / glob etc. resolve
       // relative paths correctly. Matches CLI --vault behavior.
       try { process.chdir(vaultMode.vaultPath); } catch { /* caller validated path; ignore */ }
       this.projectRoot = vaultMode.vaultPath;
       this.vaultMode = { ...vaultMode };
     } else {
+      // Disable: restore the pre-vault projectRoot and cwd. Without this
+      // the "normal" coding agent comes back operating inside the user's
+      // notes folder with its full write-enabled tool set — confusing at
+      // best, data-loss territory at worst.
       this.vaultMode = undefined;
-      // Don't chdir back — caller may have moved on; leaving cwd alone
-      // is safer than guessing where to put the user.
+      if (this.preVaultProjectRoot !== null) {
+        this.projectRoot = this.preVaultProjectRoot;
+        if (this.preVaultCwd) {
+          try { process.chdir(this.preVaultCwd); } catch { /* pre-vault dir may have been removed; best effort */ }
+        }
+        this.preVaultProjectRoot = null;
+        this.preVaultCwd = null;
+      }
     }
     // Rebuild tools with new gating. Policy enforcer is preserved.
+    // Note: PolicyEnforcer was constructed with the original projectRoot —
+    // on restore we hand it the same projectRoot back, so enforcement
+    // continues to reference the repo the agent originally loaded policy for.
     this.tools = new ToolRegistry(this.projectRoot, this.policyEnforcer, { vaultMode: this.vaultMode });
     this.resetConversation();
   }
@@ -283,6 +367,15 @@ export class Agent {
   /** Read-only accessor for the dashboard status endpoint. */
   getVaultMode(): { vaultPath: string; writable: boolean; networkAllowed: boolean } | null {
     return this.vaultMode ? { ...this.vaultMode } : null;
+  }
+
+  /**
+   * Current projectRoot. Exposed so dashboard / tests can verify that
+   * disabling vault mode restores the pre-vault path (anti-regression for
+   * the 2026-04-23 review finding).
+   */
+  getProjectRoot(): string {
+    return this.projectRoot;
   }
 
   async *run(userMessage: string, images?: import('./types').ImageAttachment[]): AsyncGenerator<AgentEvent> {
@@ -773,6 +866,75 @@ export class Agent {
   /** Get the constitutional layer for security metrics */
   getConstitutional(): ConstitutionalLayer | null {
     return this.constitutional;
+  }
+
+  /**
+   * Evaluate a tool call against the full safety pipeline — the same
+   * checks `run()` performs before autonomous execution:
+   *   1. Arg schema validation
+   *   2. Capability check (fs_write / shell_commands / net_access)
+   *   3. Risk score
+   *   4. Constitutional (CORD + VIGIL) check
+   *
+   * Returns a verdict the caller uses to block or proceed. Does NOT
+   * execute the tool and does NOT write to the audit log — the caller
+   * decides how to record the outcome (e.g. /api/command/tool/run wants
+   * its own "dashboard_tool_run" action prefix so dashboard-initiated
+   * calls are distinguishable in the audit trail from agent-initiated
+   * ones).
+   *
+   * 2026-04-23: introduced to fix the /api/command/tool/run bypass
+   * found in the external review. Previously the dashboard endpoint
+   * called `tool.execute(args)` with no validation, no CORD, no risk
+   * score, no audit. Now it calls this and reuses the agent's pipeline.
+   */
+  evaluateToolCall(toolName: string, args: Record<string, unknown>): {
+    allowed: boolean;
+    reason?: string;
+    category?: 'unknown_tool' | 'invalid_args' | 'capability_block' | 'constitutional_block' | 'permission_required';
+    risk?: { score: number; level: string };
+  } {
+    const tool = this.tools.get(toolName);
+    if (!tool) {
+      return { allowed: false, category: 'unknown_tool', reason: `Tool "${toolName}" not found` };
+    }
+
+    const validationError = validateToolArgs(args, tool.parameters as Record<string, unknown>);
+    if (validationError) {
+      return { allowed: false, category: 'invalid_args', reason: validationError };
+    }
+
+    const capBlock = this.checkToolCapabilities(toolName, args);
+    if (capBlock) {
+      return { allowed: false, category: 'capability_block', reason: capBlock };
+    }
+
+    const policyPermission = this.policyEnforcer.getToolPermission(toolName);
+    const effectivePermission = policyPermission || tool.permission;
+    const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
+    const risk = { score: riskAssessment.score, level: riskAssessment.level };
+
+    if (this.constitutional) {
+      try {
+        const cordResult = this.constitutional.evaluateAction({
+          tool: toolName,
+          args,
+          type: TOOL_TYPE_MAP[toolName] || 'unknown',
+        });
+        if (cordResult.decision === 'BLOCK') {
+          return {
+            allowed: false,
+            category: 'constitutional_block',
+            reason: cordResult.explanation || cordResult.hardBlockReason || 'Constitutional violation',
+            risk,
+          };
+        }
+      } catch {
+        // CORD must not crash the caller; fall through.
+      }
+    }
+
+    return { allowed: true, risk };
   }
 
   /**

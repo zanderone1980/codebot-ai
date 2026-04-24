@@ -101,4 +101,45 @@ describe('NotificationTool', () => {
     // Should NOT get "invalid URL" error
     assert.ok(!result.includes('invalid URL'));
   });
+
+  // ── 2026-04-23 sweep: SSRF protection ──
+  //
+  // Webhook URL is agent-controlled. Before this fix, nothing stopped
+  // `notification webhook http://169.254.169.254/...` from hitting cloud
+  // metadata, or `http://localhost:8000/admin` from probing user services.
+  it('blocks loopback webhook URL with clear error', async () => {
+    const result = await tool.execute({
+      action: 'webhook',
+      url: 'http://127.0.0.1:8080/webhook',
+      message: 'ssrf test',
+    });
+    assert.match(result, /blocked for security|loopback/i, `got: ${result}`);
+  });
+
+  it('blocks private-range webhook URL', async () => {
+    const result = await tool.execute({
+      action: 'webhook',
+      url: 'http://10.0.0.1/webhook',
+      message: 'ssrf test',
+    });
+    assert.match(result, /blocked for security|10\.x/i, `got: ${result}`);
+  });
+
+  it('blocks cloud-metadata webhook URL', async () => {
+    const result = await tool.execute({
+      action: 'webhook',
+      url: 'http://169.254.169.254/latest/meta-data/',
+      message: 'ssrf test',
+    });
+    assert.match(result, /blocked for security|metadata|link-local/i, `got: ${result}`);
+  });
+
+  it('blocks localhost hostname webhook URL', async () => {
+    const result = await tool.execute({
+      action: 'webhook',
+      url: 'http://localhost/webhook',
+      message: 'ssrf test',
+    });
+    assert.match(result, /blocked for security|localhost/i, `got: ${result}`);
+  });
 });
