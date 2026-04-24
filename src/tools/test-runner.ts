@@ -1,12 +1,37 @@
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 import { Tool } from '../types';
 
+/**
+ * Framework descriptor. `command` + `args` are executed via execFileSync
+ * (no shell). No user/agent/repo input is ever concatenated into a shell
+ * string — that's how filter/path injection got in pre-2026-04-24.
+ */
 interface FrameworkInfo {
   name: string;
   command: string;
+  args: string[];
   filePattern: string;
+}
+
+/**
+ * Decide whether `target` is contained within `root`.
+ *
+ * Uses path.relative rather than startsWith to avoid the sibling-prefix
+ * trap where `/tmp/project2` passes a `startsWith('/tmp/project')` check.
+ *
+ * Returns true iff target === root OR target lives under root.
+ */
+function isContained(root: string, target: string): boolean {
+  const absRoot = path.resolve(root);
+  const absTarget = path.resolve(target);
+  if (absRoot === absTarget) return true;
+  const rel = path.relative(absRoot, absTarget);
+  if (!rel) return true;
+  if (rel.startsWith('..')) return false;
+  if (path.isAbsolute(rel)) return false;
+  return true;
 }
 
 export class TestRunnerTool implements Tool {
@@ -19,7 +44,7 @@ export class TestRunnerTool implements Tool {
       action: { type: 'string', description: 'Action: run, detect, list' },
       path: { type: 'string', description: 'Test file or directory (defaults to project root)' },
       filter: { type: 'string', description: 'Test name filter / grep pattern' },
-      cwd: { type: 'string', description: 'Working directory' },
+      cwd: { type: 'string', description: 'Working directory (must be inside the process cwd)' },
     },
     required: ['action'],
   };
@@ -28,7 +53,20 @@ export class TestRunnerTool implements Tool {
     const action = args.action as string;
     if (!action) return 'Error: action is required';
 
-    const cwd = (args.cwd as string) || process.cwd();
+    // cwd containment. If the caller passes a cwd, it must be within the
+    // process cwd. We never clamp silently — we reject. This matches the
+    // streaming exec gate's behavior.
+    const processRoot = process.cwd();
+    let cwd: string;
+    if (typeof args.cwd === 'string' && args.cwd.length > 0) {
+      const resolved = path.resolve(processRoot, args.cwd);
+      if (!isContained(processRoot, resolved)) {
+        return `Error: cwd escapes project root (${resolved} not under ${processRoot})`;
+      }
+      cwd = resolved;
+    } else {
+      cwd = processRoot;
+    }
 
     switch (action) {
       case 'detect': return this.detectFramework(cwd);
@@ -41,11 +79,11 @@ export class TestRunnerTool implements Tool {
   private detectFramework(cwd: string): string {
     const fw = this.detect(cwd);
     if (!fw) return 'No test framework detected. Checked for: jest, vitest, mocha, node:test, pytest, go test, cargo test.';
-    return `Detected: ${fw.name}\nCommand: ${fw.command}\nTest files: ${fw.filePattern}`;
+    const shown = [fw.command, ...fw.args].join(' ');
+    return `Detected: ${fw.name}\nCommand: ${shown}\nTest files: ${fw.filePattern}`;
   }
 
   private listTestFiles(cwd: string): string {
-    const patterns = ['**/*.test.*', '**/*.spec.*', '**/test_*.py', '**/*_test.go', '**/tests/**'];
     const files: string[] = [];
     const skip = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
 
@@ -54,39 +92,73 @@ export class TestRunnerTool implements Tool {
     return `Test files (${files.length}):\n${files.map(f => `  ${f}`).join('\n')}`;
   }
 
-  private runTests(cwd: string, args: Record<string, unknown>): string {
+  /**
+   * Exposed for tests: build the (command, argv) pair without executing.
+   * Returns either the planned exec OR an error string. Keeping this pure
+   * lets tests pin the argv shape without having to stub child_process
+   * (whose exports are read-only getters in modern Node).
+   */
+  public buildCommand(
+    cwd: string,
+    args: Record<string, unknown>,
+  ): { command: string; argv: string[]; framework: string } | { error: string } {
     const fw = this.detect(cwd);
-    if (!fw) return 'Error: no test framework detected';
+    if (!fw) return { error: 'Error: no test framework detected' };
 
-    let cmd = fw.command;
-    const target = args.path as string;
-    const filter = args.filter as string;
+    // Build argv by pushing string elements. execFileSync does NOT invoke a
+    // shell — metacharacters inside any element stay literal.
+    const argv: string[] = [...fw.args];
 
-    if (target) cmd += ` ${target}`;
-    if (filter) {
-      if (fw.name.includes('jest') || fw.name.includes('vitest')) cmd += ` -t "${filter}"`;
-      else if (fw.name === 'pytest') cmd += ` -k "${filter}"`;
-      else if (fw.name === 'go test') cmd += ` -run "${filter}"`;
+    const target = args.path;
+    if (typeof target === 'string' && target.length > 0) {
+      const resolved = path.resolve(cwd, target);
+      if (!isContained(cwd, resolved)) {
+        return { error: `Error: test path escapes cwd (${resolved} not under ${cwd})` };
+      }
+      argv.push(resolved);
     }
 
+    const filter = args.filter;
+    if (typeof filter === 'string' && filter.length > 0) {
+      if (fw.name === 'jest' || fw.name === 'vitest') argv.push('-t', filter);
+      else if (fw.name === 'pytest') argv.push('-k', filter);
+      else if (fw.name === 'go test') argv.push('-run', filter);
+      // Other frameworks ignore the filter rather than try to guess a syntax.
+    }
+
+    return { command: fw.command, argv, framework: fw.name };
+  }
+
+  private runTests(cwd: string, args: Record<string, unknown>): string {
+    const plan = this.buildCommand(cwd, args);
+    if ('error' in plan) return plan.error;
+
     try {
-      const output = execSync(cmd, {
+      const output = execFileSync(plan.command, plan.argv, {
         cwd,
         timeout: 120_000,
         maxBuffer: 2 * 1024 * 1024,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'pipe'],
       });
-      return this.summarize(output, fw.name);
+      return this.summarize(output, plan.framework);
     } catch (err: unknown) {
       const e = err as { status?: number; stdout?: string; stderr?: string };
       const combined = `${e.stdout || ''}\n${e.stderr || ''}`.trim();
-      return `Tests failed (exit ${e.status || 1}):\n${this.summarize(combined, fw.name)}`;
+      return `Tests failed (exit ${e.status || 1}):\n${this.summarize(combined, plan.framework)}`;
     }
   }
 
   private detect(cwd: string): FrameworkInfo | null {
-    // Check package.json for JS/TS projects
+    // Check package.json for JS/TS projects.
+    //
+    // IMPORTANT: we never copy `pkg.scripts.test` verbatim into the exec
+    // argv. A malicious package.json with `"test": "node --test && rm -rf ~"`
+    // would otherwise be pasted straight into our shell call. Instead, we
+    // use scripts.test only as a *classifier* to pick a known-good argv,
+    // then defer to `npm test` if the project's own script is what the
+    // user actually wants run — that's npm's trust boundary with the
+    // package.json, not ours.
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
       try {
@@ -94,38 +166,39 @@ export class TestRunnerTool implements Tool {
         const scripts = pkg.scripts || {};
         const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
-        if (scripts.test) {
-          if (scripts.test.includes('vitest')) return { name: 'vitest', command: 'npx vitest run', filePattern: '*.test.ts' };
-          if (scripts.test.includes('jest')) return { name: 'jest', command: 'npx jest', filePattern: '*.test.ts' };
-          if (scripts.test.includes('mocha')) return { name: 'mocha', command: 'npx mocha', filePattern: '*.test.ts' };
-          if (scripts.test.includes('node --test')) return { name: 'node:test', command: scripts.test, filePattern: '*.test.ts' };
-          // Generic npm test
-          return { name: 'npm test', command: 'npm test', filePattern: '*.test.*' };
+        if (typeof scripts.test === 'string') {
+          if (scripts.test.includes('vitest')) return { name: 'vitest', command: 'npx', args: ['vitest', 'run'], filePattern: '*.test.ts' };
+          if (scripts.test.includes('jest')) return { name: 'jest', command: 'npx', args: ['jest'], filePattern: '*.test.ts' };
+          if (scripts.test.includes('mocha')) return { name: 'mocha', command: 'npx', args: ['mocha'], filePattern: '*.test.ts' };
+          if (scripts.test.includes('node --test')) return { name: 'node:test', command: 'npm', args: ['test'], filePattern: '*.test.*' };
+          // Generic npm test — let npm itself handle scripts.test. We do
+          // NOT paste scripts.test into our argv.
+          return { name: 'npm test', command: 'npm', args: ['test'], filePattern: '*.test.*' };
         }
-        if (deps['vitest']) return { name: 'vitest', command: 'npx vitest run', filePattern: '*.test.ts' };
-        if (deps['jest']) return { name: 'jest', command: 'npx jest', filePattern: '*.test.ts' };
+        if (deps['vitest']) return { name: 'vitest', command: 'npx', args: ['vitest', 'run'], filePattern: '*.test.ts' };
+        if (deps['jest']) return { name: 'jest', command: 'npx', args: ['jest'], filePattern: '*.test.ts' };
       } catch { /* invalid package.json */ }
     }
 
     // Python
     if (fs.existsSync(path.join(cwd, 'pytest.ini')) || fs.existsSync(path.join(cwd, 'setup.py')) || fs.existsSync(path.join(cwd, 'pyproject.toml'))) {
-      return { name: 'pytest', command: 'python -m pytest -v', filePattern: 'test_*.py' };
+      return { name: 'pytest', command: 'python', args: ['-m', 'pytest', '-v'], filePattern: 'test_*.py' };
     }
 
     // Go
     if (fs.existsSync(path.join(cwd, 'go.mod'))) {
-      return { name: 'go test', command: 'go test ./...', filePattern: '*_test.go' };
+      return { name: 'go test', command: 'go', args: ['test', './...'], filePattern: '*_test.go' };
     }
 
     // Rust
     if (fs.existsSync(path.join(cwd, 'Cargo.toml'))) {
-      return { name: 'cargo test', command: 'cargo test', filePattern: '*.rs' };
+      return { name: 'cargo test', command: 'cargo', args: ['test'], filePattern: '*.rs' };
     }
 
     return null;
   }
 
-  private summarize(output: string, framework: string): string {
+  private summarize(output: string, _framework: string): string {
     const lines = output.split('\n');
     const summary: string[] = [];
 
