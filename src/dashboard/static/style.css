@@ -2107,77 +2107,11 @@ body.chat-expanded .card-grid {
 
 
 
-/* CodeAGI Panel */
-.codeagi-section { margin-bottom: 1.2rem; }
-.codeagi-section h3 { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.05em; }
-.codeagi-create-row { display: flex; gap: 0.5rem; }
-.codeagi-create-row .chat-input { flex: 1; }
-.codeagi-task-fields { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin: 0.5rem 0; }
-.codeagi-task-fields select { background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.5rem; font-size: 0.85rem; }
-.codeagi-run-row { display: flex; gap: 0.5rem; }
-.codeagi-run-btn { display: flex; align-items: center; gap: 0.4rem; }
 .btn-primary { background: linear-gradient(135deg, #2F6BFF, #00D2FF); color: #fff; border: none; border-radius: var(--radius-sm); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; font-weight: 600; transition: all var(--transition); box-shadow: 0 2px 8px rgba(47, 107, 255, 0.2); }
 .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(47, 107, 255, 0.3); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 .btn-secondary { background: var(--bg-glass); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; transition: all var(--transition); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
 .btn-secondary:hover { border-color: var(--cyan); color: var(--cyan); }
-.codeagi-missions { display: flex; flex-direction: column; gap: 0.5rem; }
-.codeagi-mission-card { background: var(--bg-glass); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.8rem 1rem; cursor: pointer; transition: all var(--transition); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-.codeagi-mission-card:hover { border-color: var(--border-glow); transform: translateY(-1px); }
-.codeagi-mission-card.selected { border-color: var(--cyan); box-shadow: 0 0 16px rgba(0, 212, 255, 0.08); }
-.codeagi-mission-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem; }
-.codeagi-mission-id { font-family: var(--font-mono); font-size: 0.7rem; color: var(--text-muted); }
-.codeagi-mission-status { font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 20px; font-weight: 600; text-transform: uppercase; }
-.codeagi-mission-status.active { background: rgba(34, 197, 94, 0.1); color: var(--success); }
-.codeagi-mission-status.completed { background: rgba(0, 212, 255, 0.1); color: var(--cyan); }
-.codeagi-mission-status.failed { background: rgba(239, 68, 68, 0.08); color: var(--danger); }
-.codeagi-mission-status.paused { background: rgba(234, 179, 8, 0.08); color: var(--warning); }
-.codeagi-mission-desc { font-size: 0.9rem; color: var(--text-primary); }
-.codeagi-mission-tasks { margin-top: 0.5rem; padding-top: 0.5rem; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 0.3rem; }
-.codeagi-task-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
-.codeagi-task-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.codeagi-task-dot.queued { background: var(--text-muted); }
-.codeagi-task-dot.active { background: var(--success); animation: pulse 1.5s infinite; }
-.codeagi-task-dot.completed { background: var(--cyan); }
-.codeagi-task-dot.failed { background: var(--danger); }
-.codeagi-task-dot.blocked { background: var(--warning); }
-.codeagi-cycle-steps { max-height: 400px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; }
-.codeagi-step { padding: 0.4rem 0.6rem; border-left: 3px solid var(--border); margin-bottom: 0.3rem; color: var(--text-muted); }
-.codeagi-step.plan { border-left-color: #a855f7; }
-.codeagi-step.verify { border-left-color: #06b6d4; }
-.codeagi-step.critique { border-left-color: #f59e0b; }
-.codeagi-step.execute { border-left-color: var(--success); }
-.codeagi-step.reflect { border-left-color: #ec4899; }
-.codeagi-step.complete { border-left-color: var(--cyan); }
-.codeagi-step.error { border-left-color: var(--danger); color: var(--danger); }
-.codeagi-step-label { font-weight: 600; text-transform: uppercase; font-size: 0.7rem; margin-bottom: 0.15rem; }
-.codeagi-tabs { display: flex; gap: 0; margin-bottom: 0.8rem; border-bottom: 1px solid var(--border); }
-.codeagi-tab { background: none; border: none; color: var(--text-muted); padding: 0.5rem 1rem; font-size: 0.85rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all var(--transition); font-family: var(--font-sans); }
-.codeagi-tab.active { color: var(--cyan); border-bottom-color: var(--cyan); }
-.codeagi-tab:hover { color: var(--text-primary); }
-.codeagi-tab-content { display: none; }
-.codeagi-tab-content.active { display: block; }
-.codeagi-breadcrumb { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem; padding: 0.3rem 0; }
-.codeagi-file-list { display: flex; flex-direction: column; gap: 0.2rem; }
-.codeagi-file-item { display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.6rem; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85rem; color: var(--text-primary); transition: background var(--transition); }
-.codeagi-file-item:hover { background: var(--bg-card-hover); }
-.codeagi-file-icon { font-size: 0.9rem; width: 1.2rem; text-align: center; }
-.codeagi-file-size { margin-left: auto; font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono); }
-.codeagi-file-preview { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; font-family: var(--font-mono); font-size: 0.8rem; max-height: 400px; overflow: auto; white-space: pre-wrap; color: var(--text-primary); margin-top: 0.5rem; }
-.codeagi-memory-tabs { display: flex; gap: 0.3rem; margin-bottom: 0.8rem; }
-.codeagi-mem-tab { background: var(--bg-card); border: 1px solid var(--border); border-radius: 20px; padding: 0.3rem 0.8rem; font-size: 0.75rem; color: var(--text-muted); cursor: pointer; transition: all var(--transition); font-family: var(--font-sans); }
-.codeagi-mem-tab.active { background: linear-gradient(135deg, #2F6BFF, #00D2FF); color: #fff; border-color: transparent; }
-.codeagi-memory-content { max-height: 400px; overflow-y: auto; }
-.codeagi-memory-item { background: var(--bg-glass); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.8rem; margin-bottom: 0.4rem; font-size: 0.8rem; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.codeagi-memory-item-title { font-weight: 600; color: var(--text-primary); margin-bottom: 0.2rem; }
-.codeagi-memory-item-body { color: var(--text-muted); font-size: 0.78rem; line-height: 1.4; }
-.codeagi-memory-item-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.3rem; font-family: var(--font-mono); }
-.codeagi-traces { max-height: 500px; overflow-y: auto; }
-.codeagi-trace-card { background: var(--bg-glass); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.6rem 0.8rem; margin-bottom: 0.4rem; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-.codeagi-trace-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; margin-bottom: 0.3rem; }
-.codeagi-trace-steps { display: flex; gap: 0.2rem; flex-wrap: wrap; }
-.codeagi-trace-step-dot { width: 10px; height: 10px; border-radius: 50%; }
-@media (max-width: 600px) { .codeagi-task-fields { grid-template-columns: 1fr; } }
 
 /* ═══ Agent Status Indicator ═══ */
 .agent-status {
@@ -2254,43 +2188,6 @@ body.chat-expanded .card-grid {
   margin-right: 6px;
 }
 
-/* ── CodeAGI Phase Badges ── */
-.codeagi-phase-bar { display: flex; align-items: center; gap: 0; margin-top: 0.8rem; flex-wrap: wrap; }
-.codeagi-phase-badge { display: flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.7rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; border: 1px solid var(--border); background: var(--bg-glass); color: var(--text-muted); transition: all 0.3s ease; }
-.codeagi-phase-badge .phase-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); transition: all 0.3s ease; }
-.codeagi-phase-badge.pending { opacity: 0.5; }
-.codeagi-phase-badge.pending .phase-dot { background: #555; }
-.codeagi-phase-badge.running { opacity: 1; border-color: #a855f7; color: #a855f7; background: rgba(168, 85, 247, 0.08); }
-.codeagi-phase-badge.running .phase-dot { background: #a855f7; animation: pulse 1.2s infinite; }
-.codeagi-phase-badge.done { opacity: 1; border-color: var(--success); color: var(--success); background: rgba(34, 197, 94, 0.06); }
-.codeagi-phase-badge.done .phase-dot { background: var(--success); }
-.codeagi-phase-badge[data-phase="plan"].running { border-color: #a855f7; color: #a855f7; background: rgba(168, 85, 247, 0.08); }
-.codeagi-phase-badge[data-phase="plan"].running .phase-dot { background: #a855f7; }
-.codeagi-phase-badge[data-phase="verify"].running { border-color: #06b6d4; color: #06b6d4; background: rgba(6, 182, 212, 0.08); }
-.codeagi-phase-badge[data-phase="verify"].running .phase-dot { background: #06b6d4; }
-.codeagi-phase-badge[data-phase="critique"].running { border-color: #f59e0b; color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
-.codeagi-phase-badge[data-phase="critique"].running .phase-dot { background: #f59e0b; }
-.codeagi-phase-badge[data-phase="execute"].running { border-color: var(--success); color: var(--success); background: rgba(34, 197, 94, 0.08); }
-.codeagi-phase-badge[data-phase="execute"].running .phase-dot { background: var(--success); }
-.codeagi-phase-badge[data-phase="reflect"].running { border-color: #ec4899; color: #ec4899; background: rgba(236, 72, 153, 0.08); }
-.codeagi-phase-badge[data-phase="reflect"].running .phase-dot { background: #ec4899; }
-.codeagi-phase-badge[data-phase="complete"].done { border-color: var(--cyan); color: var(--cyan); background: rgba(0, 212, 255, 0.08); }
-.codeagi-phase-badge[data-phase="complete"].done .phase-dot { background: var(--cyan); }
-.codeagi-phase-connector { width: 20px; height: 2px; background: var(--border); flex-shrink: 0; }
-.codeagi-stream-btn { display: inline-flex; align-items: center; gap: 0.4rem; }
-.codeagi-stream-log { max-height: 500px; overflow-y: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.6; }
-@media (max-width: 600px) { .codeagi-phase-bar { gap: 0.2rem; } .codeagi-phase-connector { width: 8px; } .codeagi-phase-badge { padding: 0.2rem 0.5rem; font-size: 0.65rem; } }
-
-
-
-/* ── CodeAGI Continuous Mode ── */
-.codeagi-continuous-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; padding: 0.5rem 0; }
-.codeagi-toggle-label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); user-select: none; }
-.codeagi-toggle-label input { display: none; }
-.codeagi-toggle-switch { position: relative; width: 36px; height: 20px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; transition: background var(--transition), border-color var(--transition); flex-shrink: 0; }
-.codeagi-toggle-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; background: var(--text-muted); border-radius: 50%; transition: transform var(--transition), background var(--transition); }
-.codeagi-toggle-label input:checked + .codeagi-toggle-switch { background: rgba(34, 197, 94, 0.15); border-color: var(--success); }
-.codeagi-toggle-label input:checked + .codeagi-toggle-switch::after { transform: translateX(16px); background: var(--success); }
 
 /* ── Settings Panel ── */
 .settings-content { padding: 24px; max-width: 600px; }
