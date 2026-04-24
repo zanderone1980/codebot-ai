@@ -51,13 +51,18 @@ describe('GraphicsTool — argv shape (via buildMagickPlan)', () => {
   let originalCwd: string;
 
   before(() => {
-    __resetMagickCache();
+    // Force v7 flavor so planning hits the magick branch on CI hosts that
+    // don't have ImageMagick installed. These tests are about argv shape,
+    // not about whether the host binary exists; the flavor-aware suite
+    // below exercises v7 vs v6 explicitly.
+    __setMagickFlavorForTest('v7');
     originalCwd = process.cwd();
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row12-argv-'));
     process.chdir(workDir);
   });
 
   after(() => {
+    __setMagickFlavorForTest(null);
     process.chdir(originalCwd);
     try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
   });
