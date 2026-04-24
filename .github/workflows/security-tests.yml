@@ -1,0 +1,37 @@
+name: Security Tests
+
+# Runs on every branch + every PR so security-sensitive work has
+# GitHub-verifiable evidence before a PR is opened or merged.
+# Scoped narrow on purpose: constitutional regression suite + typecheck.
+# The broader matrix lives in ci.yml and only fires on main / PRs to main.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  constitutional:
+    name: Constitutional regression suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies (applies patches/ via postinstall)
+        run: npm ci
+
+      - name: Build (compiles constitutional.test.ts → dist)
+        run: npm run build
+
+      - name: Run constitutional regression tests
+        # The compiled test file lives at dist/constitutional/constitutional.test.js.
+        # Using `node --test` directly (not `npm test`) to keep signal focused on
+        # the security suite — any failure fails this job on its own line.
+        run: node --test dist/constitutional/constitutional.test.js
+
+      - name: Typecheck
+        run: npm run typecheck
