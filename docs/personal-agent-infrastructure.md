@@ -10,7 +10,15 @@
 
 ## 1. What this is
 
-CodeBot AI is a **personal agent runtime**. One user, one machine, working across the apps and tools that user already has. It is *not* a chatbot — chat is one entry point among several (CLI, dashboard, scheduled, cron, webhook).
+CodeBot AI is a **user-owned personal agent runtime**. One user identity, many possible devices over time — desktop, laptop, phone. The current implementation starts local-first on desktop, but **the architecture must not assume the agent is forever tied to one machine.**
+
+It is *not* a chatbot — chat is one entry point among several (CLI, dashboard, scheduled, cron, webhook).
+
+### Core thesis
+
+> **CodeBot should be able to help a specific user do anything they could do through their devices, across apps and websites, bounded by explicit permission, auditability, and user control.**
+
+Not "build me an empire." Not "be a generic SaaS tenant." A specific user, their devices, their accounts, their judgment in the loop on irreversible actions.
 
 Concretely the agent should be able to:
 
@@ -21,19 +29,41 @@ Concretely the agent should be able to:
 - Place orders the user already places (food, groceries) **through browser automation against sites the user uses**, never via direct purchase APIs we hold credentials for.
 - Track ongoing tasks across sessions via persistent memory + cross-session state.
 
-The unifying property: **the user delegates a task in their own life, and the agent uses the same tools the user would use.** Not "build me an empire," but "do the thing I would otherwise spend 20 minutes on."
+The unifying property: **the user delegates a task in their own life, and the agent uses the same tools the user would use.** "Do the thing I would otherwise spend 20 minutes on" — wherever the user happens to be operating that day.
 
 ## 2. Non-goals (permanent)
 
 Listed up front so they can't quietly migrate into the roadmap:
 
 - **No financial transactions.** No trades, no money movement, no payment-method APIs, no crypto signing. View-only access to budgeting/accounting tools (Quicken, YNAB, etc.) is fine. **This is not a "future phase" — it is a permanent boundary.** Per `~/CLAUDE.md`: never execute a trade, place an order that moves money, send money, or initiate a transfer.
-- **No multi-tenant deployment.** This is one user's machine. The threat model assumes the operator is the user. Multi-tenant changes the entire security story; if we ever go there, it's a different product.
+- **No multi-tenant SaaS control plane yet.** The threat model assumes the operator is the user. We are deliberately not building a hosted, multi-tenant control plane today — that changes the entire security story. (Note: this is a "yet," not a forever. **Multi-device for one user is a goal, not a non-goal** — see §3.)
 - **No replacing user judgment on irreversible actions.** Sending email, deleting data, paying for things, posting publicly — always-ask, every time, even if the user said "yes" five minutes ago.
-- **No autonomous web browsing of arbitrary sites.** Browser automation is scoped to the connector roadmap (§7). "Search the web" is a tool, "log into my brokerage and trade" is forever a non-goal.
+- **No autonomous web browsing of arbitrary sites.** Browser automation is scoped to the connector roadmap (§8). "Search the web" is a tool, "log into my brokerage and trade" is forever a non-goal.
 - **No reasoning loop without an audit log.** Any model call that takes a tool action goes through `AuditLogger` (`src/audit.ts`). Off-the-record actions are a non-goal.
 
-## 3. Security invariants (from the sprint)
+## 3. Device strategy
+
+The agent should follow the user's identity, not a machine. Stages, in order:
+
+| Stage | Scope | What ships | Status |
+|---|---|---|---|
+| **Now** | Local desktop runtime | Single-machine agent loop, tools, vault, memory, audit log on disk under `~/.codebot/` | shipped, hardened in the security sprint |
+| **Next** | Same user across desktop + laptop | Synced memory, policy, vault, and audit log across the user's own machines | not started |
+| **Later** | Phone companion | Approvals, notifications, task kickoff from phone — but the agent's heavy lifting still runs on a real device | not started |
+| **Eventually** | Secure user-owned relay/sync | A small relay layer the user owns (self-hosted or single-user-hosted), not a multi-tenant SaaS control plane | not started |
+
+### Practical limit on this PR ladder
+
+**Local-first first.** Do not build cross-device sync until the local foundation is solid: capability labels declared (PR 3), agent loop reads them (PR 4), model router skeleton (PR 5), budget controls (PR 6). Cross-device sync is post that, and it gets its own architecture sub-doc when the time comes — not a bullet list now.
+
+### What "user-owned" means
+
+- Vault, memory, audit, policy live in storage **the user controls** — local disk today, user-owned (self-hosted or single-user) sync later. Not a vendor-hosted multi-tenant store.
+- Cross-device sync, when it ships, is end-to-end encrypted with keys the user holds. The relay sees ciphertext.
+- The user can wipe everything on every device with one command and the relay forgets them.
+- We never become a tenancy boundary the user has to escape from. If the user wants to host their own relay, the protocol is open enough that they can.
+
+## 4. Security invariants (from the sprint and this doc)
 
 These are the load-bearing rules. New code that violates one is rejected at review.
 
@@ -47,8 +77,9 @@ These are the load-bearing rules. New code that violates one is rejected at revi
 | S6 | **Audit log is hash-chained and append-only.** Every tool call logs (allowed, blocked, errored). | `src/audit.ts`, central in `src/agent/tool-executor.ts:114`. |
 | S7 | **CI matrix red is signal, not noise.** Linux/macOS/Windows × Node 18/20/22 + lint + Security Tests + extension tests must be green before merge. | Issue #11 closure ([#19](https://github.com/Ascendral/codebot-ai/pull/19)) made this achievable; we maintain it. |
 | S8 | **Argv-shape contract pinned by tests.** Pure `buildPlan()` / `buildCommand()` seams in shell-touching tools so a regression to string interpolation fails loudly. | Every Row 8/9/10/12 tool exports such a seam. |
+| S9 | **Device expansion preserves the same permission, audit, and approval guarantees.** A phone approval cannot become a silent bypass for a desktop action — every device participates in the same audit chain, and `always-ask` is per-action regardless of which device the action runs on. Cross-device sync is e2e-encrypted; the relay (when it exists) cannot rewrite history or forge approvals. | Anchored in this doc. Enforced by the cross-device PRs when they land. |
 
-## 4. Runtime layers
+## 5. Runtime layers
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -80,9 +111,9 @@ These are the load-bearing rules. New code that violates one is rejected at revi
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**What exists today:** layers 1, 2, 4, 5, 7, 8, 9 are in place and security-hardened. Layers 3 and 6 are this doc's main net-new architectural commitments.
+**What exists today:** layers 1, 2, 4, 5, 7, 8, 9 are in place and security-hardened. Layers 3 and 6 are this doc's main net-new architectural commitments. Cross-device transport is a future layer, not in this diagram.
 
-## 5. Model router
+## 6. Model router
 
 ### Decision table
 
@@ -117,7 +148,7 @@ These are the cost-floor primitives, not "model preference":
 - Not a learned router. Decision table is hand-coded. If we ever add ML, it's a separate decision and goes through review.
 - Not load balancing. One user, one machine. We pick one provider per task; failover is sequential, not parallel.
 
-## 6. Permission and capability model
+## 7. Permission and capability model
 
 ### Capability labels (NEW)
 
@@ -145,9 +176,9 @@ Every tool gets one or more capability labels. Labels are **declarative metadata
 
 ### Migration path
 
-Labels do not yet exist on the `Tool` interface. Adding them is a metadata-only change — no behavior change in the tools themselves, no new gating until the agent loop reads the labels. See §9 for the rollout.
+Labels do not yet exist on the `Tool` interface. Adding them is a metadata-only change — no behavior change in the tools themselves, no new gating until the agent loop reads the labels. See §10 for the rollout.
 
-## 7. Connector roadmap
+## 8. Connector roadmap
 
 ### Phase 1 — boring useful (next)
 
@@ -168,7 +199,7 @@ Each connector wraps one external account/service. The connector tool exposes hi
 
 - **Banking / brokerage / accounting** — **read-only only.** View balances, transactions, holdings to answer questions and produce summaries. **Never executes a trade, transfer, or transaction.** This is a §2 non-goal applied to a connector class.
 
-## 8. Threat model
+## 9. Threat model
 
 The agent runs as the user, on the user's machine, with the user's credentials. The interesting threats:
 
@@ -180,10 +211,12 @@ The agent runs as the user, on the user's machine, with the user's credentials. 
 | Path traversal | S2 + S3 (containment + projectRoot) — closed in security sprint. |
 | Credential exfiltration via tool call | Vault is a single read-only loader at startup; tools don't see raw secrets, only authenticated client objects. The agent loop can't tool-call its way to plaintext keys. |
 | Multi-account confusion (agent acts on the wrong Gmail account) | Each connector is bound to a single account at vault-load time. The model can't switch accounts mid-session; that requires a vault re-init. |
+| Cross-device approval forging (a phone "yes" gets replayed to authorize a desktop action the user never saw) | S9 — every approval is bound to a specific (device, action, timestamp, action-hash) and verified at the device that actually executes. The relay carries ciphertext only and cannot mint approvals. Until cross-device ships, the threat surface is bounded to one machine. |
+| Compromised relay (when it exists) — the relay vendor turns hostile or is breached | E2E encryption with user-held keys. Relay sees ciphertext, can drop or delay messages but cannot read or forge them. Audit chain is hash-linked across devices, so a dropped/replayed event is detectable. |
 
 This is the threat model the **architecture** must respect. Per-incident threat modeling for individual features happens at PR time.
 
-## 9. What's next after this doc
+## 10. What's next after this doc
 
 The doc itself does not change behavior. The execution order to actually build the new layers:
 
@@ -193,11 +226,13 @@ The doc itself does not change behavior. The execution order to actually build t
 4. **PR 4 — agent loop reads capabilities, escalates `permission` to `always-ask` when label demands it.** This is where capability labels start gating. Tests pin which (tool, action) combos require always-ask.
 5. **PR 5 — model router skeleton.** Pure decision-table function `pickModel(taskClass, sensitivity, budgetRemaining)`. Consumed by the agent loop. Replaces the current single-model selection.
 6. **PR 6 — budget controls.** Per-session cap, escalation logging, summarize-on-overflow. Wired into the router.
-7. **PR 7+ — connectors, one PR per Phase 1 connector**, in the order listed in §7.
+7. **PR 7+ — connectors, one PR per Phase 1 connector**, in the order listed in §8.
 
 Each PR stays narrow enough to review in one sitting. CI matrix stays green (S7).
 
-## 10. Open questions
+**Cross-device sync is intentionally NOT on this list.** It comes after the local foundation is solid (per §3) and gets its own architecture sub-doc when the time comes.
+
+## 11. Open questions
 
 These are explicitly left unresolved in this doc — call them out so future PRs answer rather than assume:
 
@@ -205,10 +240,12 @@ These are explicitly left unresolved in this doc — call them out so future PRs
 2. **Approval UX latency.** Always-ask for every send is annoying. Do we add session-scoped "approve next N similar" with a hard timeout? If yes, the timeout itself is a security parameter and goes in the policy file.
 3. **Connector OAuth re-consent flow.** If a token expires mid-task, the agent stalls. Do we cache the in-flight task and resume after re-auth? Or fail and let the user retry?
 4. **Browser automation persistence.** Do we share a browser session across runs, or spin up fresh each time? Sharing means cookies persist (good for "I'm already logged in") but creates a long-lived attack surface.
-5. **Cross-device.** Today this is one machine. If the user wants to kick off a task from their phone and have it run on the desktop, that's a network protocol decision we are deliberately not making here.
+5. **Cross-device transport.** §3 commits to local-first now and synced-across-the-user's-machines next. The actual sync protocol — CRDT? signed-event log? operational transform on the audit chain? — is a deliberate non-decision in this doc. It gets its own sub-doc when we start work, not before.
+6. **Phone companion shape.** Native app vs. progressive web app vs. notification-only? Decided when Phase Later begins, not now.
+7. **Approval binding.** S9 says approvals are bound to (device, action, timestamp, action-hash). The exact signature scheme and key-rotation story is unresolved here.
 
 These get answered in the PR that needs them, not pre-emptively.
 
 ---
 
-*Last updated 2026-04-24, against `main @ de6cad7`.*
+*Last updated 2026-04-24 (revised to reflect user-owned, multi-device-over-time vision per Alex), against `main @ de6cad7`.*
