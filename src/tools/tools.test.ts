@@ -476,7 +476,11 @@ describe('DiffViewerTool', () => {
 });
 
 describe('DatabaseTool', () => {
-  const tmpDb = path.join(os.tmpdir(), `codebot-test-${Date.now()}.db`);
+  // Row 8 fix: db path is now contained under projectRoot. Construct the
+  // registry with projectRoot=os.tmpdir() so the test fixture under
+  // os.tmpdir() is inside the policy boundary.
+  const dbDir = os.tmpdir();
+  const tmpDb = path.join(dbDir, `codebot-test-${Date.now()}.db`);
 
   before(() => {
     // Create an empty file to pass existence check
@@ -492,24 +496,26 @@ describe('DatabaseTool', () => {
   });
 
   it('blocks destructive SQL', async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry(dbDir);
     const tool = registry.get('database')!;
     const result = await tool.execute({ action: 'query', db: tmpDb, sql: 'DROP TABLE users' });
     assert.ok(result.includes('blocked'), `Expected "blocked" in: ${result}`);
   });
 
   it('blocks DELETE FROM', async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry(dbDir);
     const tool = registry.get('database')!;
     const result = await tool.execute({ action: 'query', db: tmpDb, sql: 'DELETE FROM users WHERE id=1' });
     assert.ok(result.includes('blocked'), `Expected "blocked" in: ${result}`);
   });
 
-  it('returns error for missing db', async () => {
-    const registry = new ToolRegistry();
+  it('returns error for missing db (inside projectRoot)', async () => {
+    const registry = new ToolRegistry(dbDir);
     const tool = registry.get('database')!;
-    const result = await tool.execute({ action: 'tables', db: '/nonexistent/db.sqlite' });
-    assert.ok(result.includes('Error: database not found'));
+    const missing = path.join(dbDir, `codebot-missing-${Date.now()}.sqlite`);
+    const result = await tool.execute({ action: 'tables', db: missing });
+    assert.ok(result.includes('Error: database not found'),
+      `Expected "Error: database not found" in: ${result}`);
   });
 });
 

@@ -163,11 +163,11 @@ export class ToolRegistry {
     regIf(new TaskPlannerTool());
     regIf(new DiffViewerTool());
     regIf(new DockerTool());
-    regIf(new DatabaseTool());
+    regIf(new DatabaseTool(projectRoot));
     regIf(new TestRunnerTool(projectRoot));
     regIf(new HttpClientTool());
     regIf(new ImageInfoTool());
-    regIf(new SshRemoteTool());
+    regIf(new SshRemoteTool(projectRoot));
     regIf(new NotificationTool());
     regIf(new PdfExtractTool());
     regIf(new PackageManagerTool());
