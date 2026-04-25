@@ -162,7 +162,7 @@ export class ToolRegistry {
     regIf(new MultiSearchTool());
     regIf(new TaskPlannerTool());
     regIf(new DiffViewerTool());
-    regIf(new DockerTool());
+    regIf(new DockerTool(projectRoot));
     regIf(new DatabaseTool(projectRoot));
     regIf(new TestRunnerTool(projectRoot));
     regIf(new HttpClientTool());
@@ -170,7 +170,7 @@ export class ToolRegistry {
     regIf(new SshRemoteTool(projectRoot));
     regIf(new NotificationTool());
     regIf(new PdfExtractTool());
-    regIf(new PackageManagerTool());
+    regIf(new PackageManagerTool(projectRoot));
     regIf(new CodeReviewTool());
     // v2.5.0 — App Connectors
     let vault: VaultManager | undefined;
