@@ -206,7 +206,13 @@ describe('POST /api/command/vault — dashboard vault control', () => {
     );
     assert.strictEqual(res.status, 200);
     const body = JSON.parse(res.body);
-    assert.ok(body.vault.vaultPath.startsWith('/'), 'expanded path should be absolute');
+    // Issue #11: previously asserted .startsWith('/'), which is wrong on
+    // Windows where absolute paths look like `C:\Users\…`. The actual
+    // contract is "the path is absolute and the ~ token is gone".
+    assert.ok(
+      path.isAbsolute(body.vault.vaultPath),
+      `expanded path should be absolute, got ${body.vault.vaultPath}`,
+    );
     assert.ok(
       !body.vault.vaultPath.includes('~'),
       'expanded path should not contain ~',

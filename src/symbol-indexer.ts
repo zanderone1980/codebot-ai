@@ -36,9 +36,28 @@ export type SymbolKind =
 export interface SymbolEntry {
   name: string;
   kind: SymbolKind;
-  file: string;       // relative to projectRoot
+  /**
+   * Path relative to projectRoot, ALWAYS in POSIX form (forward slashes).
+   * Normalized at the boundary in `walkDir()` via `toPosixPath()` so that
+   * the same project produces the same `file` value on Windows, macOS,
+   * and Linux. Consumers (FindSymbolTool, dashboard, agent log lines)
+   * can rely on this without re-normalizing.
+   */
+  file: string;
   line: number;       // 1-based
   lang: 'python' | 'typescript' | 'javascript' | 'go' | 'rust' | 'ruby' | 'java';
+}
+
+/**
+ * Normalize a relative path to POSIX form. On POSIX hosts this is a
+ * no-op. On Windows, `path.relative` returns `mod\a.py`; we want
+ * `mod/a.py` so the wire format is platform-independent.
+ *
+ * Applied at the SymbolEntry boundary only — internal `path.join` /
+ * `fs.readdirSync` work in native form.
+ */
+function toPosixPath(p: string): string {
+  return path.sep === '/' ? p : p.split(path.sep).join('/');
 }
 
 /**
@@ -195,7 +214,9 @@ function walkDir(
     const ext = path.extname(entry.name);
     const spec = specForExt(ext);
     if (!spec) continue;
-    const rel = path.relative(root, abs);
+    // Normalize to POSIX-style at the boundary so SymbolEntry.file is
+    // platform-independent. See toPosixPath() docstring.
+    const rel = toPosixPath(path.relative(root, abs));
     scanFile(abs, rel, spec, out);
     counter.files++;
   }

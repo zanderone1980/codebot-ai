@@ -148,6 +148,25 @@ describe('SymbolIndexer', () => {
     assert.notStrictEqual(hits[0].file, hits[1].file);
   });
 
+  /**
+   * Issue #11 contract test. SymbolEntry.file is exposed to the agent,
+   * the dashboard, and the find-symbol tool — it MUST be POSIX-style
+   * regardless of host OS. On Windows pre-fix this would have been
+   * `deeply\nested\folder\thing.py` and downstream regex matchers and
+   * model-readable output broke. The boundary normalization in
+   * walkDir() makes the wire format platform-independent.
+   */
+  it('SymbolEntry.file is always POSIX-style (forward slashes), even on Windows', () => {
+    write('deeply/nested/folder/thing.py', 'class DeepThing: pass');
+    const idx = new SymbolIndexer(tmp);
+    const hits = idx.findByName('DeepThing');
+    assert.strictEqual(hits.length, 1);
+    assert.strictEqual(hits[0].file, 'deeply/nested/folder/thing.py',
+      'file must use forward slashes regardless of os.platform()');
+    assert.ok(!hits[0].file.includes('\\'),
+      `file must contain no backslashes; got ${hits[0].file}`);
+  });
+
   it('respects MAX_FILE_SIZE_BYTES (skips huge files)', () => {
     // 3 MB file should be skipped; 1 KB should be scanned
     const big = 'class Big: pass\n' + 'x'.repeat(3 * 1024 * 1024);
