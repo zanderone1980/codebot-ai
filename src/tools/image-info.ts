@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class ImageInfoTool implements Tool {
   name = 'image_info';
   description = 'Get image file information — dimensions, format, file size. Supports PNG, JPEG, GIF, BMP, SVG.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   parameters = {
     type: 'object',

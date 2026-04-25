@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { isPathSafe } from '../security';
 import { checkSecretsForWrite } from '../secret-guard';
 import { PolicyEnforcer } from '../policy';
@@ -15,6 +15,7 @@ export class EditFileTool implements Tool {
   name = 'edit_file';
   description = 'Edit a file by replacing an exact string match with new content. The old_string must appear exactly once in the file. Shows a diff preview and creates an undo snapshot.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 

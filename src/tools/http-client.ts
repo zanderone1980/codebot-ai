@@ -1,10 +1,11 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { validateOutboundUrl } from '../net-guard';
 
 export class HttpClientTool implements Tool {
   name = 'http_client';
   description = 'Make HTTP requests. Supports GET, POST, PUT, DELETE, PATCH with headers, auth, and body.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'net-fetch'];
   parameters = {
     type: 'object',
     properties: {

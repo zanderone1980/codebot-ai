@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 interface SearchResult {
   file: string;
@@ -14,6 +14,7 @@ export class MultiSearchTool implements Tool {
   name = 'multi_search';
   description = 'Fuzzy search across filenames, file contents, and code symbols. Returns ranked results by relevance.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   parameters = {
     type: 'object',
     properties: {

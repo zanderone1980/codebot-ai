@@ -1,9 +1,10 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class NotificationTool implements Tool {
   name = 'notification';
   description = 'Send notifications via webhook (Slack, Discord, or generic). Actions: slack, discord, webhook.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['net-fetch', 'send-on-behalf'];
   parameters = {
     type: 'object',
     properties: {

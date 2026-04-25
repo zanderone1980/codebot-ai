@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 interface Task {
   id: number;
@@ -18,6 +18,7 @@ export class TaskPlannerTool implements Tool {
   name = 'task_planner';
   description = 'Plan and track tasks. Actions: add, list, update, complete, remove, clear.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   parameters = {
     type: 'object',
     properties: {

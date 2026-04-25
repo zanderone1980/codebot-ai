@@ -1,4 +1,4 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { codebotPath } from '../paths';
@@ -21,6 +21,7 @@ export class RoutineTool implements Tool {
   name = 'routine';
   description = 'Manage scheduled routines (recurring tasks). Add daily social media posts, email checks, research tasks, etc. Uses cron expressions for scheduling (e.g., "0 9 * * *" for 9am daily, "0 */6 * * *" for every 6 hours, "30 18 * * 1-5" for 6:30pm weekdays).';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   parameters = {
     type: 'object',
     properties: {

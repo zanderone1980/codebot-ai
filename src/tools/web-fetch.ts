@@ -1,4 +1,4 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { cacheGet, cacheSet } from '../offline-cache';
 import { validateOutboundUrl } from '../net-guard';
 
@@ -6,6 +6,7 @@ export class WebFetchTool implements Tool {
   name = 'web_fetch';
   description = 'Make HTTP requests to URLs or APIs. Fetch web pages, call REST APIs, post data. Supports GET, POST, PUT, PATCH, DELETE.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'net-fetch'];
   parameters = {
     type: 'object',
     properties: {

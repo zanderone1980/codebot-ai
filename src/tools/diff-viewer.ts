@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import { execSync } from 'child_process';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class DiffViewerTool implements Tool {
   name = 'diff_viewer';
   description = 'View diffs. Actions: files (compare two files), git_diff (working tree changes), staged (staged changes), commit (show a commit diff).';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only', 'run-cmd'];
   parameters = {
     type: 'object',
     properties: {

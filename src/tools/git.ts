@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { PolicyEnforcer } from '../policy';
 
 const ALLOWED_ACTIONS = [
@@ -36,6 +36,7 @@ export class GitTool implements Tool {
   name = 'git';
   description = 'Run git operations. Actions: status, diff, log, commit, branch, checkout, stash, push, pull, merge, blame, tag, add, reset, clone.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs', 'run-cmd', 'net-fetch'];
   private policyEnforcer?: PolicyEnforcer;
   parameters = {
     type: 'object',

@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { isPathSafe } from '../security';
 import { checkSecretsForWrite } from '../secret-guard';
 import { PolicyEnforcer } from '../policy';
@@ -12,6 +12,7 @@ export class WriteFileTool implements Tool {
   name = 'write_file';
   description = 'Create a new file or overwrite an existing file with the given content. Automatically saves an undo snapshot for existing files.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 

@@ -39,7 +39,7 @@
 
 import { execFileSync } from 'child_process';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 // Block injection-y characters in host/user inputs. Even argv-only execs
 // pipe `host` to OpenSSH's config parser, where ProxyCommand and similar
@@ -69,6 +69,7 @@ export class SshRemoteTool implements Tool {
   name = 'ssh_remote';
   description = 'Execute commands on remote servers via SSH, or upload/download files via SCP. Actions: exec, upload, download.';
   permission: Tool['permission'] = 'always-ask';
+  capabilities: CapabilityLabel[] = ['write-fs', 'run-cmd', 'net-fetch'];
   /**
    * Containment root for local paths (upload source, download target).
    * Issue #17 pattern: plumbed from `Agent.projectRoot` via `ToolRegistry`,

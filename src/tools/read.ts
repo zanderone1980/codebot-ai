@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class ReadFileTool implements Tool {
   name = 'read_file';
   description = 'Read the contents of a file. Returns file content with line numbers.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   private projectRoot: string;
   constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }

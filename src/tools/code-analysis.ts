@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class CodeAnalysisTool implements Tool {
   name = 'code_analysis';
   description = 'Analyze code structure. Actions: symbols (list classes/functions/exports), imports (list imports), outline (file structure), references (find where a symbol is used).';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   parameters = {
     type: 'object',

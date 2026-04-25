@@ -4,13 +4,14 @@
  * Allows the parent agent to spawn child agents for parallel work.
  */
 
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { Orchestrator, AgentTask, AgentResult, generateTaskId } from '../orchestrator';
 
 export class DelegateTool implements Tool {
   name = 'delegate';
   description = 'Spawn child agent(s) to handle subtasks.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'run-cmd', 'browser-read', 'browser-write', 'net-fetch', 'account-access', 'send-on-behalf', 'delete-data', 'spend-money'];
   parameters = {
     type: 'object',
     properties: {

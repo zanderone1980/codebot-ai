@@ -34,7 +34,7 @@
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 const BLOCKED_SQL = [
   /\bDROP\s+(TABLE|DATABASE|INDEX|VIEW)\b/i,
@@ -66,6 +66,7 @@ export class DatabaseTool implements Tool {
   name = 'database';
   description = 'Query SQLite databases. Actions: query, tables, schema, info. Blocks DROP/DELETE/TRUNCATE for safety.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'run-cmd'];
   /**
    * Containment root. Issue #17 pattern: plumbed from `Agent.projectRoot`
    * via `ToolRegistry`, falls back to `process.cwd()` for back-compat.

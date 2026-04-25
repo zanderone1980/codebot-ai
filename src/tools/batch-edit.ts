@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { isPathSafe } from '../security';
 import { checkSecretsForWrite } from '../secret-guard';
 import { PolicyEnforcer } from '../policy';
@@ -15,6 +15,7 @@ export class BatchEditTool implements Tool {
   name = 'batch_edit';
   description = 'Apply multiple find-and-replace edits across one or more files atomically. All edits are validated before any are applied. Useful for renaming, refactoring, and coordinated multi-file changes.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   private projectRoot: string;
   private policyEnforcer?: PolicyEnforcer;
 

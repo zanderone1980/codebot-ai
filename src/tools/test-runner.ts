@@ -1,7 +1,7 @@
 import { execFileSync } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 /**
  * Framework descriptor. `command` + `args` are executed via execFileSync
@@ -38,6 +38,7 @@ export class TestRunnerTool implements Tool {
   name = 'test_runner';
   description = 'Run tests with auto-detected framework. Actions: run (execute tests), detect (show detected framework), list (list test files).';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'run-cmd'];
   /**
    * Containment root. Issue #17: was `process.cwd()` baked in via Row 10;
    * now plumbed from `Agent.projectRoot` via `ToolRegistry` so a permission-

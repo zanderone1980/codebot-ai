@@ -6,7 +6,7 @@
  * Designed to be used by the agent as a single tool call for thorough research.
  */
 
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 const TIMEOUT = 30_000;
 const MAX_SOURCES = 8;
@@ -118,6 +118,7 @@ export class DeepResearchTool implements Tool {
   name = 'deep_research';
   description = 'Perform deep research on a topic. Searches the web, fetches multiple sources, and compiles a structured report with key findings and source URLs. Use this when you need thorough, multi-source research on any topic.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only', 'net-fetch'];
   cacheable = true;
 
   parameters = {

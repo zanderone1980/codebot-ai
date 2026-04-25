@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class GlobTool implements Tool {
   name = 'glob';
@@ -8,6 +8,7 @@ export class GlobTool implements Tool {
   constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Find files matching a glob pattern. Returns matching file paths relative to the search directory.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   parameters = {
     type: 'object',

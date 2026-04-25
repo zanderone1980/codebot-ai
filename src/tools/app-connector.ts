@@ -8,7 +8,7 @@
  *   app github.create_issue { ... } → dispatch to connector action
  */
 
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { ConnectorRegistry } from '../connectors/registry';
 import { VaultManager } from '../vault';
 
@@ -16,6 +16,7 @@ export class AppConnectorTool implements Tool {
   name = 'app';
   description = 'Connect to external apps (GitHub, Slack, Jira, Linear). Use "list" to see available apps, "connect <app>" to set up, or "<app>.<action>" to execute (e.g., github.create_issue, slack.post_message, jira.search, linear.list_teams).';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'net-fetch', 'account-access', 'send-on-behalf', 'delete-data'];
   parameters = {
     type: 'object',
     properties: {

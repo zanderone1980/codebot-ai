@@ -15,7 +15,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { codebotPath } from '../paths';
 
 interface ForgedSkill {
@@ -123,6 +123,7 @@ export class SkillForgeTool implements Tool {
   name = 'skill_forge';
   description = 'Create, list, reinforce, or delete reusable multi-step skills. Skills compose existing tools into higher-level workflows that persist across sessions. Both CodeBot and CodeAGI can author and consume skills from the shared store.';
   permission: 'prompt' = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   parameters = {
     type: 'object',
     properties: {

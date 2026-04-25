@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 interface Issue {
   file: string;
@@ -27,6 +27,7 @@ export class CodeReviewTool implements Tool {
   name = 'code_review';
   description = 'Review code for security issues, complexity, and code smells. Actions: security, complexity, review (full).';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   parameters = {
     type: 'object',

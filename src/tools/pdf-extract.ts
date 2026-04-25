@@ -1,11 +1,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class PdfExtractTool implements Tool {
   name = 'pdf_extract';
   description = 'Extract text and metadata from PDF files. Actions: text, info, pages.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   parameters = {
     type: 'object',
     properties: {

@@ -1,10 +1,11 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { MemoryManager } from '../memory';
 
 export class MemoryTool implements Tool {
   name = 'memory';
   description = 'Read or write persistent memory. Memory survives across sessions and is always available to you. Use this to remember important context, user preferences, project patterns, or anything worth keeping.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   parameters = {
     type: 'object',
     properties: {

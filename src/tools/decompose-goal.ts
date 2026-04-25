@@ -11,7 +11,7 @@
  *   - next: Get the next ready subtask(s)
  */
 
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { GoalDecomposer, GoalTree, SubtaskDraft } from '../goal-decomposer';
 
 export class DecomposeGoalTool implements Tool {
@@ -20,6 +20,7 @@ export class DecomposeGoalTool implements Tool {
     'Autonomous goal decomposition: break high-level goals into dependency-ordered subtask trees, ' +
     'track progress, and get next ready tasks. Actions: decompose, status, complete, fail, add_subtasks, next.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   parameters = {
     type: 'object',
     properties: {

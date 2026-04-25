@@ -1,4 +1,4 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { cacheGet, cacheSet } from '../offline-cache';
 
 interface SearchResult {
@@ -11,6 +11,7 @@ export class WebSearchTool implements Tool {
   name = 'web_search';
   description = 'Search the web using DuckDuckGo. Returns titles, URLs, and snippets. Use for research, fact-checking, finding documentation, or discovering information. If results are empty, try the browser tool to navigate to a search engine directly.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'net-fetch'];
   parameters = {
     type: 'object',
     properties: {

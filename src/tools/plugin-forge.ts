@@ -15,7 +15,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { codebotPath } from '../paths';
 import { isPluginSafe } from '../plugins';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 // ── Types ──
 
@@ -44,6 +44,7 @@ export class PluginForgeTool implements Tool {
   name = 'plugin_forge';
   description = 'Create, validate, and install self-authored plugins. Actions: create (write and validate a plugin), list (show installed plugins), validate (check a plugin for safety), promote (move from staging to active), remove (delete a plugin).';
   permission: 'prompt' = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs'];
   parameters = {
     type: 'object',
     properties: {

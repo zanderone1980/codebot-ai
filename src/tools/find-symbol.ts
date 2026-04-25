@@ -13,7 +13,7 @@
  * this.
  */
 
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { SymbolIndexer, SymbolEntry } from '../symbol-indexer';
 
 export class FindSymbolTool implements Tool {
@@ -26,6 +26,7 @@ export class FindSymbolTool implements Tool {
     'Indexes Python, TypeScript, JavaScript, Go, Rust, Ruby, Java. Use this as ' +
     'the FIRST STEP when you need to navigate a codebase to find where to edit.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
 
   parameters = {

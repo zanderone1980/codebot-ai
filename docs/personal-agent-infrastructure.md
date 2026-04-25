@@ -264,7 +264,7 @@ The doc itself does not change behavior. The execution order to actually build t
 
 1. **PR 1 — this doc.** Architecture commitment, no code change. ← *this PR*
 2. **PR 2 — capability labels on `Tool` interface (metadata only).** Adds optional `capabilities?: CapabilityLabel[]` to `Tool`. Existing tools keep working with no labels declared. No gate change. Pure type addition. ~50 lines.
-3. **PR 3 — declare capability labels on existing 36 tools.** Mechanical. Each tool gets its label list. No behavior change. Reviewable in one sitting because it's a table.
+3. **PR 3 — declare capability labels on existing 36 tools.** ✓ Landed in PR #26. Each tool declares `capabilities: CapabilityLabel[]` on its class. No behavior change yet — labels are still inert metadata. Mixed-action tools (database, git, docker, package_manager, test_runner, app, etc.) carry the strict union of all action-level needs, with action-level granularity explicitly deferred. CI introspection at `src/tools/capability-coverage.test.ts` enforces 100% coverage going forward.
 4. **PR 4 — agent loop reads capabilities, escalates `permission` to `always-ask` when label demands it.** This is where capability labels start gating. Tests pin which (tool, action) combos require always-ask.
 5. **PR 5 — model router skeleton.** Pure decision-table function `pickModel(taskClass, sensitivity, budgetRemaining)`. Consumed by the agent loop. Replaces the current single-model selection.
 6. **PR 6 — budget controls.** Per-session cap, escalation logging, summarize-on-overflow. Wired into the router.
@@ -296,7 +296,7 @@ Per the anti-theater protocol: no measurement = no claim. Each architectural com
 |---|---|---|
 | **Audit-chain integrity** | CI step that reads `~/.codebot/audit/audit-*.jsonl` and verifies the hash chain end-to-end on every test session | Must pass on every CI run. A broken chain is a release blocker. |
 | **Tool calls without an audit entry** | Test harness counter: every `tool.execute()` call must produce an audit row | **Must be zero.** Off-the-record actions are a non-goal (§2). |
-| **% of registered tools with capability labels** | `ToolRegistry` introspection in CI | Reaches 100% by end of PR 3. Stays at 100% (S4 + the doc-rot rule below). |
+| **% of registered tools with capability labels** | `ToolRegistry` introspection in CI (`src/tools/capability-coverage.test.ts`) | **100% — enforced in CI as of PR 3** (PR #26). Test fails the build if any tool's `capabilities` is missing, empty, contains an unknown label, contains the PROHIBITED `move-money` label, or has duplicates. Stays at 100% (S4 + the §13 doc-rot rule). |
 | **Model-router cost per session** | Token-tracker rollup, written to a session summary | Tracked from PR 5 onward. Cheap-first heuristic should drive the median session below the pre-router single-model baseline. |
 | **Approval latency (always-ask actions)** | Time between the gate firing and the user's yes/no | Tracked from PR 4. If P95 latency is so high the user starts answering "yes" reflexively, the UX is broken — that's a metric, not an opinion. |
 | **Denied-action rate** | Audit-log filter for `capability_block` and `containment_reject` | Tracked from PR 4. A non-zero rate is healthy (the gate is doing work). A sudden spike or drop signals either a regression or an over-permissive change. |
@@ -323,4 +323,4 @@ This rule applies to this file, not the broader codebase. Other docs may rot at 
 
 ---
 
-*Last updated 2026-04-25 (PR 2 landed: `CapabilityLabel` union and optional `capabilities?` slot now live on `Tool` in `src/types.ts`; tool count corrected 35 → 36 to reflect actual `ToolRegistry` registration; §7 migration-path note updated to reflect that the slot exists). Earlier passes: 2026-04-25 split `move-money` (PROHIBITED) from `spend-money` (always-ask) and reframed Phase 2; 2026-04-24 engineering-contract discipline; 2026-04-24 user-owned multi-device-over-time vision. Against `main @ b8a5433` + this PR.*
+*Last updated 2026-04-25 (PR 3 landed: every registered tool now declares `capabilities: CapabilityLabel[]`; `src/tools/capability-coverage.test.ts` enforces 100% coverage in CI; §10 PR 3 marked done; §12 measurement signal flipped from "reaches 100% by PR 3" to "100% enforced in CI"). Earlier passes: 2026-04-25 PR 2 (CapabilityLabel union + slot); 2026-04-25 split `move-money` from `spend-money` and reframed Phase 2; 2026-04-24 engineering-contract discipline; 2026-04-24 user-owned multi-device-over-time vision. Against `main @ b43ff8a` + this PR.*

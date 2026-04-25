@@ -31,7 +31,7 @@
 
 import { execFileSync } from 'child_process';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 const ALLOWED_ACTIONS = [
   'ps', 'images', 'run', 'stop', 'rm', 'build', 'logs', 'exec',
@@ -110,6 +110,7 @@ export class DockerTool implements Tool {
   name = 'docker';
   description = 'Run Docker operations. Actions: ps, images, run, stop, rm, build, logs, exec, compose_up, compose_down, compose_ps, inspect, pull. `args` MUST be a string array (e.g., ["-d", "--name", "nginx", "nginx:latest"]). String args are rejected.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs', 'run-cmd', 'net-fetch'];
   /**
    * Containment root. Issue #17 pattern: plumbed from `Agent.projectRoot`
    * via `ToolRegistry`, falls back to `process.cwd()` for back-compat.

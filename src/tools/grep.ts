@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class GrepTool implements Tool {
   name = 'grep';
@@ -8,6 +8,7 @@ export class GrepTool implements Tool {
   constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Search file contents for a regex pattern. Returns matching lines with file paths and line numbers.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   cacheable = true;
   parameters = {
     type: 'object',

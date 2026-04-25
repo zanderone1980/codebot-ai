@@ -1,5 +1,5 @@
 import { execSync, spawn } from 'child_process';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { isCwdSafe } from '../security';
 import { sandboxExec, isDockerAvailable } from '../sandbox';
 import { PolicyEnforcer } from '../policy';
@@ -154,6 +154,7 @@ export class ExecuteTool implements Tool {
   constructor(projectRoot?: string) { this.projectRoot = projectRoot || process.cwd(); }
   description = 'Execute a shell command. Returns stdout and stderr. Use for running tests, builds, git commands, etc.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'run-cmd'];
   parameters = {
     type: 'object',
     properties: {

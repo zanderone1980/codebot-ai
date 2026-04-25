@@ -1,9 +1,10 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 export class ThinkTool implements Tool {
   name = 'think';
   description = 'A reasoning scratchpad. Use to plan your approach, analyze code, or work through complex problems before taking action. No side effects.';
   permission: Tool['permission'] = 'auto';
+  capabilities: CapabilityLabel[] = ['read-only'];
   parameters = {
     type: 'object',
     properties: {

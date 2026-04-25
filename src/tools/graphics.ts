@@ -44,7 +44,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { execFileSync } from 'child_process';
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 
 // ─── Containment ────────────────────────────────────────────────────────────
 
@@ -255,6 +255,7 @@ export class GraphicsTool implements Tool {
   name = 'graphics';
   description = 'Image processing, SVG generation & design assets. Actions: resize, convert, compress, crop, watermark, info, svg, favicon, og_image, combine. Uses ImageMagick/sips.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['write-fs', 'run-cmd'];
   /**
    * Containment root. Issue #17: plumbed from `Agent.projectRoot` via
    * `ToolRegistry`. Pre-fix every method gated against `process.cwd()`.

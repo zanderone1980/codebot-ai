@@ -1,4 +1,4 @@
-import { Tool } from '../types';
+import { Tool, CapabilityLabel } from '../types';
 import { PolicyEnforcer } from '../policy';
 import {
   BrowserSession,
@@ -36,6 +36,7 @@ export class BrowserTool implements Tool {
   name = 'browser';
   description = 'Control a web browser. Navigate to URLs, read page content, click elements, type text, scroll, press keys, find elements by text, hover, manage tabs, run JavaScript, and take screenshots. Use for web browsing, social media, email, research, testing, and automation.';
   permission: Tool['permission'] = 'prompt';
+  capabilities: CapabilityLabel[] = ['browser-read', 'browser-write', 'net-fetch'];
   parameters = {
     type: 'object',
     properties: {
