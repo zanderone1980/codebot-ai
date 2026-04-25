@@ -56,6 +56,16 @@ The agent should follow the user's identity, not a machine. Stages, in order:
 
 **Local-first first.** Do not build cross-device sync until the local foundation is solid: capability labels declared (PR 3), agent loop reads them (PR 4), model router skeleton (PR 5), budget controls (PR 6). Cross-device sync is post that, and it gets its own architecture sub-doc when the time comes — not a bullet list now.
 
+### Anti-premature-abstraction rule
+
+PR 2 through PR 6 **must stay local-first.** Concretely:
+
+- No cross-device relay or sync abstractions until a dedicated cross-device architecture doc exists and is merged.
+- No "future-proof" interfaces for sync, relay, or phone companion unless they are used **immediately** in the same PR. A `SyncBackend` interface with one local implementation and zero callers is not allowed.
+- No serialization formats or audit-chain shapes designed for the cross-device case. When the cross-device doc lands, those formats may need to change; designing for a future we can't precisely describe locks us into the wrong shape.
+
+Reviewer's job: if a PR in this window introduces an abstraction whose only justification is "we'll need it later for cross-device," reject it. The cost of the eventual rewrite is lower than the cost of carrying dead generality through five PRs.
+
 ### What "user-owned" means
 
 - Vault, memory, audit, policy live in storage **the user controls** — local disk today, user-owned (self-hosted or single-user) sync later. Not a vendor-hosted multi-tenant store.
@@ -117,19 +127,25 @@ These are the load-bearing rules. New code that violates one is rejected at revi
 
 ### Decision table
 
-The router resolves `(task class, sensitivity, budget remaining)` → `(provider, model)`. Concrete table:
+The router resolves `(task class, sensitivity, budget remaining)` → `(provider tier, model)`. **Tiers are stable; specific model identifiers go stale.** This doc defines the task classes and routing rules. The router implementation (PR 5) reads a config file (e.g., `config/models.yaml`) that maps tier names (`fast`, `strong`, `reasoning`) to current model identifiers. When Anthropic or OpenAI ship new models, only the config changes; this table doesn't.
 
-| Task class | Sensitivity | Default model | Escalation model | Approval gate |
+| Task class | Sensitivity | Default tier | Escalation tier | Approval gate |
 |---|---|---|---|---|
-| Code editing | low | Sonnet 4.6 (Anthropic) | Opus 4.7 | none |
-| Code review / security | any | Opus 4.7 | — | none |
-| Web research / summarize | low | Haiku 4.6 or gpt-4.1-mini | Sonnet 4.6 | none |
-| Email triage / draft | medium | Sonnet 4.6 | Opus 4.7 | always-ask before send |
-| Calendar | low | Haiku 4.6 | Sonnet 4.6 | always-ask before invite |
-| Browser action (read) | low | Haiku 4.6 | Sonnet 4.6 | none |
-| Browser action (write — form submit, click "buy/send/post") | high | Opus 4.7 | — | **always-ask** |
-| Anything touching `~/.codebot/vault/` | high | Opus 4.7 | — | **always-ask** |
-| Shell command (`run-cmd` capability) | high | Opus 4.7 | — | **prompt** (or always-ask if `--no-prompt` not set) |
+| Code editing | low | `strong` | `reasoning` | none |
+| Code review / security | any | `reasoning` | — | none |
+| Web research / summarize | low | `fast` | `strong` | none |
+| Email triage / draft | medium | `strong` | `reasoning` | always-ask before send |
+| Calendar | low | `fast` | `strong` | always-ask before invite |
+| Browser action (read) | low | `fast` | `strong` | none |
+| Browser action (write — form submit, click "buy/send/post") | high | `reasoning` | — | **always-ask** |
+| Anything touching `~/.codebot/vault/` | high | `reasoning` | — | **always-ask** |
+| Shell command (`run-cmd` capability) | high | `reasoning` | — | **prompt** (or always-ask if `--no-prompt` not set) |
+
+Examples of what tiers map to **today** (illustrative — config file is the source of truth):
+
+- `fast` — e.g., Anthropic Haiku, OpenAI gpt-4-class small models. Cheap, fast, capable enough for triage / summarize / browser-read.
+- `strong` — e.g., Anthropic Sonnet, OpenAI gpt-4-class flagship. Default coding / drafting tier.
+- `reasoning` — e.g., Anthropic Opus, OpenAI o-series reasoning models. Code review, security, sensitive actions.
 
 "Sensitivity" is a property of the *action*, not the model. Model choice is then driven by sensitivity + the task's reasoning depth.
 
@@ -179,6 +195,22 @@ Every tool gets one or more capability labels. Labels are **declarative metadata
 Labels do not yet exist on the `Tool` interface. Adding them is a metadata-only change — no behavior change in the tools themselves, no new gating until the agent loop reads the labels. See §10 for the rollout.
 
 ## 8. Connector roadmap
+
+### Connector contract (binding)
+
+Every connector ships against this contract. Reviewers reject PRs that skip a row:
+
+| Requirement | What the connector author must declare/implement |
+|---|---|
+| **Credential source** | Vault key name(s) the connector reads at init. e.g., `vault.gmail.oauth_token`. Never reads env vars or config files for credentials. Never persists credentials outside the vault. |
+| **Capability labels per verb** | Each verb maps to one or more `CapabilityLabel`s (§7). `gmail.search` → `account-access`, `read-only`. `gmail.send` → `account-access`, `send-on-behalf`. |
+| **Auth / re-auth behavior** | What the connector does when its token is expired or revoked. Default: surface a structured error (`{ kind: 'reauth-required', service: 'gmail' }`); never block the agent loop in a network call waiting for a user to re-OAuth. |
+| **Audit fields** | Every verb records to the audit chain: `(connector_name, verb, capability_labels, args_redacted, result_status)`. Sensitive args (token strings, full message bodies) redacted to a hash + length. Reviewers reject if PII or credentials show up in audit lines. |
+| **Dry-run / preview for write actions** | Verbs labeled `send-on-behalf` or `delete-data` MUST support a `preview: true` mode that returns *what would happen* without executing. The agent loop calls preview, shows the user, and only executes on approval. |
+| **Idempotency / duplicate-submit protection** | Where the underlying service supports it (Gmail message-id, GitHub PR number, calendar event-id), the connector takes an optional `idempotency_key` and rejects a second call with the same key as a no-op. Where the service does NOT support it, the connector documents the gap explicitly. |
+| **Tests** | Each connector PR includes (a) a unit test that the permission gate blocks unlabeled or wrongly-labeled verbs, (b) a unit test that audit entries are emitted with redacted args, (c) a real-or-mocked test that re-auth surfaces the structured error rather than crashing. |
+
+Connectors are tools at the runtime level (`Tool` interface in `src/types.ts`), but they're *also* required to implement an additional `Connector` interface that pins the contract above. PR 7+ each lands one connector against this contract.
 
 ### Phase 1 — boring useful (next)
 
@@ -246,6 +278,39 @@ These are explicitly left unresolved in this doc — call them out so future PRs
 
 These get answered in the PR that needs them, not pre-emptively.
 
+## 12. Measurement — how we know the architecture is paying off
+
+Per the anti-theater protocol: no measurement = no claim. Each architectural commitment has a signal that says it's working. Commit to measuring these even when the answer is uncomfortable.
+
+| Signal | Source | Bar |
+|---|---|---|
+| **Audit-chain integrity** | CI step that reads `~/.codebot/audit/audit-*.jsonl` and verifies the hash chain end-to-end on every test session | Must pass on every CI run. A broken chain is a release blocker. |
+| **Tool calls without an audit entry** | Test harness counter: every `tool.execute()` call must produce an audit row | **Must be zero.** Off-the-record actions are a non-goal (§2). |
+| **% of registered tools with capability labels** | `ToolRegistry` introspection in CI | Reaches 100% by end of PR 3. Stays at 100% (S4 + the doc-rot rule below). |
+| **Model-router cost per session** | Token-tracker rollup, written to a session summary | Tracked from PR 5 onward. Cheap-first heuristic should drive the median session below the pre-router single-model baseline. |
+| **Approval latency (always-ask actions)** | Time between the gate firing and the user's yes/no | Tracked from PR 4. If P95 latency is so high the user starts answering "yes" reflexively, the UX is broken — that's a metric, not an opinion. |
+| **Denied-action rate** | Audit-log filter for `capability_block` and `containment_reject` | Tracked from PR 4. A non-zero rate is healthy (the gate is doing work). A sudden spike or drop signals either a regression or an over-permissive change. |
+| **Time-to-add-a-connector** | Wall-clock from "open new connector PR" to "merged" | Tracked from PR 7 onward. Drops after the connector contract (§8) is in place; if it doesn't, the contract isn't doing its job. |
+| **Cross-device audit integrity** (when applicable) | Same as audit-chain integrity, but verifying the hash links span devices | Bar: zero gaps, zero forks, zero replays. Until cross-device ships, the metric is N/A. |
+
+If a metric has no measurement infrastructure today, the PR that introduces the relevant feature also lands the measurement. No "we'll measure it later" — that's how things stop being measured.
+
+## 13. How this doc stays honest (doc-rot rule)
+
+Architecture docs rot. Six months in, the code drifts and the doc lies. To prevent that:
+
+> **Any PR that changes the non-goals (§2), security invariants (§4), runtime layers (§5), model routing rules (§6), capability labels (§7), or connector contract (§8) MUST update this doc in the same PR.**
+>
+> Reviewers reject mismatched code-and-doc changes. The CI matrix being green is not a substitute — green CI means the new code works, not that the doc still describes reality.
+
+A short rubric for reviewers:
+- Code added a runtime layer? §5 amended? If no → reject.
+- Code added or removed a capability label? §7 table amended? If no → reject.
+- Code added a tool that takes a path? S2 + S3 invariants honored? If no → reject.
+- Code added a connector? Contract in §8 satisfied (every row, with tests)? If no → reject.
+
+This rule applies to this file, not the broader codebase. Other docs may rot at their own pace; this one doesn't get to.
+
 ---
 
-*Last updated 2026-04-24 (revised to reflect user-owned, multi-device-over-time vision per Alex), against `main @ de6cad7`.*
+*Last updated 2026-04-24 (revised twice: once for the user-owned multi-device-over-time vision; once for engineering-contract discipline — anti-premature-abstraction, doc-rot rule, measurement, connector contract). Against `main @ de6cad7`.*
