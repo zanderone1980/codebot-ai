@@ -6,23 +6,23 @@ import * as os from 'os';
 import { PackageManagerTool } from './package-manager';
 
 /**
- * PackageManagerTool tests — validates package name sanitization, action
- * routing, detection logic, error messages, and metadata.
- * Tests use temp directories with lock files to control detection.
- * Tests do NOT run actual install/add/remove commands.
+ * PackageManagerTool — Row 9 tests (2026-04-24).
+ *
+ * Pre-fix the tool concatenated MANAGERS string commands with the
+ * agent-supplied package name and handed the result to `execSync`. The
+ * pkg-name regex was tight (no shell metachars allowed), so the
+ * shell-injection class was already closed at the validation layer.
+ * The remaining gap was `cwd`: agent could pick any directory and run
+ * `npm install` there.
+ *
+ * Row 9 fix:
+ *   - `execFileSync(cmd, argv)` everywhere. Defense-in-depth.
+ *   - MANAGERS verbs are now `string[]` argv arrays, not space-joined
+ *     strings.
+ *   - `cwd` contained under `projectRoot` (Issue #17 pattern).
+ *   - Pkg-name regex per ecosystem kept (now strict defense-in-depth).
+ *   - `buildPlan()` is a pure seam returning {command, argv, cwd, manager}.
  */
-
-const TEST_ROOT = path.join(os.tmpdir(), 'codebot-pkgmgr-test-' + Date.now());
-
-function ensureTestDir(): void {
-  fs.mkdirSync(TEST_ROOT, { recursive: true });
-}
-
-function cleanTestDir(): void {
-  if (fs.existsSync(TEST_ROOT)) {
-    fs.rmSync(TEST_ROOT, { recursive: true, force: true });
-  }
-}
 
 describe('PackageManagerTool — metadata', () => {
   const tool = new PackageManagerTool();
@@ -46,14 +46,16 @@ describe('PackageManagerTool — metadata', () => {
 });
 
 describe('PackageManagerTool — input validation', () => {
-  const tool = new PackageManagerTool();
+  let projectRoot: string;
+  let tool: PackageManagerTool;
 
   before(() => {
-    ensureTestDir();
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-validation-'));
+    tool = new PackageManagerTool(projectRoot);
   });
 
   after(() => {
-    // cleanup handled by other describe blocks
+    try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
   it('returns error when action is missing', async () => {
@@ -62,213 +64,373 @@ describe('PackageManagerTool — input validation', () => {
   });
 
   it('returns error for unknown action', async () => {
-    // Must provide a cwd with a package.json so detection passes,
-    // otherwise the "no package manager detected" error fires first.
-    const dir = path.join(TEST_ROOT, 'unknown-action-test');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf-8');
-    const result = await tool.execute({ action: 'deploy', cwd: dir });
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf-8');
+    const result = await tool.execute({ action: 'deploy' });
     assert.ok(result.includes('Error: unknown action'));
     assert.ok(result.includes('deploy'));
     assert.ok(result.includes('install, add, remove'));
+    fs.unlinkSync(path.join(projectRoot, 'package.json'));
   });
 });
 
 describe('PackageManagerTool — detect action', () => {
-  const tool = new PackageManagerTool();
+  let projectRoot: string;
 
   before(() => {
-    ensureTestDir();
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-detect-'));
   });
 
   after(() => {
-    cleanTestDir();
+    try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  it('detects npm when package.json exists', async () => {
-    const dir = path.join(TEST_ROOT, 'npm-project');
+  function makeSubdir(name: string): { tool: PackageManagerTool; cwd: string } {
+    const dir = path.join(projectRoot, name);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const tool = new PackageManagerTool(projectRoot);
+    return { tool, cwd: dir };
+  }
+
+  it('detects npm when package.json exists', async () => {
+    const { tool, cwd } = makeSubdir('npm-project');
+    fs.writeFileSync(path.join(cwd, 'package.json'), '{}', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: npm'));
   });
 
   it('detects yarn when yarn.lock exists', async () => {
-    const dir = path.join(TEST_ROOT, 'yarn-project');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'yarn.lock'), '', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('yarn-project');
+    fs.writeFileSync(path.join(cwd, 'yarn.lock'), '', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: yarn'));
   });
 
   it('detects pnpm when pnpm-lock.yaml exists', async () => {
-    const dir = path.join(TEST_ROOT, 'pnpm-project');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'pnpm-lock.yaml'), '', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('pnpm-project');
+    fs.writeFileSync(path.join(cwd, 'pnpm-lock.yaml'), '', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: pnpm'));
   });
 
   it('detects pip when requirements.txt exists', async () => {
-    const dir = path.join(TEST_ROOT, 'pip-project');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'requirements.txt'), '', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('pip-project');
+    fs.writeFileSync(path.join(cwd, 'requirements.txt'), '', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: pip'));
   });
 
   it('detects cargo when Cargo.toml exists', async () => {
-    const dir = path.join(TEST_ROOT, 'cargo-project');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'Cargo.toml'), '', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('cargo-project');
+    fs.writeFileSync(path.join(cwd, 'Cargo.toml'), '', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: cargo'));
   });
 
   it('detects go when go.mod exists', async () => {
-    const dir = path.join(TEST_ROOT, 'go-project');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'go.mod'), '', 'utf-8');
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('go-project');
+    fs.writeFileSync(path.join(cwd, 'go.mod'), '', 'utf-8');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('Detected: go'));
   });
 
   it('returns "No package manager detected" for empty dir', async () => {
-    const dir = path.join(TEST_ROOT, 'empty-project');
-    fs.mkdirSync(dir, { recursive: true });
-    const result = await tool.execute({ action: 'detect', cwd: dir });
+    const { tool, cwd } = makeSubdir('empty-project');
+    const result = await tool.execute({ action: 'detect', cwd });
     assert.ok(result.includes('No package manager detected'));
   });
 
   it('uses forced manager when specified', async () => {
-    const dir = path.join(TEST_ROOT, 'forced-project');
-    fs.mkdirSync(dir, { recursive: true });
-    const result = await tool.execute({ action: 'detect', cwd: dir, manager: 'yarn' });
+    const { tool, cwd } = makeSubdir('forced-project');
+    const result = await tool.execute({ action: 'detect', cwd, manager: 'yarn' });
     assert.ok(result.includes('Detected: yarn'));
   });
 });
 
-describe('PackageManagerTool — add action requires package name', () => {
-  const tool = new PackageManagerTool();
+describe('PackageManagerTool — add/remove require package name', () => {
+  let projectRoot: string;
 
   before(() => {
-    ensureTestDir();
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-addrm-'));
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf-8');
   });
 
   after(() => {
-    cleanTestDir();
+    try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
   it('returns error when package name is missing for add', async () => {
-    const dir = path.join(TEST_ROOT, 'add-no-pkg');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf-8');
-    const result = await tool.execute({ action: 'add', cwd: dir });
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'add' });
     assert.ok(result.includes('Error: package name is required for add'));
   });
 
   it('returns error when package name is missing for remove', async () => {
-    const dir = path.join(TEST_ROOT, 'remove-no-pkg');
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf-8');
-    const result = await tool.execute({ action: 'remove', cwd: dir });
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'remove' });
     assert.ok(result.includes('Error: package name is required for remove'));
   });
 
-  it('returns error when no package manager is detected for non-detect actions', async () => {
-    const dir = path.join(TEST_ROOT, 'no-mgr');
-    fs.mkdirSync(dir, { recursive: true });
-    const result = await tool.execute({ action: 'install', cwd: dir });
-    assert.ok(result.includes('Error: no package manager detected'));
+  it('returns error when no package manager is detected', async () => {
+    const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-empty-'));
+    try {
+      const tool = new PackageManagerTool(empty);
+      const result = await tool.execute({ action: 'install' });
+      assert.ok(result.includes('Error: no package manager detected'));
+    } finally {
+      fs.rmSync(empty, { recursive: true, force: true });
+    }
   });
 });
 
-describe('PackageManagerTool — malicious package name blocking', () => {
-  const tool = new PackageManagerTool();
+describe('PackageManagerTool — malicious package name blocking (defense-in-depth)', () => {
+  let projectRoot: string;
 
   before(() => {
-    ensureTestDir();
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-mal-'));
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf-8');
   });
 
   after(() => {
-    cleanTestDir();
+    try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ignore */ }
   });
 
-  function makeNpmDir(name: string): string {
-    const dir = path.join(TEST_ROOT, name);
-    fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'package.json'), '{}', 'utf-8');
-    return dir;
+  it('blocks package name with semicolon', async () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'add', package: 'lodash; rm -rf /' });
+    assert.ok(result.includes('Error: invalid package name'));
+  });
+
+  it('blocks package name with pipe', async () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'add', package: 'lodash | cat /etc/passwd' });
+    assert.ok(result.includes('Error: invalid package name'));
+  });
+
+  it('blocks package name with backticks', async () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'add', package: '`rm -rf /`' });
+    assert.ok(result.includes('Error: invalid package name'));
+  });
+
+  it('blocks package name with $()', async () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const result = await tool.execute({ action: 'add', package: '$(whoami)' });
+    assert.ok(result.includes('Error: invalid package name'));
+  });
+
+  it('allows valid npm package names', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: 'lodash' });
+    assert.ok(!('error' in plan), `expected plan, got error: ${'error' in plan ? plan.error : ''}`);
+  });
+
+  it('allows scoped npm package names', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: '@types/node' });
+    assert.ok(!('error' in plan));
+  });
+
+  it('allows npm package with version specifier', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: 'express@4.18.0' });
+    assert.ok(!('error' in plan));
+  });
+});
+
+/**
+ * Row 9 — argv shape via buildPlan(). Pure seam; no manager binary
+ * needed. These pin the array-form contract so a future refactor
+ * can't slide back into space-joined strings.
+ */
+describe('PackageManagerTool — argv shape (Row 9: via buildPlan)', () => {
+  let projectRoot: string;
+
+  before(() => {
+    projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-argv-'));
+    fs.writeFileSync(path.join(projectRoot, 'package.json'), '{}', 'utf-8');
+  });
+
+  after(() => {
+    try { fs.rmSync(projectRoot, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  function isRunPlan(p: unknown): p is { command: string; argv: string[]; cwd: string; manager: string } {
+    return typeof p === 'object' && p !== null && 'command' in p && 'argv' in p;
   }
 
-  it('blocks package name with semicolon (shell injection)', async () => {
-    const dir = makeNpmDir('inject-semicolon');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: 'lodash; rm -rf /',
-    });
-    assert.ok(result.includes('Error: invalid package name'));
+  it('npm add: argv is ["install", "<pkg>"]', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: 'lodash' });
+    assert.ok(isRunPlan(plan));
+    if (!isRunPlan(plan)) return;
+    assert.strictEqual(plan.command, 'npm');
+    assert.deepStrictEqual(plan.argv, ['install', 'lodash']);
   });
 
-  it('blocks package name with pipe (shell injection)', async () => {
-    const dir = makeNpmDir('inject-pipe');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: 'lodash | cat /etc/passwd',
-    });
-    assert.ok(result.includes('Error: invalid package name'));
+  it('npm add: scoped name stays as a single argv element', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: '@types/node' });
+    assert.ok(isRunPlan(plan));
+    if (!isRunPlan(plan)) return;
+    assert.deepStrictEqual(plan.argv, ['install', '@types/node']);
   });
 
-  it('blocks package name with backticks (command substitution)', async () => {
-    const dir = makeNpmDir('inject-backtick');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: '`rm -rf /`',
-    });
-    assert.ok(result.includes('Error: invalid package name'));
+  it('npm add multiple: split on whitespace, each becomes one argv element', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'add', package: 'react react-dom' });
+    assert.ok(isRunPlan(plan));
+    if (!isRunPlan(plan)) return;
+    assert.deepStrictEqual(plan.argv, ['install', 'react', 'react-dom']);
   });
 
-  it('blocks package name with $() (command substitution)', async () => {
-    const dir = makeNpmDir('inject-dollar');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: '$(whoami)',
-    });
-    assert.ok(result.includes('Error: invalid package name'));
+  it('npm install: argv is just ["install"]', () => {
+    const tool = new PackageManagerTool(projectRoot);
+    const plan = tool.buildPlan({ action: 'install' });
+    assert.ok(isRunPlan(plan));
+    if (!isRunPlan(plan)) return;
+    assert.deepStrictEqual(plan.argv, ['install']);
   });
 
-  it('allows valid npm package names', async () => {
-    const dir = makeNpmDir('valid-pkg');
-    // This will fail to actually install, but should pass validation
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: 'lodash',
-    });
-    assert.ok(!result.includes('Error: invalid package name'));
+  it('pip install (with forced manager): argv carries -r requirements.txt', () => {
+    const pipDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-pip-'));
+    fs.writeFileSync(path.join(pipDir, 'requirements.txt'), '', 'utf-8');
+    try {
+      const tool = new PackageManagerTool(pipDir);
+      const plan = tool.buildPlan({ action: 'install' });
+      assert.ok(isRunPlan(plan));
+      if (!isRunPlan(plan)) return;
+      assert.strictEqual(plan.command, 'pip');
+      assert.deepStrictEqual(plan.argv, ['install', '-r', 'requirements.txt']);
+    } finally {
+      fs.rmSync(pipDir, { recursive: true, force: true });
+    }
   });
 
-  it('allows scoped npm package names', async () => {
-    const dir = makeNpmDir('valid-scoped');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: '@types/node',
-    });
-    assert.ok(!result.includes('Error: invalid package name'));
+  it('go list outdated: argv carries -m -u all', () => {
+    const goDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-go-'));
+    fs.writeFileSync(path.join(goDir, 'go.mod'), 'module x', 'utf-8');
+    try {
+      const tool = new PackageManagerTool(goDir);
+      const plan = tool.buildPlan({ action: 'outdated' });
+      assert.ok(isRunPlan(plan));
+      if (!isRunPlan(plan)) return;
+      assert.strictEqual(plan.command, 'go');
+      assert.deepStrictEqual(plan.argv, ['list', '-m', '-u', 'all']);
+    } finally {
+      fs.rmSync(goDir, { recursive: true, force: true });
+    }
   });
 
-  it('allows npm package with version specifier', async () => {
-    const dir = makeNpmDir('valid-version');
-    const result = await tool.execute({
-      action: 'add',
-      cwd: dir,
-      package: 'express@4.18.0',
-    });
-    assert.ok(!result.includes('Error: invalid package name'));
+  it('go audit: dispatches to govulncheck (separate binary)', () => {
+    const goDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-goaudit-'));
+    fs.writeFileSync(path.join(goDir, 'go.mod'), 'module x', 'utf-8');
+    try {
+      const tool = new PackageManagerTool(goDir);
+      const plan = tool.buildPlan({ action: 'audit' });
+      assert.ok(isRunPlan(plan));
+      if (!isRunPlan(plan)) return;
+      assert.strictEqual(plan.command, 'govulncheck');
+      assert.deepStrictEqual(plan.argv, ['./...']);
+    } finally {
+      fs.rmSync(goDir, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Row 9 — cwd containment.
+ */
+describe('PackageManagerTool — cwd containment (Row 9 — closes the actual gap)', () => {
+  it('rejects cwd outside projectRoot via parent traversal', () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-contain-'));
+    try {
+      const tool = new PackageManagerTool(projectRoot);
+      const plan = tool.buildPlan({ action: 'install', cwd: '../../etc' });
+      assert.ok('error' in plan);
+      if ('error' in plan) assert.match(plan.error, /cwd escapes project root/);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects absolute cwd outside projectRoot', () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-contain-'));
+    try {
+      const tool = new PackageManagerTool(projectRoot);
+      const escapeTarget = process.platform === 'win32' ? 'C:\\Windows\\System32' : '/etc/passwd';
+      const plan = tool.buildPlan({ action: 'install', cwd: escapeTarget });
+      assert.ok('error' in plan);
+      if ('error' in plan) assert.match(plan.error, /cwd escapes project root/);
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects sibling-prefix cwd', () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-contain-'));
+    try {
+      const sibling = projectRoot + '-evil';
+      const tool = new PackageManagerTool(projectRoot);
+      const plan = tool.buildPlan({ action: 'install', cwd: sibling });
+      assert.ok('error' in plan, 'sibling-prefix must be rejected');
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts cwd inside projectRoot', () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-contain-'));
+    const sub = path.join(projectRoot, 'sub');
+    fs.mkdirSync(sub);
+    fs.writeFileSync(path.join(sub, 'package.json'), '{}', 'utf-8');
+    try {
+      const tool = new PackageManagerTool(projectRoot);
+      const plan = tool.buildPlan({ action: 'install', cwd: 'sub' });
+      assert.ok(!('error' in plan) && !('detect' in plan));
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+/**
+ * Row 9 — real-exec canary. Even if pkg regex catches `;rm`, prove
+ * argv-form means no shell expansion. Driven through buildPlan with
+ * a payload that the regex would reject — and through execute()
+ * with a regex-bypassing edge case.
+ */
+describe('PackageManagerTool — local-shell injection canary (real exec)', () => {
+  let workDir: string;
+  let originalCwd: string;
+
+  before(() => {
+    originalCwd = process.cwd();
+    workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-row9-pkgmgr-canary-'));
+    process.chdir(workDir);
+    fs.writeFileSync(path.join(workDir, 'package.json'), '{}', 'utf-8');
+  });
+
+  after(() => {
+    process.chdir(originalCwd);
+    try { fs.rmSync(workDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+
+  it('regex rejects $(...) payloads (shell injection blocked at validation)', async () => {
+    const marker = path.join(workDir, 'PWNED_PKG_DOLLAR');
+    const tool = new PackageManagerTool(workDir);
+    const payload = `lodash$(node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '\\\\')}','pwned')")`;
+    const result = await tool.execute({ action: 'add', package: payload });
+    assert.match(result, /invalid package name/, 'regex must reject');
+    assert.strictEqual(fs.existsSync(marker), false,
+      `LOCAL SHELL INJECTION REGRESSION: ${marker} created via package.`);
+  });
+
+  it('regex rejects backtick payloads', async () => {
+    const marker = path.join(workDir, 'PWNED_PKG_BACKTICK');
+    const tool = new PackageManagerTool(workDir);
+    const payload = `lodash\`node -e "require('fs').writeFileSync('${marker.replace(/\\/g, '\\\\')}','pwned')"\``;
+    const result = await tool.execute({ action: 'add', package: payload });
+    assert.match(result, /invalid package name/);
+    assert.strictEqual(fs.existsSync(marker), false);
   });
 });

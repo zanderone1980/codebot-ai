@@ -693,11 +693,13 @@ describe('NotificationTool', () => {
 });
 
 describe('DockerTool', () => {
-  it('blocks --privileged flag', async () => {
+  // Row 9 fix (2026-04-24): args is now a string array, not a string.
+  it('blocks --privileged flag (argv form)', async () => {
     const registry = new ToolRegistry();
     const tool = registry.get('docker')!;
-    const result = await tool.execute({ action: 'run', args: '--privileged ubuntu' });
-    assert.ok(result.includes('blocked'));
+    const result = await tool.execute({ action: 'run', args: ['--privileged', 'ubuntu'] });
+    assert.ok(result.includes('blocked'),
+      `Expected "blocked" in: ${result}`);
   });
 
   it('returns error for unknown action', async () => {
