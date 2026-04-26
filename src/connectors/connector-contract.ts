@@ -43,7 +43,7 @@ export interface ContractViolation {
   rule:
     | 'missing-capabilities'
     | 'missing-preview-for-mutating-verb'
-    | 'missing-idempotency-arg'
+    | 'missing-idempotency-declaration'
     | 'missing-redact-for-mutating-verb';
   hint: string;
 }
@@ -116,17 +116,20 @@ function visitAction(connector: string, action: ConnectorAction, out: ContractVi
     }
   }
 
-  // Rule 4 — idempotency. We don't *require* it (some services don't
-  // support it). But we DO require an explicit declaration: either
-  // `idempotencyKeyArg` set, OR (future) an explicit "service does not
-  // support idempotency" marker. For PR 7 we only flag mutating verbs
-  // missing the key — read-only verbs are exempt.
-  if (mutating.length > 0 && action.idempotencyKeyArg === undefined) {
+  // Rule 4 — idempotency. We don't *require* a key (some services don't
+  // support it). But we DO require an explicit declaration on every
+  // mutating verb: either `idempotencyKeyArg` set, OR
+  // `idempotencyUnsupportedReason` documenting why no key exists.
+  // Setting NEITHER is the violation — that's the implicit-gap pattern
+  // we're trying to prevent. Read-only verbs are exempt entirely.
+  const hasIdempotencyKey = typeof action.idempotencyKeyArg === 'string' && action.idempotencyKeyArg.length > 0;
+  const hasUnsupportedReason = typeof action.idempotencyUnsupportedReason === 'string' && action.idempotencyUnsupportedReason.length > 0;
+  if (mutating.length > 0 && !hasIdempotencyKey && !hasUnsupportedReason) {
     out.push({
       connector,
       action: action.name,
-      rule: 'missing-idempotency-arg',
-      hint: `Action "${action.name}" is mutating and should declare \`idempotencyKeyArg\` (the args field carrying a user-supplied key). When the service does not support idempotency, this is the explicit place to document that gap — leaving undefined records the gap, but a future PR may require an explicit "unsupported" sentinel.`,
+      rule: 'missing-idempotency-declaration',
+      hint: `Action "${action.name}" is mutating and must declare either \`idempotencyKeyArg\` (name of the args field carrying a user-supplied dedup key) OR \`idempotencyUnsupportedReason\` (documented gap when the service has no dedup mechanism). Setting neither is the implicit-gap pattern §8 prohibits.`,
     });
   }
 }

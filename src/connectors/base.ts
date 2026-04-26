@@ -60,10 +60,28 @@ export interface ConnectorAction {
   /**
    * Name of the args field that carries the user-supplied idempotency
    * key (e.g. `'message_id'` for Gmail send). Set when the underlying
-   * service supports it. When the service does NOT support it, leave
-   * undefined and the contract validator records the gap explicitly.
+   * service supports duplicate-submit protection.
+   *
+   * If the service does NOT support idempotency, leave this undefined
+   * and set `idempotencyUnsupportedReason` instead — that's the
+   * explicit "documented gap" the §8 contract requires. Setting
+   * neither on a mutating verb fails `assertContractClean`.
    */
   idempotencyKeyArg?: string;
+
+  /**
+   * Documented reason that this verb does NOT support idempotency
+   * (the underlying service has no message-id / request-id / dedup
+   * mechanism). Set this instead of `idempotencyKeyArg` to honestly
+   * declare the gap. Reason should be a short technical sentence —
+   * e.g. `'Slack chat.postMessage has no client-side dedup key.'`.
+   *
+   * The contract validator accepts either `idempotencyKeyArg` OR
+   * `idempotencyUnsupportedReason` for mutating verbs. Setting both
+   * is allowed (a connector might support a partial dedup signal but
+   * also document a known gap). Setting neither is a violation.
+   */
+  idempotencyUnsupportedReason?: string;
 
   /**
    * Returns a sanitized version of args for audit logging. Default

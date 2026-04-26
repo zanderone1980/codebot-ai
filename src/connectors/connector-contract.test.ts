@@ -90,7 +90,7 @@ describe('validateConnectorContract — rule coverage', () => {
     const rules = validateConnectorContract(c).map((v) => v.rule).sort();
     assert.deepStrictEqual(
       rules,
-      ['missing-idempotency-arg', 'missing-preview-for-mutating-verb', 'missing-redact-for-mutating-verb'],
+      ['missing-idempotency-declaration', 'missing-preview-for-mutating-verb', 'missing-redact-for-mutating-verb'],
     );
   });
 
@@ -113,7 +113,7 @@ describe('validateConnectorContract — rule coverage', () => {
     assert.deepStrictEqual(rules, ['missing-redact-for-mutating-verb']);
   });
 
-  it('flags mutating verb missing idempotencyKeyArg', () => {
+  it('flags mutating verb missing both idempotencyKeyArg AND idempotencyUnsupportedReason', () => {
     const action: ConnectorAction = {
       name: 'send_thing',
       description: '',
@@ -121,7 +121,7 @@ describe('validateConnectorContract — rule coverage', () => {
       capabilities: ['send-on-behalf'],
       preview: async () => ({ summary: 'would send' }),
       redactArgsForAudit: (a) => ({ ...a }),
-      // no idempotencyKeyArg
+      // neither idempotencyKeyArg nor idempotencyUnsupportedReason
       execute: async () => 'ok',
     };
     const c: Connector = {
@@ -129,7 +129,75 @@ describe('validateConnectorContract — rule coverage', () => {
       authType: 'api_key', actions: [action], validate: async () => true,
     };
     const rules = validateConnectorContract(c).map((v) => v.rule);
-    assert.deepStrictEqual(rules, ['missing-idempotency-arg']);
+    assert.deepStrictEqual(rules, ['missing-idempotency-declaration']);
+  });
+
+  it('idempotencyUnsupportedReason satisfies the rule (escape hatch for services without dedup)', () => {
+    // Concrete real-world case: Slack chat.postMessage has no client-side
+    // dedup key. The contract MUST allow honest "we know, here's why"
+    // declaration — anything else forces dishonest fake idempotency args.
+    const action: ConnectorAction = {
+      name: 'post_message',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      capabilities: ['send-on-behalf'],
+      preview: async () => ({ summary: 'would post' }),
+      redactArgsForAudit: (a) => ({ ...a }),
+      idempotencyUnsupportedReason: 'Slack chat.postMessage has no client-side dedup key.',
+      // no idempotencyKeyArg — explicitly documented as unsupported
+      execute: async () => 'ok',
+    };
+    const c: Connector = {
+      name: 'fixture-no-dedup-supported', displayName: '', description: '',
+      authType: 'api_key', actions: [action], validate: async () => true,
+    };
+    assert.deepStrictEqual(validateConnectorContract(c), [],
+      'unsupportedReason must be accepted as an honest declaration');
+  });
+
+  it('both idempotencyKeyArg AND idempotencyUnsupportedReason allowed (partial dedup with documented gap)', () => {
+    // A connector might support dedup for some args paths but not
+    // others, or want to record a known limitation alongside the key.
+    // The contract should not force exclusivity.
+    const action: ConnectorAction = {
+      name: 'send_thing',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      capabilities: ['send-on-behalf'],
+      preview: async () => ({ summary: 'would send' }),
+      redactArgsForAudit: (a) => ({ ...a }),
+      idempotencyKeyArg: 'request_id',
+      idempotencyUnsupportedReason: 'Server only dedupes within a 5-minute window.',
+      execute: async () => 'ok',
+    };
+    const c: Connector = {
+      name: 'fixture-both', displayName: '', description: '',
+      authType: 'api_key', actions: [action], validate: async () => true,
+    };
+    assert.deepStrictEqual(validateConnectorContract(c), [],
+      'declaring both should be allowed — the gap note is documentation, not exclusion');
+  });
+
+  it('empty-string idempotencyUnsupportedReason does NOT satisfy the rule', () => {
+    // Empty string would be too easy a way to defeat the contract
+    // ("technically declared"). Validator requires non-empty reason.
+    const action: ConnectorAction = {
+      name: 'send_thing',
+      description: '',
+      parameters: { type: 'object', properties: {} },
+      capabilities: ['send-on-behalf'],
+      preview: async () => ({ summary: 'would send' }),
+      redactArgsForAudit: (a) => ({ ...a }),
+      idempotencyUnsupportedReason: '',
+      execute: async () => 'ok',
+    };
+    const c: Connector = {
+      name: 'fixture-empty-reason', displayName: '', description: '',
+      authType: 'api_key', actions: [action], validate: async () => true,
+    };
+    const rules = validateConnectorContract(c).map((v) => v.rule);
+    assert.deepStrictEqual(rules, ['missing-idempotency-declaration'],
+      'empty reason string is not an honest declaration');
   });
 
   it('does NOT require preview / idempotency / redact for read-only verbs', () => {
@@ -206,7 +274,7 @@ describe('assertContractClean — hard fail for new connector PRs', () => {
       (e: Error) => {
         return /3 contract violation\(s\)/.test(e.message)
           && /missing-preview-for-mutating-verb/.test(e.message)
-          && /missing-idempotency-arg/.test(e.message)
+          && /missing-idempotency-declaration/.test(e.message)
           && /missing-redact-for-mutating-verb/.test(e.message);
       },
     );
