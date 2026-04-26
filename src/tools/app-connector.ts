@@ -10,6 +10,7 @@
 
 import { Tool, CapabilityLabel } from '../types';
 import { ConnectorRegistry } from '../connectors/registry';
+import { isConnectorReauthError } from '../connectors/base';
 import { VaultManager } from '../vault';
 
 export class AppConnectorTool implements Tool {
@@ -196,6 +197,15 @@ export class AppConnectorTool implements Tool {
     try {
       return await action.execute(args, credential);
     } catch (err: unknown) {
+      // PR 7 — structured reauth signal. Connectors throw
+      // ConnectorReauthError when the credential is expired/revoked/
+      // insufficient. Catch it here and return a recognizable string;
+      // tests assert the error is catchable by `kind === 'reauth-required'`
+      // (via `isConnectorReauthError`) BEFORE this string formatting,
+      // so the structure is preserved as the contract.
+      if (isConnectorReauthError(err)) {
+        return `Error: re-authentication required for ${connector.displayName}. Run: app connect ${appName}`;
+      }
       return `Error: ${connector.displayName}.${actionName} failed: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
