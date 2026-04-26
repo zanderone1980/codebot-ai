@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import { Agent } from './agent';
 import type { LLMProvider, AgentEvent, ToolSchema, Message, StreamEvent } from './types';
 import type { RouterConfig } from './router';
+import { makeTestAuditDir } from './test-audit-isolation';
 
 /**
  * PR 5 — agent-router integration tests.
@@ -82,6 +83,7 @@ describe('Agent — router OFF: behavior unchanged', () => {
       (agentRef as unknown as { model: string }).model,
     );
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'claude-sonnet-4-6',
       providerName: 'anthropic',
@@ -110,6 +112,7 @@ describe('Agent — router OFF: behavior unchanged', () => {
       reasoningModel: 'claude-opus-4-7',
     };
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'claude-sonnet-4-6',
       providerName: 'anthropic',
@@ -138,6 +141,7 @@ describe('Agent — router ON, same provider: routes per tier', () => {
       reasoningModel: 'claude-opus-4-7',
     };
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'claude-sonnet-4-6',
       providerName: 'anthropic',
@@ -165,6 +169,7 @@ describe('Agent — router ON, same provider: routes per tier', () => {
       reasoningModel: 'claude-opus-4-7',
     };
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'claude-sonnet-4-6',
       providerName: 'anthropic',
@@ -195,6 +200,7 @@ describe('Agent — router ON, cross-provider: falls open to current model', () 
       reasoningModel: 'gpt-4o',  // different family!
     };
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'claude-sonnet-4-6',
       providerName: 'anthropic',

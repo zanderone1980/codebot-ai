@@ -132,6 +132,16 @@ export class Agent {
      */
     budgetConfig?: BudgetConfig;
     /**
+     * Override the AuditLogger's log directory. Tests pass an isolated
+     * tempdir so they don't pollute the user's `~/.codebot/audit/`.
+     * Production code omits this, falling back to the default vault
+     * location. Honesty-pass discovery: pre-this-fix, every test that
+     * did `new Agent(...)` wrote audit entries into the user's real
+     * audit log, mixing test sessions with production sessions. See
+     * §12 / §13 of the architecture doc.
+     */
+    auditDir?: string;
+    /**
      * Vault Mode — when set, the agent behaves as a read-only research
      * assistant over a folder of markdown notes rather than an
      * autonomous coding agent. The system prompt, tool set, and default
@@ -167,7 +177,7 @@ export class Agent {
     this.cache = new ToolCache();
     this.rateLimiter = new RateLimiter();
     this.providerRateLimiter = new ProviderRateLimiter(opts.providerName || 'local');
-    this.auditLogger = new AuditLogger();
+    this.auditLogger = new AuditLogger(opts.auditDir);
 
     // Token & cost tracking
     this.tokenTracker = new TokenTracker(opts.model, opts.providerName || 'unknown');

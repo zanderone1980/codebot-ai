@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import { Agent } from './agent';
 import { LLMProvider, Message, ToolSchema, StreamEvent } from './types';
 import { isRetryable, isFatalError, getRetryDelay, sleep, RETRY_DEFAULTS } from './retry';
+import { makeTestAuditDir } from './test-audit-isolation';
 
 // ─── Mock Providers ──────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ describe('Agent Stability', () => {
   it('recovers from stream exception and continues to next iteration', async () => {
     const provider = new ThrowingProvider(1);
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       maxIterations: 3,
@@ -103,6 +105,7 @@ describe('Agent Stability', () => {
   it('recovers from error events and retries on next iteration', async () => {
     const provider = new ErrorEventProvider(1);
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       maxIterations: 3,
@@ -125,6 +128,7 @@ describe('Agent Stability', () => {
   it('feeds permission denial back to LLM and continues', async () => {
     const provider = new ToolCallProvider();
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       maxIterations: 3,
@@ -305,6 +309,7 @@ describe('Agent fatal error handling', () => {
 
     const provider = new FatalErrorProvider();
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       maxIterations: 50,
@@ -339,6 +344,7 @@ describe('Agent fatal error handling', () => {
 
     const provider = new RepeatingErrorProvider();
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       maxIterations: 50,
@@ -387,6 +393,7 @@ describe('Agent message repair', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new BadJsonProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -422,6 +429,7 @@ describe('Agent message repair', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new InspectingProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -462,6 +470,7 @@ describe('Agent message repair', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new InspectingProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -504,6 +513,7 @@ describe('Agent message repair', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new InspectingProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -547,6 +557,7 @@ describe('Agent message repair', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new InspectingProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -627,6 +638,7 @@ describe('Agent parallel tool execution', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new MultiToolProvider(),
       model: 'mock-model',
       maxIterations: 5,
@@ -692,6 +704,7 @@ describe('Agent parallel tool execution', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new OrderInspectProvider(),
       model: 'mock-model',
       maxIterations: 5,
@@ -737,6 +750,7 @@ describe('Agent arg validation', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new MissingArgProvider(),
       model: 'mock-model',
       maxIterations: 3,
@@ -780,6 +794,7 @@ describe('Agent arg validation', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new WrongTypeProvider(),
       model: 'mock-model',
       maxIterations: 3,

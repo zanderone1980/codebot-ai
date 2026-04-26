@@ -8,6 +8,7 @@ import { DashboardServer } from './server';
 import { registerCommandRoutes } from './command-api';
 import { Agent } from '../agent';
 import type { LLMProvider, AgentEvent } from '../types';
+import { makeTestAuditDir } from '../test-audit-isolation';
 
 /**
  * Integration tests for POST /api/command/vault. We spin up a real
@@ -84,6 +85,7 @@ describe('POST /api/command/vault — dashboard vault control', () => {
     fs.writeFileSync(path.join(fixtureVault, 'note.md'), '# Test note\n\nHello from the fixture.\n');
 
     agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: makeStubProvider(),
       model: 'stub-model',
       providerName: 'stub',

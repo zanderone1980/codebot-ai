@@ -6,6 +6,7 @@ import * as path from 'path';
 import { Agent } from './agent';
 import { LLMProvider, Message, ToolSchema, StreamEvent } from './types';
 import { UserProfile } from './user-profile';
+import { makeTestAuditDir } from './test-audit-isolation';
 
 const originalCodebotHome = process.env.CODEBOT_HOME;
 
@@ -62,6 +63,7 @@ describe('Agent', () => {
   it('produces text events from LLM response', async () => {
     const provider = new MockProvider([{ text: 'Hello, world!' }]);
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -91,6 +93,7 @@ describe('Agent', () => {
     ]);
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -124,6 +127,7 @@ describe('Agent', () => {
     ]);
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -148,6 +152,7 @@ describe('Agent', () => {
     );
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: infiniteToolProvider,
       model: 'mock-model',
       maxIterations: 3,
@@ -167,6 +172,7 @@ describe('Agent', () => {
   it('clears history correctly', async () => {
     const provider = new MockProvider([{ text: 'Response 1' }, { text: 'Response 2' }]);
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -189,6 +195,7 @@ describe('Agent', () => {
     const provider = new MockProvider([{ text: 'OK' }]);
     const customRoot = '/tmp/custom-project';
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -209,6 +216,7 @@ describe('Agent', () => {
   it('falls back to cwd when projectRoot not provided', async () => {
     const provider = new MockProvider([{ text: 'OK' }]);
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -235,6 +243,7 @@ describe('Agent', () => {
 
     const customRoot = '/tmp/test-project';
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider,
       model: 'mock-model',
       autoApprove: true,
@@ -266,6 +275,7 @@ describe('Agent', () => {
 
     const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-agent-project-'));
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new InspectingProvider(),
       model: 'mock-model',
       autoApprove: true,
@@ -292,6 +302,7 @@ describe('Agent', () => {
     }
 
     const agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: new QuietProvider(),
       model: 'mock-model',
       autoApprove: true,

@@ -7,6 +7,7 @@ import { Agent } from './agent';
 import { AuditLogger } from './audit';
 import type { LLMProvider, AgentEvent, ToolSchema, Message, StreamEvent } from './types';
 import type { BudgetConfig } from './setup';
+import { makeTestAuditDir } from './test-audit-isolation';
 
 /**
  * PR 6 — agent budget controls.
@@ -72,6 +73,7 @@ function readBudgetAudits(auditDir: string): Array<Record<string, unknown>> {
 function makeAgent(opts: { budgetConfig?: BudgetConfig; auditDir?: string } = {}): TestContext {
   const auditDir = opts.auditDir ?? fs.mkdtempSync(path.join(os.tmpdir(), 'codebot-pr6-budget-audit-'));
   const agent = new Agent({
+    auditDir: makeTestAuditDir(),
     provider: makeStubProvider(),
     model: 'claude-sonnet-4-6',
     providerName: 'anthropic',

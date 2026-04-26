@@ -8,6 +8,7 @@ import { DashboardServer } from './server';
 import { registerCommandRoutes } from './command-api';
 import { Agent } from '../agent';
 import type { LLMProvider, AgentEvent } from '../types';
+import { makeTestAuditDir } from '../test-audit-isolation';
 
 /**
  * Acceptance tests for the POST /api/command/tool/run bypass fix
@@ -91,6 +92,7 @@ describe('POST /api/command/tool/run — security gate chain', () => {
     // NOT for CORD BLOCK / SPARK CHALLENGE / policy / capability — the
     // layers this test actually cares about.
     agent = new Agent({
+      auditDir: makeTestAuditDir(),
       provider: makeStubProvider(),
       model: 'stub-model',
       providerName: 'stub',
@@ -262,6 +264,7 @@ describe('POST /api/command/tool/run — security gate chain', () => {
       // Disabling CORD here isolates the test to exactly what this
       // patch changes: the inner-step callback writing audit entries.
       const localAgent = new Agent({
+        auditDir: makeTestAuditDir(),
         provider: makeStubProvider(),
         model: 'stub-model',
         providerName: 'stub',

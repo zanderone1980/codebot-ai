@@ -9,6 +9,7 @@ import { registerCommandRoutes } from './command-api';
 import { Agent } from '../agent';
 import { ExecuteTool } from '../tools/execute';
 import type { LLMProvider, AgentEvent } from '../types';
+import { makeTestAuditDir } from '../test-audit-isolation';
 
 /**
  * Acceptance tests for the POST /api/command/exec gate-chain fix
@@ -130,6 +131,7 @@ describe('POST /api/command/exec — gate chain', () => {
       // ExecuteTool streaming. Policy / capability / permission /
       // preflight still run. autoApprove matches production dashboard.
       agent = new Agent({
+        auditDir: makeTestAuditDir(),
         provider: makeStubProvider(),
         model: 'stub-model',
         providerName: 'stub',
