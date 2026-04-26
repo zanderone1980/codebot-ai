@@ -215,6 +215,22 @@ export class ToolRegistry {
   }
 
   register(tool: Tool) {
+    // PR 4 — §7 PROHIBITED-label registration guard.
+    // Tools/connectors that carry the `move-money` capability label must
+    // not be loadable. Per §2 of personal-agent-infrastructure.md this is
+    // a permanent boundary — bank transfers, brokerage trades, crypto
+    // signing, P2P payments, agent-held payment credentials. Failing
+    // loud at register-time keeps it from silently slipping in via a
+    // future tool / plugin / MCP server.
+    if (tool.capabilities?.includes('move-money')) {
+      throw new Error(
+        `Refusing to register tool "${tool.name}": carries PROHIBITED ` +
+        `move-money capability label. Per §2 of ` +
+        `docs/personal-agent-infrastructure.md, tools that move money / ` +
+        `trade / sign crypto / hold financial-instrument credentials ` +
+        `must not be loadable.`,
+      );
+    }
     this.tools.set(tool.name, tool);
   }
 

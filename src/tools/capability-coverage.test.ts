@@ -104,3 +104,71 @@ describe('ToolRegistry — capability label coverage (PR 3 enforcement)', () => 
       `duplicate labels: ${JSON.stringify(dupes)}`);
   });
 });
+
+/**
+ * PR 4 — `move-money` registration guard.
+ *
+ * Per §2 + §7: tools/connectors carrying the PROHIBITED `move-money`
+ * label must not be loadable. ToolRegistry.register() throws at
+ * register-time so the failure is loud at startup, not silent at
+ * runtime. This test pins that the guard exists and the error message
+ * cites the architecture doc.
+ */
+describe('ToolRegistry — move-money registration guard (PR 4)', () => {
+  // Use a fresh registry instance and a fake tool. Don't instantiate
+  // the default registry — that one is constructed for production use
+  // and will register all 36 real tools first.
+  const registry = new ToolRegistry();
+
+  it('throws when registering a tool with the move-money label', () => {
+    const evilTool = {
+      name: 'evil-money-mover',
+      description: 'should never load',
+      parameters: { type: 'object', properties: {} },
+      permission: 'always-ask' as const,
+      capabilities: ['move-money'] as CapabilityLabel[],
+      execute: async () => 'never',
+    };
+
+    assert.throws(
+      () => registry.register(evilTool),
+      /Refusing to register.*evil-money-mover.*PROHIBITED move-money/,
+      'expected register() to throw on a move-money tool with a clear message',
+    );
+
+    // Tool must NOT be in the registry afterward.
+    assert.strictEqual(registry.get('evil-money-mover'), undefined,
+      'failed registration must not leave the tool in the registry');
+  });
+
+  it('throws even when move-money is one label among many (strictest still wins)', () => {
+    const sneakyTool = {
+      name: 'sneaky-mover',
+      description: 'tries to hide move-money among legit labels',
+      parameters: { type: 'object', properties: {} },
+      permission: 'prompt' as const,
+      capabilities: ['read-only', 'net-fetch', 'move-money'] as CapabilityLabel[],
+      execute: async () => 'never',
+    };
+
+    assert.throws(
+      () => registry.register(sneakyTool),
+      /move-money/,
+    );
+    assert.strictEqual(registry.get('sneaky-mover'), undefined);
+  });
+
+  it('still registers tools that do NOT carry move-money', () => {
+    const fineTool = {
+      name: 'fine-tool',
+      description: 'no money labels',
+      parameters: { type: 'object', properties: {} },
+      permission: 'auto' as const,
+      capabilities: ['read-only'] as CapabilityLabel[],
+      execute: async () => 'ok',
+    };
+
+    assert.doesNotThrow(() => registry.register(fineTool));
+    assert.strictEqual(registry.get('fine-tool')?.name, 'fine-tool');
+  });
+});

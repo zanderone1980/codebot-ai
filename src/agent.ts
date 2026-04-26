@@ -25,6 +25,7 @@ import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
 import { TaskStateStore } from './task-state';
+import { escalatePermissionFromCapabilityLabels } from './capability-gating';
 import { log } from './logger';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
@@ -706,6 +707,32 @@ export class Agent {
     // Risk scoring
     const policyPermission = this.policyEnforcer.getToolPermission(toolName);
     let effectivePermission = policyPermission || tool.permission;
+
+    // Capability label escalation (PR 4 — §7 of personal-agent-infrastructure.md).
+    // Each label declares a required gate (auto / prompt / always-ask).
+    // Multiple labels combine to the strictest. If the strictest exceeds
+    // what policy or the tool already declared, escalate. Monotonic up
+    // only — never weakens what policy or the tool already requires.
+    //
+    // `capabilityChallenged` is set when the escalation actually moved
+    // the gate UP. Later, in the permission decision, this flag forces
+    // a prompt even when `autoApprove` would otherwise bypass — that's
+    // §7's "always-ask means every call, every time" invariant for
+    // capability-driven escalations. (The legacy static `permission:
+    // 'always-ask'` keeps its current autoApprove-bypassable behavior
+    // for now; that's a deliberate narrower scope for PR 4.)
+    const capEscalation = escalatePermissionFromCapabilityLabels(
+      effectivePermission,
+      tool.capabilities,
+    );
+    let capabilityChallenged = false;
+    let capabilityTriggeringLabels: string[] = [];
+    if (capEscalation.escalated) {
+      effectivePermission = capEscalation.permission;
+      capabilityChallenged = true;
+      capabilityTriggeringLabels = capEscalation.triggeringLabels.slice();
+    }
+
     const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
 
     if (riskAssessment.score > 50) {
@@ -778,10 +805,13 @@ export class Agent {
     }
 
     // Permission: policy override > tool default.
-    // autoApprove bypasses `always-ask`/`prompt` EXCEPT when SPARK
-    // raised a CHALLENGE (learned override).
+    // autoApprove bypasses `always-ask`/`prompt` EXCEPT when:
+    //   - SPARK raised a CHALLENGE (learned override), or
+    //   - capability labels escalated the gate (§7 — capability-driven
+    //     `always-ask` is immune to `autoApprove` per PR 4).
     const needsPermission =
       sparkChallenged ||
+      capabilityChallenged ||
       (!this.autoApprove && (effectivePermission === 'always-ask' || effectivePermission === 'prompt'));
 
     let denied = false;
@@ -789,11 +819,14 @@ export class Agent {
       if (!opts.interactivePrompt) {
         // Non-interactive caller (dashboard HTTP, IPC, scripts) — fail
         // closed instead of trying to prompt a user that isn't there.
+        const denyReason = capabilityChallenged
+          ? `capability labels require ${effectivePermission}: ${capabilityTriggeringLabels.join(', ')}`
+          : 'Non-interactive caller; tool requires permission prompt';
         this.auditLogger.log({
           tool: toolName,
           action: 'deny',
           args,
-          reason: 'Non-interactive caller; tool requires permission prompt',
+          reason: denyReason,
         });
         this.metricsCollector.increment('permission_denials_total', { tool: toolName });
         denied = true;
