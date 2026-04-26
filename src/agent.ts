@@ -26,6 +26,8 @@ import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
 import { TaskStateStore } from './task-state';
 import { escalatePermissionFromCapabilityLabels } from './capability-gating';
+import { classifyComplexity, selectModel, RouterConfig } from './router';
+import { detectProvider } from './providers/registry';
 import { log } from './logger';
 
 /** Permission callback type — risk and sandbox info are optional for backwards compat */
@@ -63,6 +65,12 @@ export class Agent {
   private maxIterations: number;
   private autoApprove: boolean;
   private model: string;
+  /** Default model — pinned at construction; the router compares against this on fallback. */
+  private defaultModel: string;
+  /** Provider family name (e.g. 'anthropic', 'openai'). Used by the router to refuse cross-provider switches. */
+  private providerFamily: string;
+  /** Optional model-router config (PR 5). Absent → routing OFF (byte-identical to pre-PR-5). */
+  private routerConfig: RouterConfig | undefined;
   private cache: ToolCache;
   private rateLimiter: RateLimiter;
   private providerRateLimiter: ProviderRateLimiter;
@@ -103,6 +111,12 @@ export class Agent {
     onMessage?: (message: Message) => void;
     constitutional?: { enabled?: boolean; vigilEnabled?: boolean; hardBlockEnabled?: boolean };
     /**
+     * Optional model-router config (PR 5 of personal-agent-infrastructure.md).
+     * Absent or `enabled: false` → routing OFF, model stays at `opts.model`
+     * for every turn (byte-identical to pre-PR-5 behavior).
+     */
+    routerConfig?: RouterConfig;
+    /**
      * Vault Mode — when set, the agent behaves as a read-only research
      * assistant over a folder of markdown notes rather than an
      * autonomous coding agent. The system prompt, tool set, and default
@@ -116,6 +130,11 @@ export class Agent {
   }) {
     this.provider = opts.provider;
     this.model = opts.model;
+    this.defaultModel = opts.model;
+    // Provider family for cross-provider safety check. Use the explicit
+    // providerName if given, otherwise infer from the model string.
+    this.providerFamily = opts.providerName || detectProvider(opts.model) || 'unknown';
+    this.routerConfig = opts.routerConfig;
     this.projectRoot = opts.projectRoot || process.cwd();
     this.vaultMode = opts.vaultMode;
 
@@ -251,12 +270,86 @@ export class Agent {
   setProvider(provider: LLMProvider, model: string, providerName?: string) {
     this.provider = provider;
     this.model = model;
+    // PR 5: re-anchor the router's "default" to the new explicit choice.
+    // Otherwise the router would keep falling back to a stale model from
+    // the previous provider when the dashboard swaps mid-session.
+    this.defaultModel = model;
+    this.providerFamily = providerName || detectProvider(model) || 'unknown';
     // Context window varies by model — recreate to pick up the new value.
     this.context = new ContextManager(model, provider);
     // Rate-limiter and token tracker are per-provider/model metadata.
     this.providerRateLimiter = new ProviderRateLimiter(providerName || 'local');
     this.tokenTracker = new TokenTracker(model, providerName || 'unknown');
     this.resetConversation();
+  }
+
+  /**
+   * PR 5 — capability-router model selection. Called once per agent-loop
+   * iteration. Reads `this.routerConfig`, `this.messages`, and
+   * `this.lastExecutedTools` to decide whether to swap `this.model`.
+   *
+   * Failure modes — all fail-open:
+   *   - routerConfig undefined or `enabled: false` → no-op.
+   *   - latest user message empty / no recent tool calls → no-op.
+   *   - desired tier model is the same as current → no-op.
+   *   - desired tier model lives on a different provider family →
+   *     fall open to current model, write `router:fallback` audit
+   *     entry. (Same-provider only in PR 5; cross-provider deferred.)
+   *   - any thrown error → caught, no model mutation, swallowed.
+   *
+   * Audit entries on success: `router:switch` with from/to/tier.
+   */
+  private maybeRouteModel(): void {
+    if (!this.routerConfig || !this.routerConfig.enabled) return;
+
+    try {
+      const lastUserMsg = this.findLastUserMessage();
+      if (!lastUserMsg) return;
+
+      const tier = classifyComplexity(lastUserMsg, this.lastExecutedTools.slice(-5));
+      const desiredModel = selectModel(tier, this.routerConfig, this.defaultModel);
+      if (desiredModel === this.model) return;
+
+      // Single-provider-family-only safety check (PR 5).
+      const desiredFamily = detectProvider(desiredModel);
+      if (desiredFamily && desiredFamily !== this.providerFamily) {
+        this.auditLogger.log({
+          tool: 'router',
+          action: 'fallback',
+          args: { tier, desiredModel, desiredFamily, currentFamily: this.providerFamily },
+          reason: `cross-provider routing not supported in PR 5: tier "${tier}" wants ${desiredModel} (${desiredFamily}), current is ${this.providerFamily}; staying on ${this.model}`,
+          result: 'fallback',
+        });
+        return;
+      }
+
+      // Same-provider switch — log the swap and update the model. The
+      // existing provider object accepts model as a per-call argument
+      // via `this.model`, so we don't re-instantiate. Cross-provider
+      // re-instantiation is deferred to a later PR.
+      const from = this.model;
+      this.auditLogger.log({
+        tool: 'router',
+        action: 'switch',
+        args: { tier, from, to: desiredModel },
+        reason: `routed to "${tier}" tier`,
+        result: 'success',
+      });
+      this.model = desiredModel;
+    } catch (err) {
+      // Fail open — never let the router crash the agent loop.
+      log.warn(`[router] maybeRouteModel failed; staying on ${this.model}: ${(err as Error).message}`);
+    }
+  }
+
+  private findLastUserMessage(): string | undefined {
+    for (let i = this.messages.length - 1; i >= 0; i--) {
+      const m = this.messages[i];
+      if (m.role === 'user' && typeof m.content === 'string' && m.content.trim().length > 0) {
+        return m.content;
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -330,6 +423,15 @@ export class Agent {
       // This prevents cascading 400 errors from OpenAI when a previous call failed
       this.messages = repairToolCallMessages(this.messages);
       this.refreshSystemPrompt();
+
+      // Model router (PR 5 of personal-agent-infrastructure.md). When
+      // `routerConfig?.enabled === true`, classify the latest user message
+      // + recent tool calls into a tier and pick the configured model
+      // for that tier. Falls open to the current model on any error or
+      // if the desired model would force a cross-provider switch.
+      // When `routerConfig` is absent or `enabled: false`, this block
+      // is a complete no-op — `this.model` is never mutated.
+      this.maybeRouteModel();
 
       const supportsTools = getModelInfo(this.model).supportsToolCalling;
       const toolSchemas = supportsTools ? this.tools.getSchemas() : undefined;

@@ -346,6 +346,7 @@ export async function main() {
       providerName: config.provider,
       maxIterations: config.maxIterations,
       autoApprove: true,
+      routerConfig: config.router,
     });
     const daemon = new Daemon();
     daemon.onExecuteJob = async (job) => {
@@ -483,6 +484,7 @@ export async function main() {
     autoApprove: config.autoApprove,
     onMessage: (msg: Message) => session.save(msg),
     vaultMode: vaultModeOpts,
+    routerConfig: config.router,
   });
 
   agent.setAskPermission(async (tool, args, risk, sandbox) => {

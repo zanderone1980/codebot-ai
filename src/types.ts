@@ -149,6 +149,20 @@ export interface AgentEvent {
   sparkState?: { emotion: any; personality: any };
 }
 
+/**
+ * Inline shape of `RouterConfig` from `./router`. Repeated here as a
+ * structural type so `types.ts` doesn't import from `./router` (which
+ * imports nothing — keep the dep arrow one-way). When the router source
+ * changes its config shape, this stays in sync via PR-time review and
+ * the §13 doc-rot rule.
+ */
+export interface ConfigRouterShape {
+  enabled: boolean;
+  fastModel?: string;
+  strongModel?: string;
+  reasoningModel?: string;
+}
+
 export interface Config {
   provider: string;
   model: string;
@@ -158,4 +172,6 @@ export interface Config {
   autoApprove: boolean;
   contextBudget?: number;
   projectRoot?: string;
+  /** Optional router config (PR 5). Absent or `enabled:false` → routing off. */
+  router?: ConfigRouterShape;
 }

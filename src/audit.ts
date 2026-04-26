@@ -40,7 +40,14 @@ export interface AuditEntry {
     // spawn_error, etc.).
     | 'exec_start'
     | 'exec_complete'
-    | 'exec_error';
+    | 'exec_error'
+    // Model router actions (PR 5 of personal-agent-infrastructure.md).
+    // `switch` records a successful per-turn model swap (same provider).
+    // `fallback` records that the router wanted to switch but couldn't —
+    // typically because the desired tier model lives on a different
+    // provider family, which PR 5 does not yet support.
+    | 'switch'
+    | 'fallback';
   args: Record<string, unknown>;
   result?: string;
   reason?: string;

@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { PROVIDER_DEFAULTS, MODEL_REGISTRY, detectProvider, getModelInfo } from './providers/registry';
+import type { RouterConfig } from './router';
 import { codebotHome, codebotPath } from './paths';
 
 
@@ -46,6 +47,20 @@ export interface SavedConfig {
    * to force CodeBot to stay OpenAI-only (or whatever else you want).
    */
   disabledProviders?: string[];
+  /**
+   * Optional model-router config (PR 5 of personal-agent-infrastructure.md).
+   *
+   * Absent or `enabled: false` means routing is OFF and the agent uses
+   * `model` for every turn — byte-identical to pre-PR-5 behavior. When
+   * enabled, the agent classifies each turn (fast / strong / reasoning)
+   * and may swap to `fastModel` / `strongModel` / `reasoningModel`.
+   *
+   * Same-provider only in PR 5: if the chosen tier model lives on a
+   * different provider family than the active one, the agent falls
+   * open to the current model and writes a `router:fallback` audit
+   * entry. Cross-provider routing is deferred to a later PR.
+   */
+  router?: RouterConfig;
 }
 
 /** Return true if the user has explicitly banned this provider. */
