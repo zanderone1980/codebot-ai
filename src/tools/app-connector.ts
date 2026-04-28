@@ -70,6 +70,65 @@ export class AppConnectorTool implements Tool {
     this.registry = registry;
   }
 
+  /**
+   * PR 11 — resolve real per-action labels.
+   *
+   * The static `capabilities` field above is the union over every
+   * connector action ever registered. That over-gates pure reads:
+   * `github.list_prs` (read-only + account-access + net-fetch) was
+   * being scored as if it were `send-on-behalf` because the union
+   * carries the worst case.
+   *
+   * Resolution rules, in order:
+   *   1. Meta actions (`list`, `connect`, `disconnect`) — local to this
+   *      tool, no remote call. The most permissive narrowing makes
+   *      sense: drop everything except the labels they actually need.
+   *      `list` is purely local read, so it gets `[]` (auto). `connect`
+   *      and `disconnect` write to the local vault, so `write-fs`.
+   *   2. Connector dispatch (`<app>.<action>`) — look up the action on
+   *      the registry; if found and the action declares its own
+   *      `capabilities`, return that exact list. If the action exists
+   *      but declares no labels, fall back to the connector's union
+   *      (still narrower than the tool union). If the action lookup
+   *      fails (unknown app or unknown action), return `undefined` so
+   *      the agent falls back to the tool union — the conservative
+   *      default — and the action will fail at execute() with a
+   *      precise error anyway.
+   *
+   * Pure: no I/O, no auth checks, no side effects. Reads only registry
+   * metadata that's already in memory.
+   */
+  effectiveCapabilities(args: Record<string, unknown>): CapabilityLabel[] | undefined {
+    const action = (args.action as string) || '';
+    if (!action) return undefined;
+
+    if (action === 'list') return [];
+    if (action === 'connect' || action === 'disconnect') return ['write-fs'];
+
+    if (!action.includes('.')) return undefined;
+
+    const dotIdx = action.indexOf('.');
+    const appName = action.substring(0, dotIdx);
+    const actionName = action.substring(dotIdx + 1);
+
+    const connector = this.registry.get(appName);
+    if (!connector) return undefined;
+
+    const connectorAction = connector.actions.find(a => a.name === actionName);
+    if (!connectorAction) return undefined;
+
+    if (connectorAction.capabilities && connectorAction.capabilities.length > 0) {
+      return [...connectorAction.capabilities];
+    }
+    // Action exists but declares no labels — derive a connector-wide
+    // union from sibling actions. Still narrower than the tool union.
+    const unionSet = new Set<CapabilityLabel>();
+    for (const a of connector.actions) {
+      for (const l of (a.capabilities || [])) unionSet.add(l);
+    }
+    return unionSet.size > 0 ? [...unionSet] : undefined;
+  }
+
   async execute(args: Record<string, unknown>): Promise<string> {
     const action = args.action as string;
     if (!action) return 'Error: action is required';

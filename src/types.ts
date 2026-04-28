@@ -85,6 +85,26 @@ export interface Tool {
    * does NOT expose this to the LLM.
    */
   capabilities?: CapabilityLabel[];
+  /**
+   * Optional per-call capability resolver (PR 11).
+   *
+   * For tools that dispatch to multiple sub-actions with different real
+   * capability profiles (e.g. the `app` tool: a `github.list_prs` is
+   * pure read-only, but `github.create_issue` is `send-on-behalf`), the
+   * static `capabilities` field must list the union — which over-gates
+   * everything. This method lets such tools resolve the real, narrower
+   * label set from `args` so the agent gate can score the actual call
+   * instead of the worst case.
+   *
+   * Contract:
+   *   - Returns `undefined` → caller falls back to `capabilities`.
+   *   - Returns a `CapabilityLabel[]` → caller uses that exact list.
+   *   - MUST be pure: no I/O, no auth checks, no side effects.
+   *   - Must NEVER weaken below the action's real label set; if the
+   *     resolution is ambiguous, return `undefined` to fall back to the
+   *     conservative union.
+   */
+  effectiveCapabilities?(args: Record<string, unknown>): CapabilityLabel[] | undefined;
   execute(args: Record<string, unknown>): Promise<string>;
   /**
    * Optional streaming entry point. Implementers MUST re-run the same
@@ -185,4 +205,13 @@ export interface Config {
   router?: ConfigRouterShape;
   /** Optional budget config (PR 6). Absent or `perSessionCapUsd:0` → no user cap. */
   budget?: ConfigBudgetShape;
+  /**
+   * PR 11 — capability labels the user has explicitly allowlisted for
+   * this session via `--allow-capability`. Empty / undefined ⇒ no
+   * capability is bypassable, the §7 invariant remains: every
+   * capability-driven gate prompts. Validated at agent boot via
+   * `parseAllowCapabilityFlag` so unknown / never-allowable labels
+   * fail fast.
+   */
+  allowedCapabilities?: ReadonlySet<CapabilityLabel>;
 }

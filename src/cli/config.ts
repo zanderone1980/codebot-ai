@@ -9,6 +9,7 @@ import { AnthropicProvider } from '../providers/anthropic';
 import { detectProvider, PROVIDER_DEFAULTS } from '../providers/registry';
 import { Config, LLMProvider } from '../types';
 import { loadConfig, pickProviderKey, isProviderDisabled } from '../setup';
+import { parseAllowCapabilityFlag, CapabilityAllowlistError } from '../capability-allowlist';
 
 const C = {
   reset: '\x1b[0m',
@@ -85,6 +86,22 @@ export async function resolveConfig(args: Record<string, string | boolean>): Pro
     // `policy.limits.cost_limit_usd` path still applies independently.
     budget: saved.budget,
   };
+
+  // PR 11 — `--allow-capability <comma-list>`. Validated at parse time
+  // so an invalid value fails fast and loud rather than silently
+  // dropping. The empty-string case (flag passed with no argument) is
+  // also treated as a hard error — we don't want a "you forgot the
+  // value" typo to look like "no capabilities allowlisted".
+  if (args['allow-capability'] !== undefined) {
+    const raw = args['allow-capability'] as string;
+    if (!raw || !raw.trim()) {
+      throw new CapabilityAllowlistError(
+        '--allow-capability requires a comma-separated list of labels ' +
+        '(e.g., --allow-capability account-access,net-fetch). Got empty value.',
+      );
+    }
+    config.allowedCapabilities = parseAllowCapabilityFlag(raw);
+  }
 
   if (!config.baseUrl) {
     if (explicitProvider) {

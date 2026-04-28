@@ -54,7 +54,18 @@ export interface AuditEntry {
     // `budget_warning` records crossing a configured threshold (default
     // 50/75/95% of cap). Each threshold fires at most once per session.
     | 'budget_block'
-    | 'budget_warning';
+    | 'budget_warning'
+    // PR 11 — capability allowlist + router receipts.
+    // `capability_allow` records the session-start opt-in via
+    // `--allow-capability`. Always emitted when the allowlist is
+    // non-empty so a forensic reader can answer "did this session
+    // run with bypassable labels?" from the chain alone.
+    // `no_op` is a router-only audit: emitted once per turn when the
+    // router ran but the chosen tier already routes to the current
+    // model, so no swap happened. Closes the silence gap that made
+    // pre-PR-11 sessions look as if the router never fired.
+    | 'capability_allow'
+    | 'no_op';
   args: Record<string, unknown>;
   result?: string;
   reason?: string;

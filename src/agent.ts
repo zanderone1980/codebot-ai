@@ -26,6 +26,7 @@ import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
 import { TaskStateStore } from './task-state';
 import { escalatePermissionFromCapabilityLabels } from './capability-gating';
+import type { CapabilityLabel } from './types';
 import { classifyComplexity, selectModel, RouterConfig } from './router';
 import { detectProvider } from './providers/registry';
 import type { BudgetConfig } from './setup';
@@ -65,6 +66,15 @@ export class Agent {
   private messages: Message[] = [];
   private maxIterations: number;
   private autoApprove: boolean;
+  /**
+   * PR 11 — capability labels the user has explicitly opted into for
+   * unattended bypass via `--allow-capability`. Empty / undefined ⇒ no
+   * capability gate is bypassable in this session, i.e. the §7
+   * invariant "every capability-driven gate prompts" holds. Validated
+   * by `parseAllowCapabilityFlag` before construction; never includes
+   * the four NEVER_ALLOWABLE labels.
+   */
+  private allowedCapabilities: ReadonlySet<CapabilityLabel>;
   private model: string;
   /** Default model — pinned at construction; the router compares against this on fallback. */
   private defaultModel: string;
@@ -142,6 +152,13 @@ export class Agent {
      */
     auditDir?: string;
     /**
+     * PR 11 — capability labels the user has explicitly allowlisted via
+     * `--allow-capability`. Validated upstream (parseAllowCapabilityFlag).
+     * If undefined or empty, every capability-driven gate continues to
+     * require interactive approval per §7.
+     */
+    allowedCapabilities?: ReadonlySet<CapabilityLabel>;
+    /**
      * Vault Mode — when set, the agent behaves as a read-only research
      * assistant over a folder of markdown notes rather than an
      * autonomous coding agent. The system prompt, tool set, and default
@@ -172,12 +189,32 @@ export class Agent {
     // Use policy-defined max iterations as default, CLI overrides
     this.maxIterations = opts.maxIterations || this.policyEnforcer.getMaxIterations();
     this.autoApprove = opts.autoApprove || false;
+    this.allowedCapabilities = opts.allowedCapabilities ?? new Set<CapabilityLabel>();
     this.askPermission = opts.askPermission || defaultAskPermission;
     this.onMessage = opts.onMessage;
     this.cache = new ToolCache();
     this.rateLimiter = new RateLimiter();
     this.providerRateLimiter = new ProviderRateLimiter(opts.providerName || 'local');
     this.auditLogger = new AuditLogger(opts.auditDir);
+
+    // PR 11 — emit a single session-start audit row recording which
+    // capability labels (if any) the user opted into via
+    // `--allow-capability`. The row hash-chains into the rest of the
+    // session like any other audit entry, so a forensic reader can
+    // answer "was this session running with a bypass allowlist?"
+    // without reading config or argv. Empty allowlist still emits a
+    // row — silent absence is what we explicitly fixed in §12.
+    if (this.allowedCapabilities.size > 0) {
+      this.auditLogger.log({
+        tool: 'capability',
+        action: 'capability_allow',
+        args: { labels: [...this.allowedCapabilities].sort() },
+        reason:
+          'session-start allowlist via --allow-capability; bypasses ' +
+          'capability-driven prompts only for these labels and only when ' +
+          '--auto-approve is also set',
+      });
+    }
 
     // Token & cost tracking
     this.tokenTracker = new TokenTracker(opts.model, opts.providerName || 'unknown');
@@ -353,7 +390,24 @@ export class Agent {
 
       const tier = classifyComplexity(lastUserMsg, this.lastExecutedTools.slice(-5));
       const desiredModel = selectModel(tier, this.routerConfig, this.defaultModel);
-      if (desiredModel === this.model) return;
+      if (desiredModel === this.model) {
+        // PR 11 — receipt-gap fix. Pre-PR-11 this was a silent return,
+        // which made the question "did the router actually run this
+        // turn?" unanswerable from the audit chain alone. The PR-brief
+        // run on 2026-04-26 surfaced this: 4 model requests, router
+        // enabled, zero `router:*` rows in the session. We could not
+        // tell from logs whether the router fired and chose the
+        // current model, or never fired at all. One row per turn is
+        // small (~250 bytes) and gives the audit log the answer.
+        this.auditLogger.log({
+          tool: 'router',
+          action: 'no_op',
+          args: { tier, currentModel: this.model },
+          reason: `tier "${tier}" already routes to current model "${this.model}"; no swap`,
+          result: 'no_op',
+        });
+        return;
+      }
 
       // Single-provider-family-only safety check (PR 5).
       const desiredFamily = detectProvider(desiredModel);
@@ -958,16 +1012,39 @@ export class Agent {
     // capability-driven escalations. (The legacy static `permission:
     // 'always-ask'` keeps its current autoApprove-bypassable behavior
     // for now; that's a deliberate narrower scope for PR 4.)
+    //
+    // PR 11 — two refinements:
+    //   1. Use `tool.effectiveCapabilities(args)` when the tool exposes
+    //      it (currently only `app`), so dispatch tools score the real
+    //      sub-action's labels rather than the worst-case union over
+    //      every action they can dispatch to. The `app` tool's static
+    //      union includes `send-on-behalf` and `delete-data`, which
+    //      forced every read action through `always-ask` — exactly the
+    //      bug the PR-brief run surfaced.
+    //   2. The `capabilityChallenged` flag only stays true if at least
+    //      one triggering label is NOT in `--allow-capability`. Labels
+    //      the user has explicitly opted into for this session no longer
+    //      count toward the immunity flag. NEVER_ALLOWABLE labels can
+    //      never reach this set — `parseAllowCapabilityFlag` rejects
+    //      them at startup — so this code path cannot weaken
+    //      move-money / spend-money / send-on-behalf / delete-data.
+    const callCapabilities = tool.effectiveCapabilities?.(args) ?? tool.capabilities;
     const capEscalation = escalatePermissionFromCapabilityLabels(
       effectivePermission,
-      tool.capabilities,
+      callCapabilities,
     );
     let capabilityChallenged = false;
     let capabilityTriggeringLabels: string[] = [];
+    let unallowedTriggeringLabels: string[] = [];
     if (capEscalation.escalated) {
       effectivePermission = capEscalation.permission;
-      capabilityChallenged = true;
       capabilityTriggeringLabels = capEscalation.triggeringLabels.slice();
+      // PR 11 — subtract user-allowlisted labels. If anything triggering
+      // remains, the call still requires interactive approval.
+      unallowedTriggeringLabels = capabilityTriggeringLabels.filter(
+        (l) => !this.allowedCapabilities.has(l as CapabilityLabel),
+      );
+      capabilityChallenged = unallowedTriggeringLabels.length > 0;
     }
 
     const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
@@ -1053,7 +1130,32 @@ export class Agent {
 
     let denied = false;
     if (needsPermission) {
-      if (!opts.interactivePrompt) {
+      // PR 11 — when the user said `--auto-approve` and the only reason
+      // we still need permission is a capability-label gate that the
+      // user did NOT allowlist, fail fast with a precise audit row
+      // instead of timing out at a phantom prompt. Sitting at a 30s
+      // timeout for a script-piped invocation was indistinguishable
+      // from "User denied permission" in the audit, which was wrong:
+      // the user never had a chance to deny anything; the policy did.
+      const blockedByUnallowedCapability =
+        this.autoApprove &&
+        capabilityChallenged &&
+        !sparkChallenged &&
+        unallowedTriggeringLabels.length > 0;
+
+      if (blockedByUnallowedCapability) {
+        const reason =
+          `blocked: required capability labels [${unallowedTriggeringLabels.join(', ')}] ` +
+          `are not permitted by --allow-capability in unattended mode`;
+        this.auditLogger.log({
+          tool: toolName,
+          action: 'deny',
+          args,
+          reason,
+        });
+        this.metricsCollector.increment('permission_denials_total', { tool: toolName });
+        denied = true;
+      } else if (!opts.interactivePrompt) {
         // Non-interactive caller (dashboard HTTP, IPC, scripts) — fail
         // closed instead of trying to prompt a user that isn't there.
         const denyReason = capabilityChallenged
@@ -1074,6 +1176,12 @@ export class Agent {
         });
         if (!approved) {
           denied = true;
+          // Interactive denial path — could be a real "n" or a timeout.
+          // We don't have a signal that distinguishes them today (the
+          // askPermission contract returns a single bool), so the
+          // existing wording stands. PR 11 deliberately scopes the
+          // wording change to the unattended-policy-block case where
+          // the user provably had no chance to respond.
           this.auditLogger.log({ tool: toolName, action: 'deny', args, reason: 'User denied permission' });
           this.metricsCollector.increment('permission_denials_total', { tool: toolName });
         }

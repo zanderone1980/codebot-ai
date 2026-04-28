@@ -216,3 +216,61 @@ describe('Agent — router ON, cross-provider: falls open to current model', () 
       `cross-provider routing must fall open to current model; saw ${JSON.stringify(modelsSeen)}`);
   });
 });
+
+// ── PR 11: router no-op receipts ───────────────────────────────────
+// Pre-PR-11, when classifyComplexity picked a tier whose configured
+// model equals the current model, maybeRouteModel returned silently —
+// the audit chain showed nothing. The PR-brief run on 2026-04-26
+// surfaced this as a real receipt gap. This test pins the new
+// `router:no_op` row.
+describe('Agent — router ON, no-op audit receipt (PR 11)', () => {
+  it('emits router:no_op when desired tier maps to current model', async () => {
+    let agentRef: Agent | null = null;
+    const { provider } = makeModelCapturingProvider(() =>
+      (agentRef as unknown as { model: string }).model,
+    );
+    const routerConfig: RouterConfig = {
+      enabled: true,
+      fastModel: 'claude-3-5-haiku-20241022',
+      strongModel: 'claude-sonnet-4-6',   // matches current model
+      reasoningModel: 'claude-opus-4-7',
+    };
+    const auditDir = makeTestAuditDir();
+    const agent = new Agent({
+      auditDir,
+      provider,
+      model: 'claude-sonnet-4-6',
+      providerName: 'anthropic',
+      maxIterations: 1,
+      autoApprove: true,
+      routerConfig,
+    });
+    agentRef = agent;
+
+    // Classify as strong (so strongModel = current = no swap). "update"
+    // matches the strong-tier pattern in classifyComplexity, and the
+    // configured strongModel above equals the constructor model, so
+    // selectModel('strong') === current → maybeRouteModel returns at
+    // the no_op branch.
+    await runOneTurn(agent, 'update the readme');
+
+    // Read audit entries for THIS session and assert there's exactly
+    // one router-related row, and it's a no_op (not a switch / fallback).
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const files = fs.readdirSync(auditDir).filter(f => f.startsWith('audit-'));
+    const allLines: string[] = [];
+    for (const f of files) {
+      allLines.push(...fs.readFileSync(path.join(auditDir, f), 'utf-8').split('\n').filter(Boolean));
+    }
+    const routerRows = allLines
+      .map(l => JSON.parse(l))
+      .filter(e => e.tool === 'router');
+
+    assert.strictEqual(routerRows.length, 1,
+      `expected exactly 1 router audit row; saw ${routerRows.length}: ${JSON.stringify(routerRows)}`);
+    assert.strictEqual(routerRows[0].action, 'no_op',
+      `expected action=no_op; saw ${routerRows[0].action}`);
+    assert.strictEqual(routerRows[0].args.currentModel, 'claude-sonnet-4-6');
+  });
+});

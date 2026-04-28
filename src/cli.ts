@@ -100,6 +100,72 @@ export async function main() {
     }
   });
 
+  // ── `codebot vault …` subcommand ──
+  // Intercept at process.argv level so it short-circuits before the
+  // main agent flow. The vault subcommand never starts the agent /
+  // banner / network. Real CLI for credential management — addresses
+  // the gap that previously left users with no honest way to write
+  // secrets to ~/.codebot/vault.json.
+  if (process.argv[2] === 'vault') {
+    const { VaultManager } = require('./vault');
+    const sub = process.argv[3];
+    const vault = new VaultManager();
+    if (sub === 'list') {
+      const names = vault.list();
+      if (names.length === 0) {
+        console.log('vault: empty');
+      } else {
+        console.log(`vault: ${names.length} credential(s)`);
+        for (const n of names) console.log(`  - ${n}`);
+      }
+      return;
+    }
+    if (sub === 'status') {
+      const s = vault.status();
+      console.log(`vault path:      ${s.vaultPath}`);
+      console.log(`vault exists:    ${s.vaultExists}`);
+      console.log(`key source:      ${s.keySource}`);
+      console.log(`credential count: ${s.credentialCount}`);
+      return;
+    }
+    if (sub === 'delete' || sub === 'rm') {
+      const name = process.argv[4];
+      if (!name) { console.error('Usage: codebot vault delete <name>'); process.exit(1); }
+      const ok = vault.delete(name);
+      console.log(ok ? `deleted: ${name}` : `not found: ${name}`);
+      return;
+    }
+    if (sub === 'set') {
+      // Usage: codebot vault set <name> KEY=VALUE
+      // Stores the VALUE as the credential string. Connector code reads
+      // it via registry.getCredential(name) which returns cred.value
+      // directly — single-string contract verified at registry.ts:56.
+      const name = process.argv[4];
+      const kv = process.argv[5];
+      if (!name || !kv || !kv.includes('=')) {
+        console.error('Usage: codebot vault set <name> KEY=VALUE');
+        console.error('Example: codebot vault set github GITHUB_TOKEN=ghp_xxxxx');
+        process.exit(1);
+      }
+      const eq = kv.indexOf('=');
+      const value = kv.slice(eq + 1);
+      if (!value) { console.error('Empty value rejected.'); process.exit(1); }
+      vault.set(name, {
+        type: 'oauth_token',
+        value,
+        metadata: { provider: name, created: new Date().toISOString() },
+      });
+      console.log(`stored: ${name} (${value.length} chars, value not echoed)`);
+      return;
+    }
+    console.error('Usage:');
+    console.error('  codebot vault list');
+    console.error('  codebot vault status');
+    console.error('  codebot vault set <name> KEY=VALUE');
+    console.error('  codebot vault delete <name>');
+    process.exit(1);
+  }
+
   const args = parseArgs(process.argv.slice(2));
 
   if (typeof args.theme === 'string') {
@@ -348,6 +414,7 @@ export async function main() {
       autoApprove: true,
       routerConfig: config.router,
       budgetConfig: config.budget,
+      allowedCapabilities: config.allowedCapabilities,
     });
     const daemon = new Daemon();
     daemon.onExecuteJob = async (job) => {
@@ -487,6 +554,7 @@ export async function main() {
     vaultMode: vaultModeOpts,
     routerConfig: config.router,
     budgetConfig: config.budget,
+    allowedCapabilities: config.allowedCapabilities,
   });
 
   agent.setAskPermission(async (tool, args, risk, sandbox) => {

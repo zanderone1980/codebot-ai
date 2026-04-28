@@ -40,6 +40,24 @@ export function parseArgs(argv: string[]): Record<string, string | boolean> {
       result.auto = true;
       continue;
     }
+    // PR 11 — `--allow-capability <comma-list>`. Session-only opt-in
+    // for labels that would otherwise force interactive approval. The
+    // raw string is preserved here; parseAllowCapabilityFlag() in
+    // capability-allowlist.ts validates the closed set and the
+    // never-allowable hard excludes (move-money, spend-money,
+    // send-on-behalf, delete-data) at agent startup.
+    if (arg === '--allow-capability') {
+      const next = argv[i + 1];
+      if (!next || next.startsWith('--')) {
+        // Surfaces as a startup-time validation error rather than a
+        // silent ignore — see config.ts for the exact message.
+        result['allow-capability'] = '';
+      } else {
+        result['allow-capability'] = next;
+        i++;
+      }
+      continue;
+    }
     if (arg === '--continue' || arg === '-c') {
       result.continue = true;
       continue;
@@ -273,6 +291,14 @@ ${c('Options:', 'bold')}
   --theme <name>       Theme: dark, light, mono (default: auto)
   --autonomous         Skip ALL permission prompts — full auto mode
   --auto-approve       Same as --autonomous
+  --allow-capability <list>  Comma-separated capability labels to bypass
+                       interactive approval in unattended mode. Required
+                       alongside --auto-approve for any tool that carries
+                       account-access / write-fs / run-cmd / net-fetch /
+                       browser-write labels. Refuses move-money,
+                       spend-money, send-on-behalf, delete-data — those
+                       still require per-call interactive approval.
+                       Example: --allow-capability account-access,net-fetch
   --resume <id>        Resume a previous session by ID
   --continue, -c       Resume the most recent session
   --max-iterations <n> Max agent loop iterations (default: 50)

@@ -95,4 +95,99 @@ describe('AppConnectorTool', () => {
     assert.ok(result.includes('Error:'));
     assert.ok(result.includes('unknown app'));
   });
+
+  // ── PR 11: per-action capability resolution ─────────────────────
+  // The app tool's static `capabilities` field is the union over every
+  // possible action — that over-gates pure reads. effectiveCapabilities
+  // narrows to the action being invoked so the agent gate scores the
+  // real call rather than the worst case.
+  describe('effectiveCapabilities (PR 11)', () => {
+    function readOnlyConnector(name: string): Connector {
+      const action: ConnectorAction = {
+        name: 'list_things',
+        description: 'List things',
+        parameters: { type: 'object', properties: {} },
+        capabilities: ['read-only', 'account-access', 'net-fetch'],
+        execute: async () => 'ok',
+      };
+      const writeAction: ConnectorAction = {
+        name: 'send_thing',
+        description: 'Send a thing',
+        parameters: { type: 'object', properties: {} },
+        capabilities: ['account-access', 'net-fetch', 'send-on-behalf'],
+        execute: async () => 'ok',
+      };
+      return {
+        name,
+        displayName: name,
+        description: `Mock ${name}`,
+        authType: 'api_key',
+        actions: [action, writeAction],
+        validate: async () => true,
+      };
+    }
+
+    it('returns the read action labels for a read action', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      registry.register(readOnlyConnector('myapp'));
+      const tool = new AppConnectorTool(vault, registry);
+      const labels = tool.effectiveCapabilities({ action: 'myapp.list_things' });
+      assert.deepStrictEqual(
+        (labels || []).slice().sort(),
+        ['account-access', 'net-fetch', 'read-only'],
+      );
+      assert.ok(!(labels || []).includes('send-on-behalf'),
+        'read action must NOT carry send-on-behalf from the tool union');
+    });
+
+    it('returns the write action labels for a write action', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      registry.register(readOnlyConnector('myapp'));
+      const tool = new AppConnectorTool(vault, registry);
+      const labels = tool.effectiveCapabilities({ action: 'myapp.send_thing' });
+      assert.ok((labels || []).includes('send-on-behalf'),
+        'write action must carry its real send-on-behalf label');
+    });
+
+    it('returns [] for the meta action "list" (purely local)', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      const tool = new AppConnectorTool(vault, registry);
+      const labels = tool.effectiveCapabilities({ action: 'list' });
+      assert.deepStrictEqual(labels, []);
+    });
+
+    it('returns [write-fs] for "connect" / "disconnect"', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      const tool = new AppConnectorTool(vault, registry);
+      assert.deepStrictEqual(
+        tool.effectiveCapabilities({ action: 'connect' }),
+        ['write-fs'],
+      );
+      assert.deepStrictEqual(
+        tool.effectiveCapabilities({ action: 'disconnect' }),
+        ['write-fs'],
+      );
+    });
+
+    it('returns undefined for unknown app — caller falls back to tool union', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      const tool = new AppConnectorTool(vault, registry);
+      const labels = tool.effectiveCapabilities({ action: 'nope.whatever' });
+      assert.strictEqual(labels, undefined);
+    });
+
+    it('returns undefined for unknown action on a known connector', () => {
+      const vault = new VaultManager();
+      const registry = new ConnectorRegistry(vault);
+      registry.register(readOnlyConnector('myapp'));
+      const tool = new AppConnectorTool(vault, registry);
+      const labels = tool.effectiveCapabilities({ action: 'myapp.nope' });
+      assert.strictEqual(labels, undefined);
+    });
+  });
 });
