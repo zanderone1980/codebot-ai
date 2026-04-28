@@ -40,16 +40,44 @@ interface VaultData {
  * can actually see it rather than hope. */
 export type VaultKeySource = 'env:CODEBOT_VAULT_KEY' | 'env:CODEBOT_ENCRYPTION_KEY' | 'machine-derived';
 
+export interface VaultManagerOpts {
+  /**
+   * Override the on-disk vault location. Defaults to
+   * `codebotPath('vault.json')` (i.e., `~/.codebot/vault.json`) when
+   * unset. Tests must pass an isolated tempdir path here — see
+   * `makeTestVaultPath()` in `src/test-vault-isolation.ts` — otherwise
+   * the test run encrypts the user's real vault with the test
+   * passphrase and leaves production credentials unreadable.
+   */
+  vaultPath?: string;
+}
+
 export class VaultManager {
   private passphrase: string;
   private keySource: VaultKeySource;
+  private vaultPathOverride?: string;
   private static machineWarningShown = false;
 
-  constructor() {
+  constructor(opts: VaultManagerOpts = {}) {
     const resolved = this.resolvePassphrase();
     this.passphrase = resolved.passphrase;
     this.keySource = resolved.source;
+    this.vaultPathOverride = opts.vaultPath;
     this.maybeWarnMachineFallback();
+  }
+
+  /** Resolve the vault file path — explicit override beats default. */
+  private vaultFile(): string {
+    return this.vaultPathOverride ?? codebotPath('vault.json');
+  }
+
+  /** Resolve the directory the vault lives in (for mkdirSync on save). */
+  private vaultDir(): string {
+    if (this.vaultPathOverride) {
+      const idx = this.vaultPathOverride.lastIndexOf('/');
+      return idx > 0 ? this.vaultPathOverride.slice(0, idx) : codebotHome();
+    }
+    return codebotHome();
   }
 
   /**
@@ -97,7 +125,7 @@ export class VaultManager {
   /** Human-readable status for `codebot vault status` or diagnostics.
    *  Never includes the actual passphrase. */
   status(): { keySource: VaultKeySource; vaultPath: string; vaultExists: boolean; credentialCount: number } {
-    const vaultPath = codebotPath('vault.json');
+    const vaultPath = this.vaultFile();
     return {
       keySource: this.keySource,
       vaultPath,
@@ -113,8 +141,8 @@ export class VaultManager {
   private load(): VaultData {
     const empty: VaultData = { version: 1, credentials: [] };
     try {
-      if (!fs.existsSync(codebotPath('vault.json'))) return empty;
-      const raw = fs.readFileSync(codebotPath('vault.json'), 'utf-8').trim();
+      if (!fs.existsSync(this.vaultFile())) return empty;
+      const raw = fs.readFileSync(this.vaultFile(), 'utf-8').trim();
       if (!raw) return empty;
 
       // Try decrypting
@@ -132,11 +160,11 @@ export class VaultManager {
   /** Encrypt and save vault data to disk. */
   private save(data: VaultData): void {
     try {
-      fs.mkdirSync(codebotHome(), { recursive: true });
+      fs.mkdirSync(this.vaultDir(), { recursive: true });
       const json = JSON.stringify(data, null, 2);
       const encrypted = encrypt(json, this.passphrase);
       if (encrypted) {
-        fs.writeFileSync(codebotPath('vault.json'), encrypted, 'utf-8');
+        fs.writeFileSync(this.vaultFile(), encrypted, 'utf-8');
       }
     } catch (err) { warnNonFatal('vault.save', err); }
   }

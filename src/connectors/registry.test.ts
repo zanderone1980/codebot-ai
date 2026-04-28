@@ -3,6 +3,7 @@ import * as assert from 'node:assert';
 import { ConnectorRegistry } from './registry';
 import { Connector, ConnectorAction } from './base';
 import { VaultManager } from '../vault';
+import { makeTestVaultPath } from '../test-vault-isolation';
 
 /** Minimal mock connector for testing */
 function mockConnector(name: string, envKey?: string, requiredEnvKeys?: string[]): Connector {
@@ -36,7 +37,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('registers and retrieves connectors', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     const connector = mockConnector('test', 'TEST_TOKEN');
     registry.register(connector);
@@ -45,7 +46,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('all returns all registered connectors', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     registry.register(mockConnector('a'));
     registry.register(mockConnector('b'));
@@ -54,7 +55,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('isConnected detects env var credentials', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     process.env.MOCK_TOKEN = 'test-token';
     registry.register(mockConnector('envtest', 'MOCK_TOKEN'));
@@ -63,7 +64,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('getConnected filters to connected only', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     process.env.CONNECTED_TOKEN = 'yes';
     registry.register(mockConnector('connected', 'CONNECTED_TOKEN'));
@@ -75,7 +76,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('getCredential prefers vault over env', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     process.env.PREF_TOKEN = 'env-value';
     vault.set('preftest', {
@@ -89,7 +90,7 @@ describe('ConnectorRegistry', () => {
   });
 
   it('returns null credential for unregistered connector', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     assert.strictEqual(registry.getCredential('nonexistent'), null);
   });

@@ -4,6 +4,7 @@ import { AppConnectorTool } from './app-connector';
 import { ConnectorRegistry } from '../connectors/registry';
 import { VaultManager } from '../vault';
 import { Connector, ConnectorAction } from '../connectors/base';
+import { makeTestVaultPath } from '../test-vault-isolation';
 
 /** Minimal mock connector */
 function mockConnector(name: string, envKey?: string): Connector {
@@ -36,7 +37,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('has correct tool metadata', () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     const tool = new AppConnectorTool(vault, registry);
     assert.strictEqual(tool.name, 'app');
@@ -45,7 +46,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('list action returns all connectors', async () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     registry.register(mockConnector('mock1'));
     registry.register(mockConnector('mock2'));
@@ -57,7 +58,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('connect saves to vault on valid token', async () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     registry.register(mockConnector('testapp'));
     const tool = new AppConnectorTool(vault, registry);
@@ -67,7 +68,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('connect rejects invalid token', async () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     registry.register(mockConnector('badapp'));
     const tool = new AppConnectorTool(vault, registry);
@@ -77,7 +78,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('dispatches connector action via dot notation', async () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     process.env.DISPATCH_TOKEN = 'valid-token';
     registry.register(mockConnector('dispatch', 'DISPATCH_TOKEN'));
@@ -88,7 +89,7 @@ describe('AppConnectorTool', () => {
   });
 
   it('returns error for unknown connector', async () => {
-    const vault = new VaultManager();
+    const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
     const registry = new ConnectorRegistry(vault);
     const tool = new AppConnectorTool(vault, registry);
     const result = await tool.execute({ action: 'nonexistent.action' });
@@ -128,7 +129,7 @@ describe('AppConnectorTool', () => {
     }
 
     it('returns the read action labels for a read action', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       registry.register(readOnlyConnector('myapp'));
       const tool = new AppConnectorTool(vault, registry);
@@ -142,7 +143,7 @@ describe('AppConnectorTool', () => {
     });
 
     it('returns the write action labels for a write action', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       registry.register(readOnlyConnector('myapp'));
       const tool = new AppConnectorTool(vault, registry);
@@ -152,7 +153,7 @@ describe('AppConnectorTool', () => {
     });
 
     it('returns [] for the meta action "list" (purely local)', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       const tool = new AppConnectorTool(vault, registry);
       const labels = tool.effectiveCapabilities({ action: 'list' });
@@ -160,7 +161,7 @@ describe('AppConnectorTool', () => {
     });
 
     it('returns [write-fs] for "connect" / "disconnect"', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       const tool = new AppConnectorTool(vault, registry);
       assert.deepStrictEqual(
@@ -174,7 +175,7 @@ describe('AppConnectorTool', () => {
     });
 
     it('returns undefined for unknown app — caller falls back to tool union', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       const tool = new AppConnectorTool(vault, registry);
       const labels = tool.effectiveCapabilities({ action: 'nope.whatever' });
@@ -182,7 +183,7 @@ describe('AppConnectorTool', () => {
     });
 
     it('returns undefined for unknown action on a known connector', () => {
-      const vault = new VaultManager();
+      const vault = new VaultManager({ vaultPath: makeTestVaultPath() });
       const registry = new ConnectorRegistry(vault);
       registry.register(readOnlyConnector('myapp'));
       const tool = new AppConnectorTool(vault, registry);
