@@ -76,8 +76,18 @@ function readAuditRows(auditDir: string): Array<Record<string, unknown>> {
   return rows;
 }
 
-describe('PR 11 — per-action resolution unblocks read connector actions', () => {
-  it('app github.list_prs proceeds under --auto-approve (per-action narrowing kicks in)', async () => {
+describe('PR 11/26 — per-action resolution unblocks read connector actions', () => {
+  // PR 26 update — `app` tool's permission was 'prompt' through PR 11.
+  // PR 26 changed it to 'auto' so per-action capability labels drive
+  // the gate. With that change, account-access on a read-class action
+  // genuinely needs an opt-in: either --allow-capability or interactive
+  // approval. Pre-PR-26 the test relied on the dispatch tool's own
+  // 'prompt' permission to be auto-approve-bypassable; post-PR-26 the
+  // gate correctly distinguishes "tool wants prompt" from "label
+  // wants prompt." The new contract: pass --allow-capability for
+  // unattended autoApprove + read-class connector calls. NEVER_ALLOWABLE
+  // labels (send-on-behalf etc.) still block.
+  it('app github.list_prs proceeds under --auto-approve + --allow-capability=account-access,net-fetch', async () => {
     const auditDir = makeTestAuditDir();
     const provider = makeOneToolCallProvider({
       name: 'app',
@@ -87,21 +97,47 @@ describe('PR 11 — per-action resolution unblocks read connector actions', () =
       auditDir, provider,
       model: 'claude-sonnet-4-6', providerName: 'anthropic',
       maxIterations: 2, autoApprove: true,
+      allowedCapabilities: parseAllowCapabilityFlag('account-access,net-fetch'),
     });
 
     await drainRun(agent, 'list prs');
 
     const rows = readAuditRows(auditDir);
-    // No PR-11 unattended-block deny row. The tool either succeeds or
-    // returns its own application-level error (no GitHub token in the
-    // test vault is fine — what matters is the gate didn't fire).
     const blockRow = rows.find(r =>
       r.tool === 'app' && r.action === 'deny' &&
       typeof r.reason === 'string' &&
       r.reason.startsWith('blocked: required capability labels'),
     );
     assert.strictEqual(blockRow, undefined,
-      `read action must NOT be blocked under --auto-approve after per-action fix; saw ${JSON.stringify(blockRow)}`);
+      `read action with allowlisted labels must NOT be blocked; saw ${JSON.stringify(blockRow)}`);
+  });
+
+  // PR 26 — without the allowlist, --auto-approve alone is not enough
+  // for connector reads. account-access is a real authority step;
+  // §7 says it requires explicit opt-in.
+  it('app github.list_prs IS blocked under --auto-approve alone (no allowlist) — §7 stance', async () => {
+    const auditDir = makeTestAuditDir();
+    const provider = makeOneToolCallProvider({
+      name: 'app',
+      args: { action: 'github.list_prs', owner: 'X', repo: 'Y', state: 'open' },
+    });
+    const agent = new Agent({
+      auditDir, provider,
+      model: 'claude-sonnet-4-6', providerName: 'anthropic',
+      maxIterations: 2, autoApprove: true,
+      // no allowedCapabilities
+    });
+
+    await drainRun(agent, 'list prs');
+
+    const rows = readAuditRows(auditDir);
+    const blockRow = rows.find(r =>
+      r.tool === 'app' && r.action === 'deny' &&
+      typeof r.reason === 'string' &&
+      r.reason.startsWith('blocked: required capability labels'),
+    );
+    assert.ok(blockRow, 'no-allowlist + autoApprove on connector read MUST surface as a structured deny');
+    assert.match((blockRow!.reason as string), /account-access|net-fetch/);
   });
 
   it('app github.create_issue is blocked under --auto-approve (send-on-behalf is NEVER_ALLOWABLE)', async () => {

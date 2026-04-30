@@ -44,6 +44,7 @@ import { GmailConnector } from '../connectors/gmail';
 import { GoogleCalendarConnector } from '../connectors/google-calendar';
 import { NotionConnector } from '../connectors/notion';
 import { GoogleDriveConnector } from '../connectors/google-drive';
+import { XTwitterConnector } from '../connectors/x-twitter';
 import { DeepResearchTool } from './research';
 import { SkillForgeTool } from './skill-forge';
 import { DecomposeGoalTool } from './decompose-goal';
@@ -192,6 +193,14 @@ export class ToolRegistry {
         { name: 'GoogleCalendar', create: () => new GoogleCalendarConnector() },
         { name: 'Notion', create: () => new NotionConnector() },
         { name: 'GoogleDrive', create: () => new GoogleDriveConnector() },
+        // PR 26 — registering X here surfaced as a real bug during the
+        // live verification sweep. Pre-registration the connector
+        // existed and had its §8 contract clean per PR 20, but the
+        // ToolRegistry never got an instance — so AppConnectorTool's
+        // `effectiveCapabilities('x.<verb>')` returned undefined,
+        // falling back to the dangerous tool union and triggering
+        // unnecessary always-ask escalation on every X read.
+        { name: 'X', create: () => new XTwitterConnector() },
       ];
       for (const c of connectors) {
         try {

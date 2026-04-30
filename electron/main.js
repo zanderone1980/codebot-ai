@@ -381,7 +381,34 @@ async function startServer() {
   // Stash for IPC handlers + menu access without re-deriving.
   global.__codebotWorkspaceDir = workspaceDir;
 
-  serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1', '--no-open'], {
+  // PR 26 — pass `--allow-capability account-access,net-fetch` so
+  // routine read-class connector actions (gmail.list_threads,
+  // github.list_prs, calendar.list_events, etc.) don't prompt for
+  // approval on every single call. Per §7:
+  //   account-access → prompt   (account auth IS the gate)
+  //   net-fetch      → prompt   (egress IS the gate)
+  // For read-only verbs the strictest combine of [read-only,
+  // account-access, net-fetch] is `prompt`, which then forces
+  // an Approve click for every list/search/get call. That's right
+  // for the CLI default but wrong for an interactive dashboard
+  // where the user already approved the connection at vault-set
+  // time. Allowlisting these two labels at the dashboard subprocess
+  // level brings reads back to inline-success.
+  //
+  // What this does NOT bypass: write/delete/paid actions remain
+  // gated. Their NEVER_ALLOWABLE labels (send-on-behalf,
+  // delete-data, spend-money, move-money) cannot be allowlisted —
+  // parseAllowCapabilityFlag rejects them at startup. So a
+  // read-only connector call goes inline; a write connector call
+  // STILL surfaces the Approve/Deny card from PR 21+25.
+  //
+  // The flag may already be in the user's argv via
+  // env.CODEBOT_DASHBOARD_EXTRA_ARGS or similar in the future; for
+  // now this is the hard-coded sane default for the dashboard.
+  serverProcess = spawn(nodeBin, [
+    binPath, '--dashboard', '--host', '127.0.0.1', '--no-open',
+    '--allow-capability', 'account-access,net-fetch',
+  ], {
     cwd: workspaceDir,
     env: serverEnv,
     stdio: ['pipe', 'pipe', 'pipe'],

@@ -98,6 +98,11 @@ describe('ToolRegistry', () => {
       'code_review',
       'deep_research',
       'decompose_goal',
+      // PR 26 — `app` is permission='auto' so per-action capability
+      // labels via effectiveCapabilities() drive the gate. Reads
+      // resolve to auto (after walk-back when labels allowlisted),
+      // writes escalate via send-on-behalf / spend-money / delete-data.
+      'app',
     ];
     const prompt = [
       'write_file',
@@ -113,7 +118,6 @@ describe('ToolRegistry', () => {
       'http_client',
       'notification',
       'package_manager',
-      'app',
       'graphics',
       'execute',
       'delegate',

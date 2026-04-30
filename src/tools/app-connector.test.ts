@@ -41,7 +41,10 @@ describe('AppConnectorTool', () => {
     const registry = new ConnectorRegistry(vault);
     const tool = new AppConnectorTool(vault, registry);
     assert.strictEqual(tool.name, 'app');
-    assert.strictEqual(tool.permission, 'prompt');
+    // PR 26 — app tool is permission='auto'; per-action labels via
+    // effectiveCapabilities() drive the gate, so the dispatch tool
+    // itself doesn't need to demand a prompt up front.
+    assert.strictEqual(tool.permission, 'auto');
     assert.ok(tool.description.includes('GitHub'));
   });
 

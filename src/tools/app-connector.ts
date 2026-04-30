@@ -16,7 +16,24 @@ import { VaultManager } from '../vault';
 export class AppConnectorTool implements Tool {
   name = 'app';
   description = 'Connect to external apps (GitHub, Slack, Jira, Linear). Use "list" to see available apps, "connect <app>" to set up, or "<app>.<action>" to execute (e.g., github.create_issue, slack.post_message, jira.search, linear.list_teams).';
-  permission: Tool['permission'] = 'prompt';
+  // PR 26 — `auto` lets per-action capability labels drive the gate.
+  // Pre-PR-26 this was 'prompt', which forced an Approve click on
+  // every connector call — including pure reads — even when
+  // --allow-capability covered the labels (account-access /
+  // net-fetch) that justified the prompt. The dispatch tool itself
+  // doesn't know if a given action is read or write; that's what
+  // `effectiveCapabilities(args)` is for. With permission='auto',
+  // the gate's escalation logic does the right thing per call:
+  //   read action  -> [read-only, account-access, net-fetch]
+  //                   -> escalates to 'prompt' from 'auto'
+  //                   -> if labels are allowlisted, walks back to 'auto'
+  //                   -> needsPermission = false, runs inline
+  //   write action -> [..., send-on-behalf]
+  //                   -> escalates to 'always-ask'
+  //                   -> send-on-behalf is NEVER_ALLOWABLE
+  //                   -> capabilityChallenged stays true
+  //                   -> needsPermission = true, surfaces approval card
+  permission: Tool['permission'] = 'auto';
   capabilities: CapabilityLabel[] = ['read-only', 'write-fs', 'net-fetch', 'account-access', 'send-on-behalf', 'delete-data'];
   parameters = {
     type: 'object',

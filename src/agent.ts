@@ -1048,6 +1048,17 @@ export class Agent {
     //      them at startup — so this code path cannot weaken
     //      move-money / spend-money / send-on-behalf / delete-data.
     const callCapabilities = tool.effectiveCapabilities?.(args) ?? tool.capabilities;
+    // PR 26 — preserve the pre-escalation permission so we can ask
+    // "did the tool itself require a prompt, or did escalation drive
+    // it there?" later. If escalation pushed it up but every
+    // triggering label is allowlisted, we want the gate to behave as
+    // if the original tool permission applied. Fixes the live-sweep
+    // bug where `app` (permission='prompt' default) made every
+    // read-class connector call prompt for approval even with
+    // --allow-capability account-access,net-fetch — the third
+    // disjunct in needsPermission only checked effectivePermission
+    // post-escalation.
+    const preEscalationPermission = effectivePermission;
     const capEscalation = escalatePermissionFromCapabilityLabels(
       effectivePermission,
       callCapabilities,
@@ -1064,6 +1075,15 @@ export class Agent {
         (l) => !this.allowedCapabilities.has(l as CapabilityLabel),
       );
       capabilityChallenged = unallowedTriggeringLabels.length > 0;
+      // PR 26 — when ALL triggering labels are allowlisted, walk
+      // effectivePermission back to whatever the tool / policy
+      // originally declared. The escalation said "this would need
+      // a prompt because of <label X>"; the user already pre-
+      // approved that label class via --allow-capability, so the
+      // prompt level should not stick.
+      if (!capabilityChallenged) {
+        effectivePermission = preEscalationPermission;
+      }
     }
 
     const riskAssessment = this.riskScorer.assess(toolName, args, effectivePermission);
@@ -1113,7 +1133,35 @@ export class Agent {
       }
 
       if (cordResult.decision === 'CHALLENGE') {
-        effectivePermission = 'always-ask';
+        // PR 26 — when the user has already explicitly opted into the
+        // labels that justify this call (--allow-capability covers
+        // every triggering label), CORD CHALLENGE should be
+        // informational, not gate-escalating. The user's explicit
+        // capability allowlist IS the consent CORD is asking for.
+        // Without this carve-out, CORD's "intent not locked" default
+        // CHALLENGE on every tool call defeats --allow-capability
+        // entirely for the dashboard/tool-runner path.
+        //
+        // CORD BLOCK (above) still applies — that's a hard stop, not
+        // a "ask the human" signal, and it's never bypassable by an
+        // allowlist. We only soften CHALLENGE.
+        const allLabelsAllowlisted = capEscalation.escalated
+          ? unallowedTriggeringLabels.length === 0
+          : true;
+        if (!allLabelsAllowlisted) {
+          effectivePermission = 'always-ask';
+        } else {
+          // Log the suppression so a forensic reader can see "CORD
+          // wanted approval but the user pre-approved at the
+          // capability level."
+          this.auditLogger.log({
+            tool: toolName,
+            action: 'execute',
+            args,
+            result: 'cord_challenge_suppressed',
+            reason: `CORD CHALLENGE downgraded — user pre-approved triggering labels via --allow-capability${capEscalation.escalated ? ' [' + capabilityTriggeringLabels.join(', ') + ']' : ''}`,
+          });
+        }
       }
     }
 
