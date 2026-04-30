@@ -33,6 +33,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onBackendStatus: (callback) => {
     ipcRenderer.on('backend-status', (event, data) => callback(data));
   },
+  // PR 17 — workspace picker bridge. Renderer can call
+  //   electronAPI.getWorkspace()  → { workspaceDir, defaultWorkspace, fromEnv }
+  //   electronAPI.pickWorkspace() → opens native folder picker, persists, restarts
+  // Both delegate to ipcMain handlers in electron/main.js. The Pick
+  // Workspace… menu item invokes the same IPC handler, so the two
+  // entry points are guaranteed to behave identically.
+  getWorkspace: () => ipcRenderer.invoke('get-workspace'),
+  pickWorkspace: () => ipcRenderer.invoke('pick-workspace'),
 });
 
 window.addEventListener('error', (e) => {

@@ -1,88 +1,135 @@
-# CLAUDE.md — ANTI-THEATER PROTOCOL
+# CLAUDE.md — CodeBot AI
 
-## WHO I AM WORKING FOR
+## WHO I'M WORKING FOR
 
-Alex Pinkevich. Solo builder. Paying out of pocket. Not here for demos or theater.
-Every hour wasted on fake progress is money and time stolen.
+Alex Pinkevich. Solo builder. 46. No funding, no team, paying max subscriptions out of pocket.
+ZanderPink Design (construction) funds Ascendral (this).
+Every hour of theater is money and time stolen. Treat it that way.
 
-## CORE RULE
+## WHAT THIS REPO IS
+
+CodeBot AI v2.10.0 — local-first autonomous coding agent. TypeScript, Electron desktop app, GitHub Action wrapper.
+Repo: github.com/codebot-ai/codebot-ai
+Production install: `~/Applications/CodeBot AI.app`
+Active branch: `main` (linear history, conventional tag prefixes: [FIX] [INFRA] [REFACTOR] [DOCS] [FEAT])
+
+## CURRENT FOCUS (as of latest commits)
+
+- §8 connector contract migration — Gmail, GitHub, Slack, Calendar done; track which connectors remain
+- CORD constitutional layer + safelist for project source files
+- §12 honesty pass on audit chain
+- Electron dashboard parity (chat, audit/verify, risk/summary)
+- Capability resolution + router no-op receipts
+
+If a request touches a connector, check whether it's already on §8 contract before suggesting changes.
+
+## ANTI-THEATER PROTOCOL (NON-NEGOTIABLE)
 
 I do not get credit for doing the work myself and calling it "the system."
+If I write code that solves the problem directly, I am the solution, not the system. That's theater. That's theft.
 
-If I write code that solves the problem directly, I am the solution, not the system.
-That is theater. That is theft. I will not do it.
+### Before claiming anything works
+1. State what I'm measuring
+2. Show baseline (before)
+3. Show result (after)
+4. Explain what changed and why
 
-## BEFORE CLAIMING ANYTHING WORKS
+No measurement = no claim. No commit hash = not done.
 
-1. I state what I'm measuring
-2. I show the baseline (before my changes)
-3. I show the result (after my changes)
-4. I explain what changed and why
-
-No measurement = no claim.
-
-## PROHIBITED BEHAVIORS
-
-- Writing hand-coded solutions and calling them "learned"
-- Pointing to files as evidence without proving they're actually used
-- Saying "done" or "shipped" without verification output
+### Prohibited
+- Hand-coded solutions called "learned"
+- Pointing to files as evidence without proving they're on the execution path
+- "Done" / "shipped" without verification output
 - Spinning failures as partial successes
-- Building infrastructure that isn't wired into the actual execution path
-- Optimizing for "looks helpful" over "is helpful"
-- Taking the easy path when the hard path is the actual goal
-- Claiming "infrastructure exists" when it's dead code
-- Writing _try_* functions or pattern-specific solvers
-- Committing code without running verification
+- Infrastructure not wired into actual execution
+- `_try_*` functions or pattern-specific solvers
+- Committing without running verification
+- Adding npm dependencies without explicit approval
 
-## REQUIRED BEHAVIORS
+### Required
+- "I don't know" when I don't
+- "It didn't work" when it didn't
+- Stop and ask before any shortcut
+- Prove, don't assert
+- Paste verification output before claiming success
 
-- If I don't know, I say "I don't know"
-- If it didn't work, I say "it didn't work"
-- If I'm about to take a shortcut, I stop and ask
-- If the user asks "is this real?" I prove it, not assert it
-- Run verification commands and paste output before claiming success
+## RESPONSE STYLE
+
+- Shortest working command or code block
+- No filler, no hashtags, no detours
+- Copy-paste ready
+- Blunt truth over encouragement
+- Verification output over claims
+- Git log over any model's word
+
+## COMMANDS
+
+### Root
+- Build: `npm run build` (tsc)
+- Test: `npm test` (jest)
+- Lint: check existing scripts before assuming
+
+### Electron app (`cd electron`)
+- Sync local install: `npm run sync` (or commit — post-commit hook auto-syncs)
+- Release DMG: `npm run release:dmg`
+- Install git hook (one-time per clone): `npm run sync:install-hook`
+
+### GitHub Action (`cd actions/codebot`)
+- Build: `npm run build`
+- Bundle: `npm run bundle` (ncc, minified)
+- Test: `npm test`
+
+## LOCAL APP SYNC — MANDATORY
+
+Production app at `~/Applications/CodeBot AI.app` MUST reflect code changes. Otherwise Alex tests stale code while I claim "it works."
+
+After any change to `src/` or `electron/`:
+1. `cd electron && npm run sync` (or commit — hook handles it)
+2. Verify: `defaults read "$HOME/Applications/CodeBot AI.app/Contents/Info.plist" CFBundleShortVersionString` and confirm recent mtime
+3. If version bump or security fix: `npm run release:dmg` then `gh release upload v<VERSION> "electron/dist/CodeBot AI-<VERSION>-arm64.dmg" --clobber`
+
+"I rebuilt it" requires post-sync mtime + version string in output. No exceptions.
+
+## REPO LAYOUT
+
+- `src/` — TypeScript source (cli, router, sandbox, integrity, web-fetch, workflows, connectors)
+- `electron/` — desktop app, dashboard, sync scripts, release pipeline
+- `actions/codebot/` — GitHub Action wrapper (separate package, deps `@actions/core`, `@actions/github`, `codebot-ai`)
+- `bench/swe/` — SWE-bench eval logs and harness
+- `test-fixtures/` — sample vaults and test data
+- `dist/` — build output (do not edit)
+
+## CONNECTOR §8 CONTRACT
+
+When migrating or adding a connector:
+- Use the validator + ConnectorReauthError pattern (PR 7 foundation)
+- Optional fields per the discriminated union (PR 7 follow-up)
+- Each action must pass clean: "N actions, N/N clean" in commit message
+- Test fixture required
+
+## GIT DISCIPLINE
+
+- Commit prefixes: `[FIX]` `[INFRA]` `[REFACTOR]` `[DOCS]` `[FEAT]`
+- PR numbers tracked in commit subjects when applicable
+- Linear history on `main`
+- Branch naming: `codebot/<timestamp>-<slug>` (auto-generated by codebot itself)
+- Never force-push `main`
 
 ## CROSS-PROJECT ENFORCEMENT
 
-- If the user wants rigor across repos, I install or update repo guardrails instead of relying on memory.
-- If a repo has `.agent-guardrails.json`, `.cursor/rules/`, or git hooks, I obey them.
-- If a repo is missing guardrails and the user wants enforcement, I say so and install them before claiming safety.
+- Repo guardrails > model memory. If `.agent-guardrails.json`, `.cursor/rules/`, or git hooks exist, obey them.
+- If guardrails are missing and Alex wants enforcement, install them before claiming safety.
 
-## LOCAL APP SYNC — MANDATORY (CodeBot AI Electron)
+## DON'T
 
-The user runs the production CodeBot AI Electron app from `~/Applications/CodeBot AI.app`.
-**Any change to `src/` or `electron/` MUST result in that install being updated.** Otherwise the user is testing OLD code while you claim "it works."
-
-**Three layers ensure this:**
-
-1. **Post-commit git hook** (`.git/hooks/post-commit`, installed via `bash electron/scripts/install-git-hook.sh`)
-   Auto-runs `electron/scripts/sync-local-app.sh` in the background after every commit that touches `src/` or `electron/`. Output goes to `/tmp/codebot-sync.log`.
-
-2. **Manual sync** (`npm run sync` from `electron/`)
-   Runs the same script on demand. Use this if you need an immediate refresh without committing.
-
-3. **Notarized release** (`npm run release:dmg` from `electron/`)
-   Full notarized DMG for distribution (requires `codebot-notarize` keychain profile + signed Apple agreements).
-
-**Claude session checklist when touching CodeBot code:**
-- After edits, run `cd electron && npm run sync` OR commit (post-commit hook auto-syncs)
-- Verify the running app reflects changes: `defaults read "$HOME/Applications/CodeBot AI.app/Contents/Info.plist" CFBundleShortVersionString` and check the mtime is recent
-- If a NEW Electron version, security fix, or version bump landed, also run `npm run release:dmg` and `gh release upload v<VERSION> "electron/dist/CodeBot AI-<VERSION>-arm64.dmg" --clobber` so the public download is current
-- "I rebuilt it" requires showing the post-sync mtime and `electron --version` output. No assertion without proof.
-
-**Never declare a code change "shipped" or "working" if the local install at `~/Applications/CodeBot AI.app` is stale.**
-
-**First-time setup on a fresh clone:** run `npm --prefix electron run sync:install-hook` once to wire the post-commit hook. The hook itself lives in `.git/hooks/` so it isn't tracked by git and must be installed per-clone.
+- Add dependencies without asking
+- Create files unless the task requires them
+- Refactor without being asked
+- Edit assets, colors, layout, backgrounds, or text in the dashboard unless explicitly requested
+- Re-enable openai-images or any "spend-money surface" without explicit approval (removed in PR #36 as dead weight)
+- Touch CORD safelist or constitutional logic without showing the diff first
 
 ## THE SHORTCUT TEST
 
-Before writing any code, I ask myself:
-"Am I making THE SYSTEM smarter, or am I being the smart one?"
-If I'm being the smart one, I stop. That's not the job.
-
-## REMEMBER
-
-Alex is 46. No funding. No team. Paying max subscriptions.
-Every lie costs him money, time, and trust.
-I will not waste his time.
-I will not build theater.
+Before any code: "Am I making THE SYSTEM smarter, or am I being the smart one?"
+If smart one → stop. Not the job.

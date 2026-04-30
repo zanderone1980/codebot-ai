@@ -339,26 +339,47 @@ async function startServer() {
   // point to an existing, writable directory; if missing/unwritable we
   // log a warning and fall back to ~/.codebot/workspace rather than
   // failing the launch.
+  // PR 17 — workspace resolution precedence:
+  //   1. CODEBOT_WORKSPACE env var (transient, overrides config for one run)
+  //   2. ~/.codebot/config.json `workspaceDir` field (persisted, set by the
+  //      Settings → Pick Workspace… menu item or by the user manually)
+  //   3. ~/.codebot/workspace default (legacy fallback)
+  //
+  // Each candidate is validated (exists, is dir, writable). If validation
+  // fails we log and fall through to the next, so a stale config can't
+  // brick the launch.
   const defaultWorkspace = path.join(process.env.HOME || '', '.codebot', 'workspace');
-  let workspaceDir = defaultWorkspace;
-  if (process.env.CODEBOT_WORKSPACE) {
-    const candidate = process.env.CODEBOT_WORKSPACE;
+  function validateWorkspace(candidate, source) {
+    if (!candidate) return null;
     try {
       const stat = fs.statSync(candidate);
       if (!stat.isDirectory()) {
-        console.warn(`[main] CODEBOT_WORKSPACE="${candidate}" is not a directory — falling back to default ${defaultWorkspace}`);
-      } else {
-        // Probe writability with a no-op access check so we don't
-        // discover the failure deep inside the agent loop.
-        fs.accessSync(candidate, fs.constants.W_OK);
-        workspaceDir = candidate;
-        console.log(`[main] using CODEBOT_WORKSPACE=${workspaceDir}`);
+        console.warn(`[main] ${source}="${candidate}" is not a directory — skipping`);
+        return null;
       }
+      fs.accessSync(candidate, fs.constants.W_OK);
+      return candidate;
     } catch (err) {
-      console.warn(`[main] CODEBOT_WORKSPACE="${candidate}" not usable (${err.code || err.message}) — falling back to ${defaultWorkspace}`);
+      console.warn(`[main] ${source}="${candidate}" not usable (${err.code || err.message}) — skipping`);
+      return null;
     }
   }
+  let workspaceDir = null;
+  workspaceDir = validateWorkspace(process.env.CODEBOT_WORKSPACE, 'env CODEBOT_WORKSPACE');
+  if (!workspaceDir) {
+    try {
+      const configPath = path.join(process.env.HOME || '', '.codebot', 'config.json');
+      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      workspaceDir = validateWorkspace(cfg.workspaceDir, 'config.workspaceDir');
+    } catch { /* no config or malformed — fall through */ }
+  }
+  if (!workspaceDir) workspaceDir = defaultWorkspace;
+  if (workspaceDir !== defaultWorkspace) {
+    console.log(`[main] using workspace=${workspaceDir}`);
+  }
   try { fs.mkdirSync(workspaceDir, { recursive: true }); } catch { /* best effort */ }
+  // Stash for IPC handlers + menu access without re-deriving.
+  global.__codebotWorkspaceDir = workspaceDir;
 
   serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1', '--no-open'], {
     cwd: workspaceDir,
@@ -586,6 +607,28 @@ function createMenu() {
             }
           },
         },
+        {
+          // PR 17 — folder picker entry point. Lives in the same menu
+          // as Settings so users find it without scanning every menu.
+          // Backend logic + persistence are in the `pick-workspace`
+          // ipcMain handler defined below.
+          label: 'Pick Workspace…',
+          accelerator: 'Cmd+Shift+W',
+          click: async () => {
+            // Invoking the IPC handler ourselves keeps the menu code
+            // path identical to the renderer-button path. The handler
+            // takes care of dialog + validation + persistence + the
+            // "restart now or later?" prompt.
+            const handler = ipcMain.listeners('pick-workspace')[0];
+            if (typeof handler === 'function') {
+              try {
+                await handler();
+              } catch (err) {
+                dialog.showErrorBox('Pick Workspace failed', err && err.message ? err.message : String(err));
+              }
+            }
+          },
+        },
         { type: 'separator' },
         { label: 'Hide CodeBot AI', role: 'hide' },
         { label: 'Hide Others', role: 'hideOthers' },
@@ -796,4 +839,89 @@ ipcMain.handle('restart-backend', async () => {
     mainWindow.loadURL(DASHBOARD_URL);
   }
   return ok;
+});
+
+// PR 17 — workspace picker IPC.
+//
+// `get-workspace` returns the currently active workspace dir (the one
+// the codebot subprocess was spawned with). The renderer can read this
+// to display "Working on: <path>" in the dashboard chrome.
+//
+// `pick-workspace` opens a native folder dialog, validates the choice
+// (exists, dir, writable), persists to ~/.codebot/config.json under
+// `workspaceDir`, then asks the user whether to restart the backend
+// now (so the new workspace is in effect immediately) or on next
+// launch. The persistence is deliberate — losing it on app restart
+// would defeat the purpose; CODEBOT_WORKSPACE env still wins for
+// transient overrides.
+ipcMain.handle('get-workspace', () => {
+  return {
+    workspaceDir: global.__codebotWorkspaceDir || null,
+    defaultWorkspace: path.join(process.env.HOME || '', '.codebot', 'workspace'),
+    fromEnv: !!process.env.CODEBOT_WORKSPACE,
+  };
+});
+
+ipcMain.handle('pick-workspace', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Pick CodeBot Workspace',
+    message: 'Choose the project folder CodeBot should work on. The agent will read and edit files inside this folder.',
+    properties: ['openDirectory', 'createDirectory'],
+    defaultPath: global.__codebotWorkspaceDir || undefined,
+  });
+  if (result.canceled || !result.filePaths.length) {
+    return { ok: false, canceled: true };
+  }
+  const chosen = result.filePaths[0];
+  // Validate the same way the spawn code does.
+  try {
+    const stat = fs.statSync(chosen);
+    if (!stat.isDirectory()) return { ok: false, error: 'Not a directory' };
+    fs.accessSync(chosen, fs.constants.W_OK);
+  } catch (err) {
+    return { ok: false, error: `Not usable: ${err.code || err.message}` };
+  }
+
+  // Persist to ~/.codebot/config.json under `workspaceDir`. Read-merge-
+  // write so we don't clobber other fields.
+  const configDir = path.join(process.env.HOME || '', '.codebot');
+  const configPath = path.join(configDir, 'config.json');
+  let cfg = {};
+  try {
+    cfg = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+  } catch { /* missing or malformed → start empty */ }
+  cfg.workspaceDir = chosen;
+  try {
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8');
+  } catch (err) {
+    return { ok: false, error: `Failed to persist workspace: ${err.message}` };
+  }
+
+  // Ask whether to restart the backend now. Deferring is OK — the new
+  // value is already on disk and will take effect on next launch.
+  const choice = await dialog.showMessageBox(mainWindow, {
+    type: 'question',
+    buttons: ['Restart now', 'Apply on next launch'],
+    defaultId: 0,
+    cancelId: 1,
+    title: 'Workspace updated',
+    message: `CodeBot will now work on:\n${chosen}`,
+    detail: 'Restart the backend to apply immediately, or keep the current session and apply on next launch.',
+  });
+
+  if (choice.response === 0) {
+    if (serverProcess) {
+      serverProcess.kill('SIGTERM');
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    serverCrashCount = 0;
+    global.__codebotWorkspaceDir = chosen;
+    const ok = await startServer();
+    if (ok && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.loadURL(DASHBOARD_URL);
+    }
+    return { ok, workspaceDir: chosen, restarted: ok };
+  }
+  return { ok: true, workspaceDir: chosen, restarted: false };
 });
