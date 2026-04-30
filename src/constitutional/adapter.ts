@@ -14,6 +14,7 @@ import {
   ToolAction,
   CordDecision,
 } from './types';
+import { isProjectSourceFile, redactSafeSourcePaths } from './path-safelist';
 
 // Import cord-engine (JavaScript) via require
  
@@ -175,11 +176,22 @@ export class CordAdapter {
       ? this.buildMemoryProposalText(action)
       : this.buildProposalText(action);
 
+    // PR 15 follow-up — also strip the path from cordInput.path when
+    // the file is a safelisted project source file. We initially only
+    // redacted the proposal `text`, missing that cord-engine evaluates
+    // the structured `path` field independently. The Electron live
+    // test on 2026-04-29 surfaced this: even with text redacted,
+    // CORD still blocked reads of src/secrets.ts because its path-
+    // scanner saw the basename "secrets.ts". Conditional omission
+    // mirrors the proposal-text logic so the decision is consistent
+    // across both fields.
+    const rawPath = (action.args.path as string) || (action.args.file as string) || undefined;
+    const pathForCord = rawPath && isProjectSourceFile(rawPath) ? undefined : rawPath;
     const cordInput = {
       text,
       toolName: toolType,
       actionType: action.type || toolType,
-      path: action.args.path as string || action.args.file as string || undefined,
+      path: pathForCord,
       networkTarget: this.extractNetworkTarget(action),
     };
 
@@ -297,9 +309,30 @@ export class CordAdapter {
 
   private buildProposalText(action: ToolAction): string {
     const parts = [action.tool];
-    if (action.args.command) parts.push(String(action.args.command));
-    if (action.args.path) parts.push(String(action.args.path));
-    if (action.args.content) parts.push(String(action.args.content).substring(0, 500));
+    if (action.args.command) {
+      // Redact safelisted project-source-file tokens from command
+      // strings (e.g. `node --test dist/secrets.test.js`) so the
+      // exfil/secrets regex doesn't fire on legitimate filenames.
+      // Real exfil patterns (curl/upload/etc.) and unrelated tokens
+      // pass through untouched.
+      parts.push(redactSafeSourcePaths(String(action.args.command)));
+    }
+
+    // Project-source-file safelist: reading or editing source files
+    // under the project root must not trigger CORD's `regex.secrets`
+    // false positive on filenames like `src/secrets.ts` or content
+    // that legitimately discusses secret-detection patterns. See
+    // path-safelist.ts for the full predicate. Sensitive runtime
+    // paths (.env, *.pem, .ssh/*, etc.) are NOT safelisted.
+    const filePath = (action.args.path as string) || (action.args.file as string) || '';
+    const safeSourceFile = isProjectSourceFile(filePath);
+
+    if (filePath && !safeSourceFile) {
+      parts.push(filePath);
+    }
+    if (action.args.content && !safeSourceFile) {
+      parts.push(String(action.args.content).substring(0, 500));
+    }
     if (action.args.url) parts.push(String(action.args.url));
     if (action.args.query) parts.push(String(action.args.query));
     return parts.join(' ');

@@ -27,6 +27,16 @@ describe('parseArgs', () => {
     const result = parseArgs(['-h']);
     assert.strictEqual(result.help, true);
   });
+
+  it('parses --no-constitutional into args[\'no-constitutional\']=true', () => {
+    const result = parseArgs(['--no-constitutional']);
+    assert.strictEqual(result['no-constitutional'], true);
+  });
+
+  it('does not set no-constitutional when flag is absent', () => {
+    const result = parseArgs([]);
+    assert.strictEqual(result['no-constitutional'], undefined);
+  });
 });
 
 describe('parseArgs — issue #7 fallback heuristic', () => {

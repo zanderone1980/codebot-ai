@@ -214,4 +214,11 @@ export interface Config {
    * fail fast.
    */
   allowedCapabilities?: ReadonlySet<CapabilityLabel>;
+  /**
+   * When true, the constitutional safety layer (CORD + VIGIL) is not
+   * initialized. Set by the `--no-constitutional` CLI flag. The flag
+   * was previously parsed but never read — fixed 2026-04-29 so the
+   * documented escape hatch actually disables the layer.
+   */
+  disableConstitutional?: boolean;
 }

@@ -440,6 +440,7 @@ export async function main() {
       routerConfig: config.router,
       budgetConfig: config.budget,
       allowedCapabilities: config.allowedCapabilities,
+      constitutional: { enabled: !config.disableConstitutional },
     });
     const daemon = new Daemon();
     daemon.onExecuteJob = async (job) => {
@@ -580,6 +581,7 @@ export async function main() {
     routerConfig: config.router,
     budgetConfig: config.budget,
     allowedCapabilities: config.allowedCapabilities,
+    constitutional: { enabled: !config.disableConstitutional },
   });
 
   agent.setAskPermission(async (tool, args, risk, sandbox) => {

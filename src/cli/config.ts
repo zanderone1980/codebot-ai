@@ -85,6 +85,7 @@ export async function resolveConfig(args: Record<string, string | boolean>): Pro
     // Absent or `perSessionCapUsd: 0` → no user-set cap. The existing
     // `policy.limits.cost_limit_usd` path still applies independently.
     budget: saved.budget,
+    disableConstitutional: !!args['no-constitutional'],
   };
 
   // PR 11 — `--allow-capability <comma-list>`. Validated at parse time
