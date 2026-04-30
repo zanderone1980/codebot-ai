@@ -186,7 +186,12 @@ export class CordAdapter {
     // mirrors the proposal-text logic so the decision is consistent
     // across both fields.
     const rawPath = (action.args.path as string) || (action.args.file as string) || undefined;
-    const pathForCord = rawPath && isProjectSourceFile(rawPath) ? undefined : rawPath;
+    // Use the agent's projectRoot (threaded through ConstitutionalConfig
+    // by Agent's constructor) when present; fall back to process.cwd()
+    // via the function default. The Electron dashboard subprocess's
+    // cwd differs from the agent's actual working tree, so the explicit
+    // projectRoot is what makes the safelist correct in that path.
+    const pathForCord = rawPath && isProjectSourceFile(rawPath, this.config.projectRoot) ? undefined : rawPath;
     const cordInput = {
       text,
       toolName: toolType,
@@ -325,7 +330,7 @@ export class CordAdapter {
     // path-safelist.ts for the full predicate. Sensitive runtime
     // paths (.env, *.pem, .ssh/*, etc.) are NOT safelisted.
     const filePath = (action.args.path as string) || (action.args.file as string) || '';
-    const safeSourceFile = isProjectSourceFile(filePath);
+    const safeSourceFile = isProjectSourceFile(filePath, this.config.projectRoot);
 
     if (filePath && !safeSourceFile) {
       parts.push(filePath);

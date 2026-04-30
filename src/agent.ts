@@ -223,7 +223,18 @@ export class Agent {
     // Initialize constitutional safety layer (CORD + VIGIL)
     if (opts.constitutional?.enabled !== false) {
       try {
-        this.constitutional = new ConstitutionalLayer(opts.constitutional);
+        // Thread the agent's projectRoot to the constitutional layer
+        // so the path-safelist's `isProjectSourceFile` can resolve
+        // paths against the agent's actual working tree, not whatever
+        // process.cwd() happens to be. PR 15 follow-up: Electron spawns
+        // the dashboard subprocess with cwd=~/.codebot/workspace, but
+        // the agent legitimately reads files in another repo. Without
+        // this, the safelist's process.cwd() default makes every
+        // foreign-path read look unsafelisted and CORD blocks.
+        this.constitutional = new ConstitutionalLayer({
+          ...opts.constitutional,
+          projectRoot: this.projectRoot,
+        });
         this.constitutional.start();
       } catch (e) {
         log.warn(`[CodeBot] Failed to initialize constitutional layer: ${(e as Error).message}`);
@@ -319,6 +330,14 @@ export class Agent {
   /** Update auto-approve mode at runtime (e.g., from /auto command) */
   setAutoApprove(value: boolean) {
     this.autoApprove = value;
+  }
+
+  /** Read the current auto-approve mode. Used by callers that need to
+   *  snapshot-and-restore around a per-request override (e.g. the
+   *  dashboard chat handler in PR 16 which lets request body opt into
+   *  autoApprove for one call and restores afterwards). */
+  getAutoApprove(): boolean {
+    return this.autoApprove;
   }
 
   /** Replace the permission callback at runtime (e.g., from CLI to inject UI cards) */

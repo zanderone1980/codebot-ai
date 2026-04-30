@@ -384,7 +384,12 @@ export function registerCommandRoutes(
       return;
     }
 
-    let body: { message?: string; mode?: 'simple' | 'detailed'; images?: Array<{ data: string; mediaType: string }> };
+    let body: {
+      message?: string;
+      mode?: 'simple' | 'detailed';
+      images?: Array<{ data: string; mediaType: string }>;
+      autoApprove?: boolean;
+    };
     try {
       body = (await DashboardServer.parseBody(req)) as typeof body;
     } catch (err: any) {
@@ -395,6 +400,24 @@ export function registerCommandRoutes(
     if (!body?.message && (!body?.images || body.images.length === 0)) {
       DashboardServer.error(res, 400, 'Missing "message" field');
       return;
+    }
+
+    // PR 16 — honor `autoApprove` from the request body. Pre-this-fix
+    // the chat handler ignored body.autoApprove entirely; the agent's
+    // autoApprove was set at construction time and never changed per
+    // request. That made the dashboard chat unable to drive any tool
+    // call that hit a `prompt`-tier permission, since the gate would
+    // wait for an interactive `y/n` that the SSE caller can't supply.
+    // Now the request can opt into autoApprove explicitly. The opt-in
+    // is per-request: we snapshot the previous value, apply the
+    // request's value for the duration of agent.run, and restore in
+    // the finally block. NEVER_ALLOWABLE capability labels remain
+    // hard-rejected via the existing PR-11 path; autoApprove only
+    // affects regular permission prompts.
+    const requestedAutoApprove = body.autoApprove === true;
+    const priorAutoApprove = agent.getAutoApprove();
+    if (requestedAutoApprove !== priorAutoApprove) {
+      agent.setAutoApprove(requestedAutoApprove);
     }
 
     if (agentBusy) {
@@ -455,6 +478,14 @@ export function registerCommandRoutes(
       closed = true;
       agentBusy = false;
       broadcastStatus(messageQueue.length > 0 ? 'queued' : 'idle');
+      // PR 16 — restore the agent's autoApprove to its pre-request
+      // value. Per-request opt-in must not leak into the next chat or
+      // into the queued message handler, which has its own autoApprove
+      // semantics (see processQueue above — currently inherits the
+      // agent's then-current value).
+      if (requestedAutoApprove !== priorAutoApprove) {
+        agent.setAutoApprove(priorAutoApprove);
+      }
       if (!res.writableEnded && !res.destroyed) {
         res.write('data: [DONE]\n\n');
         DashboardServer.sseClose(res);

@@ -41,6 +41,17 @@ export interface ConstitutionalConfig {
     challenge: number;
     block: number;
   };
+  /**
+   * The agent's projectRoot, threaded through so the path-safelist
+   * (`isProjectSourceFile`) can resolve paths against the agent's
+   * actual working tree, not `process.cwd()`. Required when the
+   * subprocess hosting the agent has a cwd different from the
+   * directory the agent is supposed to operate on (the Electron
+   * dashboard spawns the codebot subprocess with cwd=workspace, not
+   * the user's repo). When omitted, the safelist falls back to
+   * process.cwd() — the previous default-behavior.
+   */
+  projectRoot?: string;
 }
 
 /** Metrics from the constitutional layer */

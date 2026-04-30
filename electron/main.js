@@ -329,7 +329,35 @@ async function startServer() {
   // Use a writable workspace as cwd (NOT the bundled app dir which is read-only).
   // The codebot CLI uses process.cwd() to derive project memory paths and will
   // crash with EACCES if cwd points inside /Applications/CodeBot AI.app/.
-  const workspaceDir = path.join(process.env.HOME || '', '.codebot', 'workspace');
+  //
+  // PR 16 — accept CODEBOT_WORKSPACE env override so users can point the
+  // dashboard agent at their actual project tree (the repo they want
+  // CodeBot to operate on). The path-safelist's `isProjectSourceFile`
+  // resolves paths against process.cwd(), and the agent's projectRoot
+  // mirrors that — so a hardcoded ~/.codebot/workspace breaks any task
+  // that touches files in another repo. Validation: the override must
+  // point to an existing, writable directory; if missing/unwritable we
+  // log a warning and fall back to ~/.codebot/workspace rather than
+  // failing the launch.
+  const defaultWorkspace = path.join(process.env.HOME || '', '.codebot', 'workspace');
+  let workspaceDir = defaultWorkspace;
+  if (process.env.CODEBOT_WORKSPACE) {
+    const candidate = process.env.CODEBOT_WORKSPACE;
+    try {
+      const stat = fs.statSync(candidate);
+      if (!stat.isDirectory()) {
+        console.warn(`[main] CODEBOT_WORKSPACE="${candidate}" is not a directory — falling back to default ${defaultWorkspace}`);
+      } else {
+        // Probe writability with a no-op access check so we don't
+        // discover the failure deep inside the agent loop.
+        fs.accessSync(candidate, fs.constants.W_OK);
+        workspaceDir = candidate;
+        console.log(`[main] using CODEBOT_WORKSPACE=${workspaceDir}`);
+      }
+    } catch (err) {
+      console.warn(`[main] CODEBOT_WORKSPACE="${candidate}" not usable (${err.code || err.message}) — falling back to ${defaultWorkspace}`);
+    }
+  }
   try { fs.mkdirSync(workspaceDir, { recursive: true }); } catch { /* best effort */ }
 
   serverProcess = spawn(nodeBin, [binPath, '--dashboard', '--host', '127.0.0.1', '--no-open'], {
