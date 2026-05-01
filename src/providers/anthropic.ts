@@ -3,6 +3,33 @@ import { getModelInfo } from './registry';
 import { isRetryable, getRetryDelay, sleep } from '../retry';
 
 /**
+ * Validate the accumulated `input` of an Anthropic tool_use block
+ * before emitting it as a tool_call_end. Returns a discriminated
+ * union so the caller can distinguish "ready to emit" from
+ * "truncated, emit error instead." Pure — no I/O.
+ *
+ * Empty input is treated as ok (some tool calls have no arguments).
+ * Non-empty input must be a single, complete JSON object. Anything
+ * else (partial object, partial string, missing closing brace) is
+ * a stream truncation per `input_json_delta` not finishing.
+ */
+function validateToolInputJson(input: string): { ok: true } | { ok: false; reason: string } {
+  if (input.length === 0) return { ok: true };
+  try {
+    const parsed = JSON.parse(input);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, reason: 'expected a JSON object, got ' + (Array.isArray(parsed) ? 'array' : typeof parsed) };
+    }
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
  * Sanitize an object tree so that no JS string contains lone UTF-16 surrogates.
  * Lone surrogates are valid in JS strings but NOT in JSON/UTF-8. Strict parsers
  * (like Anthropic's) reject them even when JSON.stringify escapes them as \uD8xx.
@@ -178,6 +205,17 @@ export class AnthropicProvider implements LLMProvider {
     const toolBlocks: Map<number, { id: string; name: string; input: string }> = new Map();
     let currentBlockIndex = -1;
     let currentBlockType = '';
+    // PR 27-prep — currentEvent MUST persist across chunk reads.
+    // Anthropic's SSE format is two-line records:
+    //   event: <name>\n
+    //   data: <json>\n\n
+    // When a chunk boundary lands between those two lines, the next
+    // chunk's `data:` line arrives with no event-name context. The
+    // earlier 1de45fe commit named this bug; it regressed because
+    // `currentEvent` was re-declared inside the while loop. Pulling
+    // the declaration up here means the variable lives for the
+    // duration of the stream, not the duration of a single read.
+    let currentEvent = '';
 
     try {
       while (true) {
@@ -201,8 +239,9 @@ export class AnthropicProvider implements LLMProvider {
         const lines = buffer.split('\n');
         buffer = lines.pop() || '';
 
-        let currentEvent = '';
-
+        // currentEvent is declared OUTSIDE this loop so it survives
+        // chunk boundaries (see comment at decl). Do NOT re-declare
+        // here.
         for (const line of lines) {
           const trimmed = line.trim();
 
@@ -302,16 +341,30 @@ export class AnthropicProvider implements LLMProvider {
                 };
               }
 
-              // Message is ending — emit all accumulated tool calls
+              // PR 27-prep — validate before flush. A truncated
+              // input_json_delta stream leaves block.input as
+              // partial JSON ("{\"path\":\"sn"). Emitting that as
+              // tool_call_end surfaces in the agent loop as
+              // "Invalid JSON arguments for <tool>" — misleading.
+              // The real cause is a truncated stream; emit `error`
+              // instead, and SUPPRESS the tool_call_end entirely.
               for (const [, block] of toolBlocks) {
-                yield {
-                  type: 'tool_call_end',
-                  toolCall: {
-                    id: block.id,
-                    type: 'function',
-                    function: { name: block.name, arguments: block.input },
-                  } as ToolCall,
-                };
+                const validated = validateToolInputJson(block.input);
+                if (validated.ok) {
+                  yield {
+                    type: 'tool_call_end',
+                    toolCall: {
+                      id: block.id,
+                      type: 'function',
+                      function: { name: block.name, arguments: block.input },
+                    } as ToolCall,
+                  };
+                } else {
+                  yield {
+                    type: 'error',
+                    error: `Anthropic incomplete tool_use: tool "${block.name}" arguments did not parse (${validated.reason}). The stream ended before the model finished emitting tool input. Retry the request.`,
+                  };
+                }
               }
               break;
             }
@@ -333,16 +386,27 @@ export class AnthropicProvider implements LLMProvider {
       reader.releaseLock();
     }
 
-    // Emit remaining tool calls if stream ended without message_delta
+    // PR 27-prep — fallback flush when stream ended without
+    // message_delta (server hung up, CHUNK_TIMEOUT fired,
+    // mid-tool_use abort). Validate JSON the same way before
+    // emitting tool_call_end. Truncated input → emit error.
     for (const [, block] of toolBlocks) {
-      yield {
-        type: 'tool_call_end',
-        toolCall: {
-          id: block.id,
-          type: 'function',
-          function: { name: block.name, arguments: block.input },
-        } as ToolCall,
-      };
+      const validated = validateToolInputJson(block.input);
+      if (validated.ok) {
+        yield {
+          type: 'tool_call_end',
+          toolCall: {
+            id: block.id,
+            type: 'function',
+            function: { name: block.name, arguments: block.input },
+          } as ToolCall,
+        };
+      } else {
+        yield {
+          type: 'error',
+          error: `Anthropic incomplete tool_use: tool "${block.name}" arguments did not parse on stream-end fallback (${validated.reason}). The stream aborted before the model finished emitting tool input. Retry the request.`,
+        };
+      }
     }
     yield { type: 'done' };
   }
