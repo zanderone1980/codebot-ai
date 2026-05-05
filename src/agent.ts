@@ -23,6 +23,7 @@ import { buildSystemPrompt } from './agent/prompt-builder';
 import { AskPermissionFn, defaultAskPermission } from './agent/permission';
 import { buildToolExecutionSignature } from './agent/serialization';
 import { BranchManager } from './agent/branch-manager';
+import { recordSessionEpisode, finalizeStateEngine } from './agent/session-finalizer';
 import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
@@ -1528,15 +1529,6 @@ export class Agent {
     else this.messages.unshift(systemMessage);
   }
 
-  private finalizeStateEngine(): void {
-    if (!this.stateEngine) return;
-    try {
-      this.stateEngine.finalizeSession();
-    } catch (e) {
-      log.warn(`[CodeBot] Failed to finalize state engine: ${(e as Error).message}`);
-    }
-  }
-
   private finishRun(success: boolean, summary: string, tracksTask: boolean): void {
     const normalizedSummary = summary.trim() || (success ? 'Completed successfully.' : 'Stopped before completion.');
     const activeGoal = this.taskState.getActiveGoal();
@@ -1545,42 +1537,21 @@ export class Agent {
       this.taskState.completeActiveTask(normalizedSummary, success);
     }
     this.userProfile.flushIfDirty(true);
-    this.finalizeStateEngine();
-    this.recordSessionEpisode(success, normalizedSummary);
-  }
-
-  /** Record cross-session episode when session ends */
-  private recordSessionEpisode(success: boolean, outcomeSummary = ''): void {
-    try {
-      const summary = this.tokenTracker.getSummary();
-      const outcomes = [outcomeSummary, ...this.taskState.getOutcomeHints()]
-        .map((outcome) => outcome.trim())
-        .filter(Boolean)
-        .filter((outcome, index, all) => all.indexOf(outcome) === index)
-        .slice(0, 4);
-      const episode = this.crossSession.buildEpisode({
-        sessionId: summary.startTime,
-        projectRoot: this.projectRoot,
-        startedAt: this.sessionStartedAt,
-        goal: this.sessionGoal,
-        toolCalls: this.sessionToolCalls,
-        success,
-        outcomes:
-          outcomes.length > 0
-            ? outcomes
-            : [success ? 'Session completed successfully' : 'Session ended (max iterations or error)'],
-        tokenUsage: { input: summary.totalInputTokens, output: summary.totalOutputTokens },
-      });
-      this.crossSession.recordEpisode(episode);
-      try {
-        this.experientialMemory.recordTaskOutcome(success);
-      } catch {}
-      try {
-        this.experientialMemory.decayAndConsolidate();
-      } catch {}
-    } catch {
-      /* cross-session recording should never crash the agent */
-    }
+    finalizeStateEngine(this.stateEngine);
+    const tokenSummary = this.tokenTracker.getSummary();
+    recordSessionEpisode({
+      sessionId: tokenSummary.startTime,
+      startedAt: this.sessionStartedAt,
+      goal: this.sessionGoal,
+      projectRoot: this.projectRoot,
+      toolCalls: this.sessionToolCalls,
+      tokenUsage: { input: tokenSummary.totalInputTokens, output: tokenSummary.totalOutputTokens },
+      success,
+      outcomeSummary: normalizedSummary,
+      outcomeHints: this.taskState.getOutcomeHints(),
+      crossSession: this.crossSession,
+      experientialMemory: this.experientialMemory,
+    });
   }
 }
 
