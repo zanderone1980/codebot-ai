@@ -1,4 +1,3 @@
-import * as readline from 'readline';
 import { Message, ToolCall, AgentEvent, LLMProvider, Tool, ToolStreamEvents } from './types';
 import { ToolRegistry } from './tools';
 import { parseToolCalls } from './parser';
@@ -21,6 +20,8 @@ import { UserProfile } from './user-profile';
 import { validateToolArgs, repairToolCallMessages } from './agent/message-repair';
 import { PreparedCall, ToolExecutorDeps, executeToolBatch, executeSingleTool, TOOL_TYPE_MAP } from './agent/tool-executor';
 import { buildSystemPrompt } from './agent/prompt-builder';
+import { AskPermissionFn, defaultAskPermission } from './agent/permission';
+import { buildToolExecutionSignature } from './agent/serialization';
 import { ExecutionAuditor } from './execution-auditor';
 import { CrossSessionLearning } from './cross-session';
 import { ExperientialMemory } from './experiential-memory';
@@ -32,32 +33,9 @@ import { detectProvider } from './providers/registry';
 import type { BudgetConfig } from './setup';
 import { log } from './logger';
 
-/** Permission callback type — risk and sandbox info are optional for backwards compat */
-type AskPermissionFn = (
-  tool: string,
-  args: Record<string, unknown>,
-  risk?: RiskAssessment,
-  sandbox?: { sandbox: boolean; network: boolean },
-) => Promise<boolean>;
-
-function stableSerialize(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((v) => stableSerialize(v)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, val]) => `${JSON.stringify(key)}:${stableSerialize(val)}`);
-    return `{${entries.join(',')}}`;
-  }
-  return JSON.stringify(value);
-}
-
-function buildToolExecutionSignature(toolName: string, args: Record<string, unknown>): string {
-  return `${toolName}:${stableSerialize(args)}`;
-}
-
 // Tool execution constants and logic moved to ./agent/tool-executor.ts
+// AskPermissionFn + defaultAskPermission moved to ./agent/permission.ts
+// stableSerialize + buildToolExecutionSignature moved to ./agent/serialization.ts
 
 export class Agent {
   private provider: LLMProvider;
@@ -1659,34 +1637,3 @@ export class Agent {
   }
 }
 
-const PERMISSION_TIMEOUT_MS = 30_000;
-
-async function defaultAskPermission(tool: string, args: Record<string, unknown>): Promise<boolean> {
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const summary = Object.entries(args)
-    .map(([k, v]) => {
-      const val = typeof v === 'string' ? (v.length > 80 ? v.substring(0, 80) + '...' : v) : JSON.stringify(v);
-      return `  ${k}: ${val}`;
-    })
-    .join('\n');
-
-  let timerId: ReturnType<typeof setTimeout> | undefined;
-
-  const userResponse = new Promise<boolean>((resolve) => {
-    rl.question(`\n⚡ ${tool}\n${summary}\nAllow? [y/N] (${PERMISSION_TIMEOUT_MS / 1000}s timeout) `, (answer) => {
-      if (timerId) clearTimeout(timerId);
-      rl.close();
-      resolve(answer.toLowerCase().startsWith('y'));
-    });
-  });
-
-  const timeout = new Promise<boolean>((resolve) => {
-    timerId = setTimeout(() => {
-      rl.close();
-      process.stdout.write('\n⏱ Permission timed out — denied by default.\n');
-      resolve(false);
-    }, PERMISSION_TIMEOUT_MS);
-  });
-
-  return Promise.race([userResponse, timeout]);
-}
