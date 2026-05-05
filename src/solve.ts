@@ -503,13 +503,11 @@ export class SolveCommand {
 
     // ── Phase 4.5: Run baseline tests (reproduction attempt) ──
     let baselineTestsPassed = true;
-    let baselineTestOutput = '';
     if (testFw) {
       yield { type: 'progress', phase: 'analyzing', message: 'Running baseline tests to check for pre-existing failures...' };
       try {
         const baseResult = this.runTestCommand(testFw.command, repoDir);
         baselineTestsPassed = baseResult.passed;
-        baselineTestOutput = baseResult.output;
         yield {
           type: 'progress',
           phase: 'analyzing',
@@ -573,7 +571,7 @@ export class SolveCommand {
       yield { type: 'progress', phase: 'fixing', message: `Safe mode: ${filesModified.length} files exceeds limit of 3. Stashing changes.` };
       try {
         execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: safe mode rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-      } catch (stashErr) {
+      } catch {
         warnNonFatal('solve.safeMode', 'Could not stash changes — leaving working tree intact for manual recovery');
       }
       yield { type: 'error', phase: 'fixing', error: 'Safe mode: too many files changed. Changes stashed (git stash list to recover). Try without --safe.' };
@@ -584,7 +582,7 @@ export class SolveCommand {
       yield { type: 'progress', phase: 'fixing', message: `${filesModified.length} files exceeds --max-files ${this.options.maxFiles}. Stashing changes.` };
       try {
         execFileSync('git', ['stash', 'push', '-m', 'codebot-solve: max-files rollback (' + filesModified.length + ' files)'], { cwd: repoDir, encoding: 'utf-8', timeout: 10_000 });
-      } catch (stashErr) {
+      } catch {
         warnNonFatal('solve.maxFiles', 'Could not stash changes — leaving working tree intact for manual recovery');
       }
       yield { type: 'error', phase: 'fixing', error: `Max files limit exceeded (${filesModified.length} > ${this.options.maxFiles}). Changes stashed (git stash list to recover).` };

@@ -13,7 +13,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { codebotPath } from './paths';
-import { Message, ToolCall, LLMProvider, ToolSchema, StreamEvent } from './types';
+import { Message, LLMProvider, ToolSchema, StreamEvent } from './types';
 
 // ── Replay Provider ──
 

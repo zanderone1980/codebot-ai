@@ -28,9 +28,9 @@ export class HttpClientTool implements Tool {
     // goes through validateOutboundUrl which does literal + DNS
     // resolution check. The legacy isBlocked method below is kept
     // for backwards compat but no longer the first line of defense.
-    let parsedUrl: URL;
     try {
-      parsedUrl = new URL(url);
+      // Validation: throws on invalid URL. Result discarded; the throw is the point.
+      new URL(url);
     } catch {
       return `Error: invalid URL: ${url}`;
     }

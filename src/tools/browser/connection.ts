@@ -5,7 +5,6 @@
 
 import { CDPClient, getDebuggerUrl, getTargets } from '../../browser/cdp';
 import { spawn } from 'child_process';
-import * as path from 'path';
 import * as fs from 'fs';
 import { PolicyEnforcer } from '../../policy';
 import { codebotPath } from '../../paths';

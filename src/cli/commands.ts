@@ -245,7 +245,7 @@ export function handleSlashCommand(input: string, agent: Agent, config: Config) 
           console.log(`    Actions: ${conn.actions.map((a: {name: string}) => a.name).join(', ')}`);
         }
         console.log(c('\nConnect with: /connect <app> or set env var', 'dim'));
-      } catch (err) {
+      } catch {
         console.log(c('App connectors not available.', 'dim'));
       }
       break;

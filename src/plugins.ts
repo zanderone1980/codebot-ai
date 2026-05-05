@@ -183,7 +183,7 @@ export function loadPlugins(projectRoot?: string): Tool[] {
 }
 
 /** Validate a plugin tool's parameter schema against JSON Schema conventions */
-function validateToolSchema(params: unknown, pluginName: string): string | null {
+function validateToolSchema(params: unknown, _pluginName: string): string | null {
   if (!params || typeof params !== 'object') return 'parameters must be an object';
   const schema = params as Record<string, unknown>;
 

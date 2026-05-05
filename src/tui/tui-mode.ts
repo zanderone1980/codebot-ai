@@ -9,10 +9,9 @@
  */
 
 import { Agent } from '../agent';
-import { AgentEvent, Message } from '../types';
+import { AgentEvent } from '../types';
 import { LayoutEngine } from './layout';
 import { createKeyboardListener, keyToAction, KeyEvent, TuiAction } from './keyboard';
-import { Screen } from './screen';
 
 /** Step status for the plan panel */
 export interface TuiStep {

@@ -23,7 +23,6 @@ import {
 } from './spark-types';
 
 import {
-  scoreToDecision,
   classifyFailure,
   failureToOutcome,
   resolveToolCategory,

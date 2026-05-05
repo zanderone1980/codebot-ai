@@ -23,7 +23,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /EACCES.*permission denied.*'([^']+)'/i,
-    lesson: (m, tool) => ({
+    lesson: (m, _tool) => ({
       lesson: `Permission denied for "${m[1]}". Check file permissions or run with appropriate access.`,
       avoidance: `Do not attempt to write to restricted paths.`,
       tags: 'eacces,permission,access',
@@ -31,7 +31,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /SyntaxError.*([^:]+):(\d+):(\d+)/i,
-    lesson: (m, tool) => ({
+    lesson: (m, _tool) => ({
       lesson: `Syntax error in ${m[1]} at line ${m[2]}. Validate syntax before saving.`,
       avoidance: `Check for matching brackets, missing semicolons, or invalid syntax.`,
       tags: 'syntax,parse-error',
@@ -39,7 +39,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /timeout|timed out|ETIMEDOUT/i,
-    lesson: (_m, tool, args) => ({
+    lesson: (_m, tool, _args) => ({
       lesson: `${tool} timed out. Consider increasing timeout or breaking the operation into smaller steps.`,
       avoidance: `Set timeout to at least 120000ms for long-running commands.`,
       tags: 'timeout,slow,performance',
@@ -55,7 +55,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /npm ERR!|yarn error|pnpm ERR/i,
-    lesson: (_m, _tool, args) => ({
+    lesson: (_m, _tool, _args) => ({
       lesson: `Package manager command failed. Check lockfile, node version, and dependencies.`,
       avoidance: `Verify the package manager and lockfile type before running install commands.`,
       tags: 'npm,yarn,pnpm,install,dependencies',
@@ -63,7 +63,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /FAIL|FAILED|test.*fail/i,
-    lesson: (_m, _tool, args) => ({
+    lesson: (_m, _tool, _args) => ({
       lesson: `Tests failed. Read the failure output carefully before making more changes.`,
       avoidance: `Do not make additional changes without understanding why tests failed.`,
       tags: 'test,failure,regression',
@@ -79,7 +79,7 @@ const FAILURE_PATTERNS: Array<{
   },
   {
     pattern: /error TS\d+:/i,
-    lesson: (_m, _tool, args) => ({
+    lesson: (_m, _tool, _args) => ({
       lesson: `TypeScript compilation error. Check type definitions, imports, and interfaces.`,
       avoidance: `Run tsc --noEmit to check types before committing.`,
       tags: 'typescript,compile,types',
@@ -209,7 +209,7 @@ export function extractLessonFromSuccess(
  * Determine if a success is worth recording.
  * Skip trivial read-only operations. Record writes, executions, and complex operations.
  */
-export function shouldRecordSuccess(toolName: string, args: Record<string, unknown>, output: string): boolean {
+export function shouldRecordSuccess(toolName: string, args: Record<string, unknown>, _output: string): boolean {
   // Trivial tools — never record
   if (TRIVIAL_SUCCESS_TOOLS.has(toolName)) return false;
 

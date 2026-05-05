@@ -8,7 +8,6 @@
  */
 
 import * as fs from 'fs';
-import * as path from 'path';
 import { codebotPath } from './paths';
 
 // ── Theme Interface ──

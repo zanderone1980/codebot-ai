@@ -357,7 +357,7 @@ export class ExperientialMemory {
   }
 
   /** Flag a lesson as potentially wrong */
-  challengeLesson(id: string, reason: string): boolean {
+  challengeLesson(id: string, _reason: string): boolean {
     if (!this._active) return false;
     try {
       this.db.prepare(`

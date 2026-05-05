@@ -178,7 +178,6 @@ export class DiskSpaceCheck implements HealthCheck {
 
     try {
       const free = os.freemem();
-      const total = os.totalmem();
       // Use disk check via df for actual disk space
       const dfOutput = execSync('df -h . | tail -1', { encoding: 'utf-8', timeout: 3000 });
       const parts = dfOutput.trim().split(/\s+/);

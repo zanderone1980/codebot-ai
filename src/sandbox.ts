@@ -11,7 +11,7 @@
  * - Graceful fallback to host execution when Docker unavailable
  */
 
-import { execSync, execFileSync, ExecSyncOptions } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import * as path from 'path';
 
 // ── Types ──

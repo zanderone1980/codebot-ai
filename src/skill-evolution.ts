@@ -12,7 +12,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { codebotPath } from './paths';
-import { SkillDefinition, loadSkills, SkillStep } from './skills';
+import { SkillDefinition, loadSkills } from './skills';
 
 // ── Types ──
 

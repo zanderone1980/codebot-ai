@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as path from 'path';
 import * as readline from 'readline';
 import { PROVIDER_DEFAULTS, MODEL_REGISTRY, detectProvider, getModelInfo } from './providers/registry';
 import type { RouterConfig } from './router';

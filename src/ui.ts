@@ -298,7 +298,6 @@ export function diffPreview(
 
   // Simple line-by-line diff
   const diffLines: string[] = [];
-  const maxLen = Math.max(oldLines.length, newLines.length);
 
   // Build a basic diff using longest common subsequence approach
   // For simplicity, use a line-matching strategy

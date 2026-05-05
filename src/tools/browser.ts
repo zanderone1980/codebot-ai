@@ -2,13 +2,7 @@ import { Tool, CapabilityLabel } from '../types';
 import { PolicyEnforcer } from '../policy';
 import {
   BrowserSession,
-  ensureConnected,
-  killExistingChrome,
   lastScreenshotData,
-  setLastScreenshotData,
-  getClient,
-  setClient,
-  getDebugPort,
 } from './browser/connection';
 import {
   navigate,
@@ -25,7 +19,6 @@ import {
   hover,
   findByText,
   switchTab,
-  fetchFallback,
   newTab,
 } from './browser/actions';
 

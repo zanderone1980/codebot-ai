@@ -7,7 +7,6 @@ import { Agent } from '../agent';
 import { AgentEvent } from '../types';
 import { UI, budgetBar } from '../ui';
 import { SolveEvent, SolveResult } from '../solve';
-import { RiskScorer } from '../risk';
 
 export let verbose = false;
 export function setVerbose(v: boolean) { verbose = v; }

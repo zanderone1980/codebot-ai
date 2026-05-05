@@ -13,7 +13,7 @@ export class ThinkTool implements Tool {
     required: ['thought'],
   };
 
-  async execute(args: Record<string, unknown>): Promise<string> {
+  async execute(_args: Record<string, unknown>): Promise<string> {
     return 'Thought recorded.';
   }
 }

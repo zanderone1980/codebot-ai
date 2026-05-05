@@ -41,14 +41,6 @@ const FAST_TOOLS = new Set([
   'image_info', 'pdf_extract', 'task_planner',
 ]);
 
-/** Tools that modify state but are bounded — strong tier */
-const STRONG_TOOLS = new Set([
-  'edit_file', 'write_file', 'git', 'execute',
-  'web_fetch', 'web_search', 'http_client',
-  'database', 'test_runner', 'package_manager',
-  'notification',
-]);
-
 /** Tools that require deep reasoning or are high-risk — reasoning tier */
 const REASONING_TOOLS = new Set([
   'batch_edit', 'browser', 'ssh_remote', 'docker',

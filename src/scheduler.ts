@@ -5,7 +5,6 @@ import { Agent } from './agent';
 import { AgentEvent } from './types';
 import { getProactiveEngine } from './proactive';
 import { codebotPath } from './paths';
-import { warnNonFatal } from './warn';
 import { SelfMonitor, HealthReport } from './self-monitor';
 import { SkillEvolution } from './skill-evolution';
 

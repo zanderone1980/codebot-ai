@@ -76,7 +76,7 @@ export class DashboardServer {
   async start(): Promise<{ port: number; url: string }> {
     return new Promise((resolve, reject) => {
       this.server = http.createServer((req, res) => {
-        this.handleRequest(req, res).catch(err => {
+        this.handleRequest(req, res).catch(_err => {
           if (!res.writableEnded && !res.destroyed) {
             try { DashboardServer.error(res, 500, 'Internal Server Error'); } catch { /* gone */ }
           }

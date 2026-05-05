@@ -2,7 +2,6 @@ import { Tool, CapabilityLabel } from '../types';
 import * as fs from 'fs';
 import * as path from 'path';
 import { codebotPath } from '../paths';
-import { warnNonFatal } from '../warn';
 import * as crypto from 'crypto';
 
 export interface Routine {

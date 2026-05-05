@@ -5,7 +5,6 @@ import { isPathSafe } from '../security';
 import { checkSecretsForWrite } from '../secret-guard';
 import { PolicyEnforcer } from '../policy';
 import { codebotPath } from '../paths';
-import { warnNonFatal } from '../warn';
 
 // Undo snapshot directory
 
