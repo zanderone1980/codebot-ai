@@ -55,7 +55,7 @@ Most AI coding tools ship without this because their buyer (an individual develo
 
 ## Honest limits
 
-CodeBot is worse than Cursor at being an editor. It's worse than Devin at raw benchmark pass rates (Devin is ~50-65% on SWE-bench Verified full 500; CodeBot is 34% on a 50-task slice). It's worse than Aider at minimal-install simplicity (Aider is a single pip install; CodeBot has a TypeScript build + optional Docker sandbox + optional Electron dashboard).
+CodeBot is worse than Cursor at being an editor. It's worse than Devin at raw benchmark pass rates (Devin is ~50-65% on SWE-bench Verified full 500; CodeBot is 48% on a 50-task slice). It's worse than Aider at minimal-install simplicity (Aider is a single pip install; CodeBot has a TypeScript build + optional Docker sandbox + optional Electron dashboard).
 
 What CodeBot is better at than all of them is the governance + auditability axis. That's the axis this project is built around. If that axis doesn't matter to you, something else is probably a better fit.
 
