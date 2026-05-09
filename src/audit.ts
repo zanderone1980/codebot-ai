@@ -78,7 +78,16 @@ export interface AuditEntry {
     | 'task_event'
     | 'task_approval_request'
     | 'task_complete'
-    | 'task_cancelled';
+    | 'task_cancelled'
+    // RFC 005 — event-driven listener.
+    // `webhook_received` records every signed inbound HTTP event before any
+    // handler runs. `webhook_rejected` records HMAC / replay / oversize
+    // failures so forgery attempts are forensically visible.
+    // `webhook_dispatched` records the resulting action invocation,
+    // referencing the receive entry's hash for chain-of-custody.
+    | 'webhook_received'
+    | 'webhook_rejected'
+    | 'webhook_dispatched';
   args: Record<string, unknown>;
   result?: string;
   reason?: string;

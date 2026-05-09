@@ -45,6 +45,7 @@ import {
   handleDoctor,
   handleSolve,
   handleTask,
+  handleListen,
 } from './cli/subcommands';
 
 const C = {
@@ -145,6 +146,7 @@ export async function main() {
   if (args.task) { await handleTask(args); }
 
   if (args.daemon) { await handleDaemon(args); return; }
+  if (args.listen) { await handleListen(args); return; }
 
   // ── Zero-friction first run ──
   let showGuidedPrompts = false;

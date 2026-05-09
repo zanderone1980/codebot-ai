@@ -378,6 +378,64 @@ export async function handleTask(args: ParsedArgs): Promise<never> {
 }
 
 /**
+ * `--listen` — start the event-driven webhook receiver.
+ *
+ *   codebot --listen [--port 8442] [--secret <key>] [--host 0.0.0.0]
+ *
+ * Required: --secret (>= 16 chars) OR CODEBOT_LISTEN_SECRET env var.
+ * Default port: 8442. Default host: 127.0.0.1.
+ *
+ * Every signed POST to /event is HMAC-verified, hash-chained into the
+ * audit log via existing AuditLogger, and acknowledged with the audit
+ * entry hash so the caller can later verify the chain.
+ *
+ * For v0, no dispatch — just receive + audit. Buyers / users who want
+ * to trigger CodeBot tasks from inbound events can add the dispatch
+ * hook in a later iteration; the contract is in src/event-listener.ts.
+ */
+export async function handleListen(args: ParsedArgs): Promise<void> {
+  const { EventListener } = await import('../event-listener');
+  const { AuditLogger } = await import('../audit');
+  const port = typeof args.port === 'string' ? parseInt(args.port, 10) : 8442;
+  const host = typeof args.host === 'string' ? args.host : '127.0.0.1';
+  const secret = typeof args.secret === 'string'
+    ? args.secret
+    : process.env.CODEBOT_LISTEN_SECRET || '';
+  if (!secret) {
+    console.error(c('error: --secret <key> or CODEBOT_LISTEN_SECRET env var required (>= 16 chars)', 'red'));
+    process.exit(2);
+  }
+  if (secret.length < 16) {
+    console.error(c('error: --secret must be at least 16 characters', 'red'));
+    process.exit(2);
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    console.error(c(`error: invalid --port ${port}`, 'red'));
+    process.exit(2);
+  }
+
+  const audit = new AuditLogger();
+  const listener = new EventListener({ port, host, secret, audit });
+  const { port: actualPort } = await listener.start();
+  console.log(c(`event listener: ${host}:${actualPort}/event`, 'cyan'));
+  console.log(c(`audit session:  ${audit.getSessionId()}`, 'dim'));
+  console.log(c(`signing scheme: HMAC-SHA256 over (timestamp + body)`, 'dim'));
+  console.log(c(`headers:        x-codebot-signature, x-codebot-timestamp, x-codebot-event`, 'dim'));
+  console.log(c(`replay window:  300s`, 'dim'));
+  console.log(c(`Ctrl+C to stop.`, 'dim'));
+
+  await new Promise<void>((resolve) => {
+    const shutdown = async () => {
+      console.log(c('\nshutting down...', 'yellow'));
+      await listener.stop();
+      resolve();
+    };
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
+  });
+}
+
+/**
  * `--daemon` — start the long-running daemon worker. Constructs an Agent
  * from resolved config and a Daemon, wires the execute-job handler,
  * blocks on daemon.start().
