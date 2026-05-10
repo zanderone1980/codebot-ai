@@ -35,17 +35,10 @@ import { handleSlashCommand } from './cli/commands';
 import { resolveDashboardPort } from './cli/dashboard-config';
 import {
   handleVaultSubcommand,
-  handleVerifyAudit,
-  handleReplay,
-  handleDaemon,
   handleHeartbeat,
-  handleInitPolicy,
-  handleSandboxInfo,
-  handleExportAudit,
   handleDoctor,
-  handleSolve,
   handleTask,
-  handleListen,
+  dispatchEarlyReturnSubcommand,
 } from './cli/subcommands';
 
 const C = {
@@ -62,21 +55,150 @@ function c(text: string, style: keyof typeof C): string {
   return `${C[style]}${text}${C.reset}`;
 }
 
+// ── Local helpers extracted from main() to bring its complexity under gate ──
+
+/** Resolve and validate --vault path. Mutates config.autoApprove when vault is active. */
+function resolveVaultModeOpts(
+  args: ReturnType<typeof parseArgs>,
+  config: Config,
+): { vaultPath: string; writable: boolean; networkAllowed: boolean } | undefined {
+  const rawPath = args.vault;
+  if (typeof rawPath !== 'string' || rawPath.length === 0) return undefined;
+  const expanded = rawPath.startsWith('~') ? rawPath.replace(/^~/, require('os').homedir()) : rawPath;
+  const vaultPath = path.resolve(expanded);
+  if (!fs.existsSync(vaultPath)) {
+    console.error(c(`Vault path does not exist: ${vaultPath}`, 'red'));
+    process.exit(2);
+  }
+  if (!fs.statSync(vaultPath).isDirectory()) {
+    console.error(c(`Vault path is not a directory: ${vaultPath}`, 'red'));
+    process.exit(2);
+  }
+  try { process.chdir(vaultPath); } catch (err) {
+    console.error(c(`Could not chdir to vault: ${(err as Error).message}`, 'red'));
+    process.exit(2);
+  }
+  config.autoApprove = true;
+  const opts = { vaultPath, writable: !!(args as any)['vault-writable'], networkAllowed: !!(args as any)['vault-allow-network'] };
+  const modeLabel = `${opts.writable ? 'writable' : 'read-only'}, ${opts.networkAllowed ? 'network: on' : 'network: off'}`;
+  console.log(c(`  Vault Mode: ${vaultPath} (${modeLabel})`, 'dim'));
+  return opts;
+}
+
+/** First-run zero-friction setup. Returns whether to show guided prompts or abort main(). */
+async function handleFirstRunSetup(
+  args: ReturnType<typeof parseArgs>,
+): Promise<{ showGuidedPrompts: boolean; abort: boolean }> {
+  if (!isFirstRun() || !process.stdin.isTTY || args.message) {
+    return { showGuidedPrompts: false, abort: false };
+  }
+  const detected = await autoDetect();
+  if (detected.type === 'auto-start' && detected.model) {
+    const autoConfig: any = { model: detected.model, provider: detected.provider, baseUrl: detected.baseUrl, autoApprove: false, firstRunComplete: true };
+    if (detected.apiKey) autoConfig.apiKey = detected.apiKey;
+    saveSetupConfig(autoConfig);
+    return { showGuidedPrompts: true, abort: false };
+  }
+  const quickConfig = await runQuickSetup(detected);
+  if (!quickConfig.model) return { showGuidedPrompts: false, abort: true };
+  return { showGuidedPrompts: true, abort: false };
+}
+
+/** Render the startup banner + greeting. */
+async function displayStartupBanner(opts: {
+  version: string; modelName: string; providerLabel: string;
+  sessionShort: string; isAuto: boolean; resumeId: string | undefined; noAnimate: boolean;
+}): Promise<void> {
+  const { version: v, modelName, providerLabel, sessionShort, isAuto, resumeId, noAnimate } = opts;
+  if (shouldAnimate() && !noAnimate) {
+    await animateBootSequence(banner, v, modelName, providerLabel, `${sessionShort}...`, isAuto, 'normal');
+    if (resumeId) console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
+    else if (isAuto) console.log(formatReaction('autonomous_start'));
+  } else {
+    console.log(banner(v, modelName, providerLabel, `${sessionShort}...`, isAuto));
+    if (resumeId) console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
+    else if (isAuto) { console.log(c(`   ${randomGreeting('confident')}`, 'dim')); console.log(formatReaction('autonomous_start')); }
+    else console.log(c(`   ${randomGreeting()}\n`, 'dim'));
+  }
+}
+
+/** Start the dashboard server if --dashboard was given. */
+async function launchDashboard(
+  args: ReturnType<typeof parseArgs>,
+  agent: Agent,
+  pidFile: string,
+): Promise<void> {
+  try {
+    const srcStatic = path.resolve(__dirname, '..', 'src', 'dashboard', 'static');
+    const distStatic = path.join(__dirname, 'dashboard', 'static');
+    const dashStaticDir = fs.existsSync(srcStatic) ? srcStatic : distStatic;
+    const dashHost = typeof args.host === 'string' ? args.host : '127.0.0.1';
+    const dashPort = resolveDashboardPort();
+    const dashServer = new DashboardServer({ port: dashPort, host: dashHost, staticDir: dashStaticDir });
+    registerApiRoutes(dashServer);
+    registerCommandRoutes(dashServer, agent);
+    registerModelRoutes(dashServer);
+    const dashInfo = await dashServer.start();
+    console.log(c(`   Dashboard: ${dashInfo.url}`, 'cyan'));
+    try {
+      const { codebotPath: cbp } = require('./paths');
+      const pidDir = cbp('');
+      if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
+      fs.writeFileSync(pidFile, String(process.pid), 'utf8');
+    } catch { /* best-effort */ }
+    const dashUrl = dashHost === '0.0.0.0' ? `http://localhost:${dashInfo.port}` : dashInfo.url;
+    if (!args['no-open'] && !process.env.CODEBOT_NO_OPEN) {
+      try {
+        const { exec } = require('child_process');
+        const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
+        exec(`${openCmd} ${dashUrl}`);
+      } catch { /* best-effort */ }
+    }
+  } catch (err: unknown) {
+    console.log(c(`   Dashboard failed: ${err instanceof Error ? err.message : String(err)}`, 'yellow'));
+  }
+}
+
+/** Final dispatch: message mode, piped stdin, or interactive REPL. */
+async function runInputDispatch(
+  args: ReturnType<typeof parseArgs>,
+  agent: Agent,
+  config: Config,
+  session: SessionManager,
+  isDashboard: boolean,
+): Promise<void> {
+  if (typeof args.message === 'string') {
+    await runOnce(agent, args.message);
+    printSessionSummary(agent);
+    return;
+  }
+  if (!process.stdin.isTTY) {
+    if (isDashboard) {
+      console.log(c(`   Dashboard-only mode — no REPL, serving on port ${resolveDashboardPort()}.`, 'dim'));
+      await new Promise(() => {}); // Block forever — HTTP server IS the product
+      return;
+    }
+    const input = await readStdin();
+    if (input.trim()) { await runOnce(agent, input.trim()); printSessionSummary(agent); }
+    return;
+  }
+  const scheduler = new Scheduler(agent, (text) => process.stdout.write(text));
+  scheduler.start();
+  await repl(agent, config, session, isDashboard);
+  scheduler.stop();
+}
+
 export async function main() {
   process.on('unhandledRejection', (reason: unknown) => {
     const msg = reason instanceof Error ? reason.message : String(reason);
     console.error(`\x1b[31m\nUnhandled error: ${msg}\x1b[0m`);
   });
-
   process.on('uncaughtException', (err: Error) => {
     console.error(`\x1b[31m\nUncaught exception: ${err.message}\x1b[0m`);
-    if (err.message.includes('out of memory') || err.message.includes('ENOMEM')) {
-      process.exit(1);
-    }
+    if (err.message.includes('out of memory') || err.message.includes('ENOMEM')) process.exit(1);
   });
 
   // ── Process lifecycle: graceful shutdown on signals ──
-  // Prevents orphaned zombie processes when parent session ends
   const { codebotPath } = require('./paths');
   const pidFile = codebotPath('dashboard.pid');
   let shuttingDown = false;
@@ -84,143 +206,56 @@ export async function main() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`\n\x1b[2mCodeBot shutting down (${signal})...\x1b[0m`);
-    try {
-      fs.unlinkSync(pidFile);
-    } catch {
-      /* ignore */
-    }
+    try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
     process.exit(0);
   };
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-  // SIGHUP = terminal hangup. In dashboard mode, ignore it — the dashboard
-  // should survive terminal disconnects. Only kill on explicit SIGINT/SIGTERM.
+  // SIGHUP: survive in dashboard mode, shut down otherwise.
   process.on('SIGHUP', () => {
     if (parseArgs(process.argv.slice(2)).dashboard) {
       console.log('\x1b[2mTerminal disconnected — dashboard stays alive.\x1b[0m');
-    } else {
-      gracefulShutdown('SIGHUP');
-    }
+    } else { gracefulShutdown('SIGHUP'); }
   });
 
-  // `codebot vault …` subcommand short-circuits before the main agent flow.
+  // `codebot vault …` short-circuits before banner / agent.
   if (handleVaultSubcommand()) return;
 
   const args = parseArgs(process.argv.slice(2));
+  setTheme(typeof args.theme === 'string' ? loadTheme(args.theme) : loadTheme());
 
-  if (typeof args.theme === 'string') {
-    setTheme(loadTheme(args.theme));
-  } else {
-    setTheme(loadTheme());
-  }
-
-  if (args.help) {
-    showHelp();
-    return;
-  }
-  if (args.version) {
-    console.log(`CodeBot AI v${VERSION}`);
-    return;
-  }
-  if (args.setup) {
-    await runSetup();
-  }
-
-  // Heartbeat subcommand short-circuits before the main agent flow.
+  if (args.help) { showHelp(); return; }
+  if (args.version) { console.log(`CodeBot AI v${VERSION}`); return; }
+  if (args.setup) await runSetup();
   if (handleHeartbeat(args)) return;
 
-  // First-run prompt + daily ping. Both are silent on failure and never block.
-  // The ping fires-and-forgets — we don't await it before the main flow.
   ensureHeartbeatConfig();
   void heartbeatMaybePing(VERSION);
 
-  // ── Standalone commands ──
-  if (args['init-policy']) { handleInitPolicy(); return; }
-  if (args['verify-audit']) { handleVerifyAudit(args); return; }
-  if (args['sandbox-info']) { handleSandboxInfo(); return; }
-  if (args.replay) { await handleReplay(args); return; }
-  if (args['export-audit'] === 'sarif' || args['export-audit'] === true) { handleExportAudit(args, VERSION); return; }
-  if (args.doctor) { await handleDoctor(); }
-  if (args.solve) { await handleSolve(args); return; }
+  // ── Early-return subcommands (routing table) ──
+  if (await dispatchEarlyReturnSubcommand(args as Record<string, string | boolean>, VERSION)) return;
 
-  if (args.task) { await handleTask(args); }
-
-  if (args.daemon) { await handleDaemon(args); return; }
-  if (args.listen) { await handleListen(args); return; }
+  // doctor / task fall through to the agent REPL after running.
+  if (args.doctor) await handleDoctor();
+  if (args.task) await handleTask(args as Record<string, string | boolean>);
 
   // ── Zero-friction first run ──
-  let showGuidedPrompts = false;
-  if (isFirstRun() && process.stdin.isTTY && !args.message) {
-    const detected = await autoDetect();
-    if (detected.type === 'auto-start' && detected.model) {
-      const autoConfig: any = {
-        model: detected.model,
-        provider: detected.provider,
-        baseUrl: detected.baseUrl,
-        autoApprove: false,
-        firstRunComplete: true,
-      };
-      if (detected.apiKey) autoConfig.apiKey = detected.apiKey;
-      saveSetupConfig(autoConfig);
-      showGuidedPrompts = true;
-    } else {
-      const quickConfig = await runQuickSetup(detected);
-      if (!quickConfig.model) return;
-      showGuidedPrompts = true;
-    }
-  }
+  const firstRun = await handleFirstRunSetup(args);
+  if (firstRun.abort) return;
 
   const config = await resolveConfig(args);
   const provider = createProvider(config);
   setVerbose(!!args.verbose);
 
-  // ── Vault Mode ─────────────────────────────────────────────────────
-  // When --vault <path> is set, the agent becomes a read-only research
-  // assistant over a folder of markdown notes. We chdir into the vault
-  // so file tools operate there, force autoApprove (read-only by default
-  // anyway), and construct a vaultMode option object to pass to Agent +
-  // ToolRegistry. See src/agent/vault-prompt.ts + src/tools/index.ts.
-  let vaultModeOpts: { vaultPath: string; writable: boolean; networkAllowed: boolean } | undefined;
-  if (typeof args.vault === 'string' && args.vault.length > 0) {
-    const rawVaultPath = args.vault as string;
-    // Expand ~ manually — Node doesn't
-    const expanded = rawVaultPath.startsWith('~')
-      ? rawVaultPath.replace(/^~/, require('os').homedir())
-      : rawVaultPath;
-    const vaultPath = require('path').resolve(expanded);
-    const fs = require('fs');
-    if (!fs.existsSync(vaultPath)) {
-      console.error(c(`Vault path does not exist: ${vaultPath}`, 'red'));
-      process.exit(2);
-    }
-    if (!fs.statSync(vaultPath).isDirectory()) {
-      console.error(c(`Vault path is not a directory: ${vaultPath}`, 'red'));
-      process.exit(2);
-    }
-    try { process.chdir(vaultPath); } catch (err) {
-      console.error(c(`Could not chdir to vault: ${(err as Error).message}`, 'red'));
-      process.exit(2);
-    }
-    vaultModeOpts = {
-      vaultPath,
-      writable: !!args['vault-writable'],
-      networkAllowed: !!args['vault-allow-network'],
-    };
-    // Vault mode implies autoApprove — the agent is read-only by default
-    // and there's no destructive default surface to gate interactively.
-    config.autoApprove = true;
-    const readonlyLabel = vaultModeOpts.writable ? 'writable' : 'read-only';
-    const netLabel = vaultModeOpts.networkAllowed ? 'network: on' : 'network: off';
-    console.log(c(`  Vault Mode: ${vaultPath} (${readonlyLabel}, ${netLabel})`, 'dim'));
-  }
-
+  // Vault mode: validates path, chdir's, sets config.autoApprove.
+  const vaultModeOpts = resolveVaultModeOpts(args, config);
 
   if (args.deterministic) {
     provider.temperature = 0;
     console.log(c('  Deterministic mode: temperature=0', 'dim'));
   }
 
-  // Session management
+  // ── Session management ──
   let resumeId: string | undefined;
   if (args.continue) {
     resumeId = SessionManager.latest();
@@ -230,36 +265,23 @@ export async function main() {
   }
 
   const session = new SessionManager(config.model, resumeId);
-  const sessionShort = session.getId().substring(0, 8);
-  const providerLabel = `${config.provider} @ ${config.baseUrl}`;
-  const isAuto = !!config.autoApprove;
   const noAnimate = args['no-animate'] === true || args['no-animation'] === true;
+  await displayStartupBanner({
+    version: VERSION,
+    modelName: config.model,
+    providerLabel: `${config.provider} @ ${config.baseUrl}`,
+    sessionShort: session.getId().substring(0, 8),
+    isAuto: !!config.autoApprove,
+    resumeId,
+    noAnimate,
+  });
 
-  if (shouldAnimate() && !noAnimate) {
-    await animateBootSequence(banner, VERSION, config.model, providerLabel, `${sessionShort}...`, isAuto, 'normal');
-    if (resumeId) console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
-    else if (isAuto) console.log(formatReaction('autonomous_start'));
-  } else {
-    console.log(banner(VERSION, config.model, providerLabel, `${sessionShort}...`, isAuto));
-    if (resumeId) console.log(c(`   ${randomGreeting('resuming')}`, 'green'));
-    else if (isAuto) {
-      console.log(c(`   ${randomGreeting('confident')}`, 'dim'));
-      console.log(formatReaction('autonomous_start'));
-    } else console.log(c(`   ${randomGreeting()}\n`, 'dim'));
-  }
-
-  if (showGuidedPrompts) {
-    const prompts = getContextualPrompts();
-    console.log(guidedPrompts(prompts, 'Type /help for commands, /setup to reconfigure'));
+  if (firstRun.showGuidedPrompts) {
+    console.log(guidedPrompts(getContextualPrompts(), 'Type /help for commands, /setup to reconfigure'));
     try {
       const saved = loadConfig();
-      if (saved.firstRunComplete) {
-        delete saved.firstRunComplete;
-        saveSetupConfig(saved);
-      }
-    } catch {
-      /* ignore */
-    }
+      if (saved.firstRunComplete) { delete saved.firstRunComplete; saveSetupConfig(saved); }
+    } catch { /* ignore */ }
   }
 
   const agent = new Agent({
@@ -277,19 +299,15 @@ export async function main() {
   });
 
   agent.setAskPermission(async (tool, args, risk, sandbox) => {
-    const card = permissionCard(tool, args, risk || { score: 0, level: 'green' }, sandbox);
-    process.stdout.write(card);
+    process.stdout.write(permissionCard(tool, args, risk || { score: 0, level: 'green' }, sandbox));
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     const userResponse = new Promise<boolean>((resolve) => {
-      rl.question('Allow? [y/N] ', (answer) => {
-        rl.close();
-        resolve(answer.toLowerCase().startsWith('y'));
-      });
+      rl.question('Allow? [y/N] ', (answer) => { rl.close(); resolve(answer.toLowerCase().startsWith('y')); });
     });
     const timeout = new Promise<boolean>((resolve) => {
       setTimeout(() => {
         rl.close();
-        process.stdout.write('\n\u23f1 Permission timed out — denied by default.\n');
+        process.stdout.write('\n⏱ Permission timed out — denied by default.\n');
         resolve(false);
       }, 30_000);
     });
@@ -305,101 +323,11 @@ export async function main() {
   }
 
   // ── Dashboard ──
-  if (args.dashboard) {
-    // PR 25 — do NOT force agent.setAutoApprove(true) here. Pre-PR-21
-    // the dashboard had no UI to surface permission prompts, so the
-    // CLI's startup unconditionally set autoApprove=true to avoid a
-    // hung readline prompt. PR 21 wired a visible Approve/Deny card
-    // for the chat path; PR 25 wired it for the tool-runner path.
-    // With both surfaces honoring per-request approval, the
-    // unconditional auto-approve at startup is now actively
-    // harmful: the agent's PR-11 unattended-block path
-    // (`blockedByUnallowedCapability`) fires for any send-on-behalf
-    // tool, denying with the PR-11 reason wording instead of letting
-    // askPermission surface a card. Chats that want auto-approve
-    // can still opt in per-request via `body.autoApprove: true`
-    // (PR 16); tool-runner gets approval through the new
-    // /api/command/permission/respond endpoint (PR 25).
-    try {
-      // Resolve static dir: prefer src/ (canonical) over dist/ (stale copies)
-      const srcStatic = require('path').resolve(__dirname, '..', 'src', 'dashboard', 'static');
-      const distStatic = require('path').join(__dirname, 'dashboard', 'static');
-      const dashStaticDir = require('fs').existsSync(srcStatic) ? srcStatic : distStatic;
-      const dashHost = typeof args.host === 'string' ? args.host : '127.0.0.1';
-      const dashPort = resolveDashboardPort();
-      const dashServer = new DashboardServer({ port: dashPort, host: dashHost, staticDir: dashStaticDir });
-      registerApiRoutes(dashServer);
-      registerCommandRoutes(dashServer, agent);
-      registerModelRoutes(dashServer);
-      const dashInfo = await dashServer.start();
-      console.log(c(`   Dashboard: ${dashInfo.url}`, 'cyan'));
-      // Write PID file so stale processes can be identified
-      try {
-        const pidDir = codebotPath('');
-        if (!fs.existsSync(pidDir)) fs.mkdirSync(pidDir, { recursive: true });
-        fs.writeFileSync(pidFile, String(process.pid), 'utf8');
-      } catch {
-        /* best-effort */
-      }
-      const dashUrl = dashHost === '0.0.0.0' ? `http://localhost:${dashInfo.port}` : dashInfo.url;
-      if (!args['no-open'] && !process.env.CODEBOT_NO_OPEN) {
-        try {
-          const { exec } = require('child_process');
-          const openCmd = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'start' : 'xdg-open';
-          exec(`${openCmd} ${dashUrl}`);
-        } catch {
-          /* best-effort */
-        }
-      }
-    } catch (err: unknown) {
-      console.log(c(`   Dashboard failed: ${err instanceof Error ? err.message : String(err)}`, 'yellow'));
-    }
+  // PR 25: do NOT force autoApprove=true here — the dashboard surfaces its
+  // own Approve/Deny card (PR 21 chat path, PR 25 tool-runner path).
+  if (args.dashboard) await launchDashboard(args, agent, pidFile);
 
-    // In dashboard mode, DO NOT run orphan watchdog — the dashboard is the
-    // primary process and should survive independently. Only non-dashboard
-    // mode needs orphan detection (e.g., piped/scripted usage).
-    if (!args.dashboard) {
-      const watchdog = setInterval(() => {
-        try {
-          const ppid = process.ppid;
-          if (ppid === undefined || ppid <= 1) {
-            console.log(c('   Parent process gone, shutting down cleanly.', 'dim'));
-            clearInterval(watchdog);
-            gracefulShutdown('orphan-detected');
-          }
-        } catch {
-          /* ignore */
-        }
-      }, 30_000);
-      watchdog.unref();
-    }
-  }
-
-  if (typeof args.message === 'string') {
-    await runOnce(agent, args.message);
-    printSessionSummary(agent);
-    return;
-  }
-  if (!process.stdin.isTTY) {
-    if (args.dashboard) {
-      // Dashboard mode with no TTY (backgrounded, launched from .app, etc.)
-      // Keep process alive — the HTTP server IS the product, REPL is optional.
-      console.log(c(`   Dashboard-only mode — no REPL, serving on port ${resolveDashboardPort()}.`, 'dim'));
-      await new Promise(() => {}); // Block forever — HTTP server keeps running
-      return;
-    }
-    const input = await readStdin();
-    if (input.trim()) {
-      await runOnce(agent, input.trim());
-      printSessionSummary(agent);
-    }
-    return;
-  }
-
-  const scheduler = new Scheduler(agent, (text) => process.stdout.write(text));
-  scheduler.start();
-  await repl(agent, config, session, !!args.dashboard);
-  scheduler.stop();
+  await runInputDispatch(args, agent, config, session, !!args.dashboard);
 }
 
 function printSessionSummary(agent: Agent) {

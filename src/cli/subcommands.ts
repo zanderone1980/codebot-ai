@@ -467,3 +467,30 @@ export async function handleDaemon(args: ParsedArgs): Promise<void> {
   await daemon.start();
 }
 
+/**
+ * Dispatch one of the early-return CLI subcommands.
+ *
+ * Returns true if a handler ran and main() should return immediately.
+ * Returns false if no subcommand matched and the agent flow should continue.
+ *
+ * Note: handleDoctor and handleTask are intentionally excluded —
+ * doctor falls through to the interactive REPL and task exits via
+ * process.exit() internally, so neither fits the "return true" pattern.
+ */
+export async function dispatchEarlyReturnSubcommand(
+  args: ParsedArgs,
+  version: string,
+): Promise<boolean> {
+  if (args['init-policy']) { handleInitPolicy(); return true; }
+  if (args['verify-audit']) { handleVerifyAudit(args); return true; }
+  if (args['sandbox-info']) { handleSandboxInfo(); return true; }
+  if (args.replay) { await handleReplay(args); return true; }
+  if (args['export-audit'] === 'sarif' || args['export-audit'] === true) {
+    handleExportAudit(args, version); return true;
+  }
+  if (args.solve) { await handleSolve(args); return true; }
+  if (args.daemon) { await handleDaemon(args); return true; }
+  if (args.listen) { await handleListen(args); return true; }
+  return false;
+}
+
