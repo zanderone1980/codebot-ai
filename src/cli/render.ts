@@ -17,75 +17,96 @@ export function truncate(s: string, max: number): string {
   return s.length <= max ? s : s.substring(0, max) + '...';
 }
 
+// ── Per-event-type renderers ─────────────────────────────────────────────────
+
+function renderThinking(text: string) {
+  if (!isThinking) {
+    process.stdout.write(UI.dim + '\n💭 ' + UI.reset);
+    isThinking = true;
+  }
+  process.stdout.write(UI.dim + (text || '') + UI.reset);
+}
+
+function renderText(text: string) {
+  if (isThinking) {
+    process.stdout.write('\n');
+    isThinking = false;
+  }
+  process.stdout.write(text || '');
+}
+
+function renderToolCall(event: AgentEvent) {
+  if (isThinking) {
+    process.stdout.write('\n');
+    isThinking = false;
+  }
+  const risk = event.risk || { score: 0, level: 'green' };
+  const riskColor = risk.level === 'red' ? UI.red : risk.level === 'orange' ? UI.orange : risk.level === 'yellow' ? UI.yellow : UI.green;
+  console.log(`\n${UI.bold}${riskColor}⚡${UI.reset} ${UI.bold}${event.toolCall?.name}${UI.reset} ${riskColor}[${risk.score}]${UI.reset}`);
+  if (event.toolCall?.args) {
+    for (const [k, v] of Object.entries(event.toolCall.args)) {
+      const val = typeof v === 'string' ? (v.length > 80 ? v.substring(0, 80) + '...' : v) : JSON.stringify(v);
+      console.log(`${UI.dim}  ${k}: ${val}${UI.reset}`);
+    }
+  }
+}
+
+function renderToolResult(event: AgentEvent) {
+  if (event.toolResult?.is_error) {
+    console.log(`${UI.red}  ✗ ${truncate(event.toolResult.result, 200)}${UI.reset}`);
+    return;
+  }
+  const result = event.toolResult?.result || '';
+  const lines = result.split('\n');
+  if (lines.length > 5 && !verbose) {
+    console.log(`${UI.brightGreen}  ✓${UI.reset} ${UI.dim}(${lines.length} lines, use --verbose to expand)${UI.reset}`);
+  } else if (lines.length > 10) {
+    console.log(`${UI.brightGreen}  ✓${UI.reset} ${UI.dim}(${lines.length} lines)${UI.reset}`);
+  } else {
+    console.log(`${UI.brightGreen}  ✓${UI.reset} ${truncate(result, 200)}`);
+  }
+}
+
+function renderUsage(event: AgentEvent, agent?: Agent) {
+  if (!verbose || !event.usage || !agent) return;
+  const tracker = agent.getTokenTracker();
+  const parts: string[] = [];
+  if (event.usage.inputTokens) parts.push(`in: ${event.usage.inputTokens}`);
+  if (event.usage.outputTokens) parts.push(`out: ${event.usage.outputTokens}`);
+  if (parts.length > 0) {
+    console.log(UI.dim + `  [${parts.join(', ')} tokens | ${tracker.formatCost()}]` + UI.reset);
+  }
+  const costSoFar = tracker.getTotalCost();
+  const costLimit2 = agent.getPolicyEnforcer().getCostLimitUsd();
+  if (costLimit2 > 0) {
+    console.log(`  ${budgetBar(costSoFar, costLimit2)}`);
+  }
+}
+
+// ── Main dispatcher ──────────────────────────────────────────────────────────
+
 export function renderEvent(event: AgentEvent, agent?: Agent) {
   switch (event.type) {
     case 'thinking':
-      if (!isThinking) {
-        process.stdout.write(UI.dim + '\n\ud83d\udcad ' + UI.reset);
-        isThinking = true;
-      }
-      process.stdout.write(UI.dim + (event.text || '') + UI.reset);
+      renderThinking(event.text || '');
       break;
     case 'text':
-      if (isThinking) {
-        process.stdout.write('\n');
-        isThinking = false;
-      }
-      process.stdout.write(event.text || '');
+      renderText(event.text || '');
       break;
     case 'tool_call':
-      if (isThinking) {
-        process.stdout.write('\n');
-        isThinking = false;
-      }
-      {
-        const risk = event.risk || { score: 0, level: 'green' };
-        const riskColor = risk.level === 'red' ? UI.red : risk.level === 'orange' ? UI.orange : risk.level === 'yellow' ? UI.yellow : UI.green;
-        console.log(`\n${UI.bold}${riskColor}\u26a1${UI.reset} ${UI.bold}${event.toolCall?.name}${UI.reset} ${riskColor}[${risk.score}]${UI.reset}`);
-        if (event.toolCall?.args) {
-          for (const [k, v] of Object.entries(event.toolCall.args)) {
-            const val = typeof v === 'string' ? (v.length > 80 ? v.substring(0, 80) + '...' : v) : JSON.stringify(v);
-            console.log(`${UI.dim}  ${k}: ${val}${UI.reset}`);
-          }
-        }
-      }
+      renderToolCall(event);
       break;
     case 'tool_result':
-      if (event.toolResult?.is_error) {
-        console.log(`${UI.red}  \u2717 ${truncate(event.toolResult.result, 200)}${UI.reset}`);
-      } else {
-        const result = event.toolResult?.result || '';
-        const lines = result.split('\n');
-        if (lines.length > 5 && !verbose) {
-          console.log(`${UI.brightGreen}  \u2713${UI.reset} ${UI.dim}(${lines.length} lines, use --verbose to expand)${UI.reset}`);
-        } else if (lines.length > 10) {
-          console.log(`${UI.brightGreen}  \u2713${UI.reset} ${UI.dim}(${lines.length} lines)${UI.reset}`);
-        } else {
-          console.log(`${UI.brightGreen}  \u2713${UI.reset} ${truncate(result, 200)}`);
-        }
-      }
+      renderToolResult(event);
       break;
     case 'usage':
-      if (verbose && event.usage && agent) {
-        const tracker = agent.getTokenTracker();
-        const parts: string[] = [];
-        if (event.usage.inputTokens) parts.push(`in: ${event.usage.inputTokens}`);
-        if (event.usage.outputTokens) parts.push(`out: ${event.usage.outputTokens}`);
-        if (parts.length > 0) {
-          console.log(UI.dim + `  [${parts.join(', ')} tokens | ${tracker.formatCost()}]` + UI.reset);
-        }
-        const costSoFar = tracker.getTotalCost();
-        const costLimit2 = agent.getPolicyEnforcer().getCostLimitUsd();
-        if (costLimit2 > 0) {
-          console.log(`  ${budgetBar(costSoFar, costLimit2)}`);
-        }
-      }
+      renderUsage(event, agent);
       break;
     case 'compaction':
-      console.log(UI.dim + `\n\ud83d\udce6 ${event.text}` + UI.reset);
+      console.log(UI.dim + `\n📦 ${event.text}` + UI.reset);
       break;
     case 'error':
-      console.error(UI.red + `\n\u2717 ${event.error}` + UI.reset);
+      console.error(UI.red + `\n✗ ${event.error}` + UI.reset);
       if (verbose && (event as any).stack) {
         console.error(UI.dim + (event as any).stack + UI.reset);
       }
@@ -131,18 +152,10 @@ export function renderSolveEvent(event: SolveEvent, jsonMode: boolean): void {
       console.log(sc(`     ${event.message}`, 'dim'));
       break;
     case 'agent_event':
-      if (event.agentEvent?.type === 'text' && event.agentEvent.text) {
-        process.stdout.write(event.agentEvent.text);
-      } else if (event.agentEvent?.type === 'tool_call' && event.agentEvent.toolCall) {
-        console.log(sc(`     [tool] ${event.agentEvent.toolCall.name}`, 'dim'));
-      } else if (event.agentEvent?.type === 'tool_result' && event.agentEvent.toolResult) {
-        const r = event.agentEvent.toolResult;
-        const preview = r.result.substring(0, 80).replace(/\n/g, ' ');
-        console.log(sc(`     [result] ${r.name}: ${preview}${r.result.length > 80 ? '...' : ''}`, 'dim'));
-      }
+      renderSolveAgentEvent(event);
       break;
     case 'error':
-      console.error(sc(`  \u2717 Error: ${event.error}`, 'red'));
+      console.error(sc(`  ✗ Error: ${event.error}`, 'red'));
       break;
     case 'result':
       if (event.result) {
@@ -152,12 +165,24 @@ export function renderSolveEvent(event: SolveEvent, jsonMode: boolean): void {
   }
 }
 
+function renderSolveAgentEvent(event: SolveEvent) {
+  if (event.agentEvent?.type === 'text' && event.agentEvent.text) {
+    process.stdout.write(event.agentEvent.text);
+  } else if (event.agentEvent?.type === 'tool_call' && event.agentEvent.toolCall) {
+    console.log(sc(`     [tool] ${event.agentEvent.toolCall.name}`, 'dim'));
+  } else if (event.agentEvent?.type === 'tool_result' && event.agentEvent.toolResult) {
+    const r = event.agentEvent.toolResult;
+    const preview = r.result.substring(0, 80).replace(/\n/g, ' ');
+    console.log(sc(`     [result] ${r.name}: ${preview}${r.result.length > 80 ? '...' : ''}`, 'dim'));
+  }
+}
+
 export function renderSolveResult(r: SolveResult): void {
   const lines = [
     '',
-    sc('  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550', 'cyan'),
+    sc('  ═══════════════════════════════════════════', 'cyan'),
     sc('  SOLVE RESULT', 'bold'),
-    sc('  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550', 'cyan'),
+    sc('  ═══════════════════════════════════════════', 'cyan'),
     `  Session:    ${r.sessionId}`,
     `  Issue:      #${r.issue.number} "${r.issue.title}"`,
     `  Repo:       ${r.issue.owner}/${r.issue.repo}`,
@@ -182,7 +207,7 @@ export function renderSolveResult(r: SolveResult): void {
     lines.push(`  PR:         ${sc(r.prUrl, 'cyan')}`);
   }
 
-  // Surface the audit trail \u2014 the marquee feature, not buried in a file.
+  // Surface the audit trail — the marquee feature, not buried in a file.
   if (r.auditPath) {
     const { AuditLogger } = require('../audit') as typeof import('../audit');
     try {
@@ -191,7 +216,7 @@ export function renderSolveResult(r: SolveResult): void {
         // Count entries in the solve audit JSON (not the AuditLogger JSONL)
         const solveAudit = JSON.parse(readFileSync(r.auditPath, 'utf-8'));
         const entryCount = (solveAudit.entries || []).length;
-        lines.push(`  Audit:      ${sc(`${entryCount} actions recorded`, 'green')} \u2014 ${r.auditPath}`);
+        lines.push(`  Audit:      ${sc(`${entryCount} actions recorded`, 'green')} — ${r.auditPath}`);
       }
     } catch { /* best-effort */ }
 
@@ -200,14 +225,14 @@ export function renderSolveResult(r: SolveResult): void {
       const logger = new AuditLogger();
       const verify = logger.verifySession(r.sessionId);
       if (verify.valid) {
-        lines.push(`  Chain:      ${sc(`\u2713 verified (${verify.entriesChecked} entries, hash chain intact)`, 'green')}`);
+        lines.push(`  Chain:      ${sc(`✓ verified (${verify.entriesChecked} entries, hash chain intact)`, 'green')}`);
       } else if (!verify.legacy) {
-        lines.push(`  Chain:      ${sc(`\u26a0 ${verify.reason}`, 'dim')}`);
+        lines.push(`  Chain:      ${sc(`⚠ ${verify.reason}`, 'dim')}`);
       }
     } catch { /* best-effort */ }
   }
 
-  lines.push(sc('  \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550', 'cyan'));
+  lines.push(sc('  ═══════════════════════════════════════════', 'cyan'));
   lines.push('');
 
   console.log(lines.join('\n'));
