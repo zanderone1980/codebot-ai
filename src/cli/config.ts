@@ -8,7 +8,7 @@ import { OpenAIResponsesProvider, modelRequiresResponsesApi } from '../providers
 import { AnthropicProvider } from '../providers/anthropic';
 import { detectProvider, PROVIDER_DEFAULTS } from '../providers/registry';
 import { Config, LLMProvider } from '../types';
-import { loadConfig, pickProviderKey, isProviderDisabled } from '../setup';
+import { loadConfig, pickProviderKey, isProviderDisabled, SavedConfig } from '../setup';
 import { parseAllowCapabilityFlag, CapabilityAllowlistError } from '../capability-allowlist';
 
 const C = {
@@ -64,69 +64,72 @@ export function createProvider(config: Config): LLMProvider {
   });
 }
 
-export async function resolveConfig(args: Record<string, string | boolean>): Promise<Config> {
-  const saved = loadConfig();
+// ── Config resolution helpers ────────────────────────────────────────────────
 
-  const model = (args.model as string) || process.env.CODEBOT_MODEL || saved.model || 'qwen2.5-coder:32b';
-  const detected = detectProvider(model);
+/** Resolve --allow-capability: validate and parse the raw string. */
+function resolveCapabilities(
+  args: Record<string, string | boolean>,
+  config: Config,
+): void {
+  if (args['allow-capability'] === undefined) return;
+  const raw = args['allow-capability'] as string;
+  if (!raw || !raw.trim()) {
+    // PR 11 — empty value is a hard error, not silent ignore.
+    throw new CapabilityAllowlistError(
+      '--allow-capability requires a comma-separated list of labels ' +
+      '(e.g., --allow-capability account-access,net-fetch). Got empty value.',
+    );
+  }
+  config.allowedCapabilities = parseAllowCapabilityFlag(raw);
+}
 
-  const explicitProvider = args.provider as string | undefined;
-  const config: Config = {
-    provider: explicitProvider || process.env.CODEBOT_PROVIDER || saved.provider || detected || 'openai',
-    model,
-    baseUrl: (args['base-url'] as string) || process.env.CODEBOT_BASE_URL || '',
-    apiKey: (args['api-key'] as string) || '',
-    maxIterations: Math.max(1, Math.min(parseInt((args['max-iterations'] as string) || String(saved.maxIterations || 50), 10) || 50, 500)),
-    autoApprove: !!args['auto-approve'] || !!args.autonomous || !!args.auto || !!saved.autoApprove || !!process.env.CODEBOT_AUTO_APPROVE,
-    // Router config from saved settings only (PR 5: no CLI flag yet).
-    // Absent or `enabled: false` → routing OFF, identical to pre-PR-5.
-    router: saved.router,
-    // Budget config from saved settings only (PR 6: no CLI flag yet).
-    // Absent or `perSessionCapUsd: 0` → no user-set cap. The existing
-    // `policy.limits.cost_limit_usd` path still applies independently.
-    budget: saved.budget,
-    disableConstitutional: !!args['no-constitutional'],
-  };
+/**
+ * Resolve baseUrl with precedence:
+ *   1. --base-url CLI arg (already in config.baseUrl if passed)
+ *   2. Saved baseUrl (when not overriding provider explicitly)
+ *   3. Provider defaults
+ *   4. Auto-detect (Ollama / LM Studio / vLLM)
+ */
+async function resolveBaseUrl(
+  config: Config,
+  saved: SavedConfig,
+  explicitProvider: string | undefined,
+): Promise<void> {
+  if (config.baseUrl) return; // CLI arg wins
 
-  // PR 11 — `--allow-capability <comma-list>`. Validated at parse time
-  // so an invalid value fails fast and loud rather than silently
-  // dropping. The empty-string case (flag passed with no argument) is
-  // also treated as a hard error — we don't want a "you forgot the
-  // value" typo to look like "no capabilities allowlisted".
-  if (args['allow-capability'] !== undefined) {
-    const raw = args['allow-capability'] as string;
-    if (!raw || !raw.trim()) {
-      throw new CapabilityAllowlistError(
-        '--allow-capability requires a comma-separated list of labels ' +
-        '(e.g., --allow-capability account-access,net-fetch). Got empty value.',
-      );
-    }
-    config.allowedCapabilities = parseAllowCapabilityFlag(raw);
+  if (explicitProvider) {
+    const defaults = PROVIDER_DEFAULTS[config.provider];
+    if (defaults?.baseUrl) { config.baseUrl = defaults.baseUrl; return; }
+  } else {
+    config.baseUrl = saved.baseUrl || '';
   }
 
-  if (!config.baseUrl) {
-    if (explicitProvider) {
-      const defaults = PROVIDER_DEFAULTS[config.provider];
-      if (defaults) config.baseUrl = defaults.baseUrl;
-    } else {
-      config.baseUrl = saved.baseUrl || '';
-    }
-  }
   if (!config.baseUrl) {
     const defaults = PROVIDER_DEFAULTS[config.provider];
-    if (defaults) config.baseUrl = defaults.baseUrl;
+    if (defaults?.baseUrl) { config.baseUrl = defaults.baseUrl; return; }
   }
 
-  // Key precedence (most specific wins):
-  //   1. --api-key CLI arg (already in config.apiKey if passed)
-  //   2. Provider-specific env var (OPENAI_API_KEY for openai, etc.)
-  //      — only when --provider was explicit, so we don't override saved
-  //      cross-provider keys with a stale env var
-  //   3. Saved provider-specific key (saved.openaiApiKey for openai, etc.)
-  //   4. Saved generic apiKey
-  //   5. Provider-specific env var (catch-all)
-  //   6. Generic env vars (CODEBOT_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY)
-  if (!config.apiKey && explicitProvider) {
+  if (!config.baseUrl) {
+    config.baseUrl = await autoDetectProvider();
+  }
+}
+
+/**
+ * Resolve API key with precedence (most specific wins):
+ *   1. --api-key CLI arg (already in config.apiKey if passed)
+ *   2. Provider env var, only when --provider was explicit
+ *   3. Saved provider-specific key
+ *   4. Provider env var (catch-all)
+ *   5. Generic env vars (CODEBOT_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY)
+ */
+function resolveApiKey(
+  config: Config,
+  saved: SavedConfig,
+  explicitProvider: string | undefined,
+): void {
+  if (config.apiKey) return; // CLI arg wins
+
+  if (explicitProvider) {
     const defaults = PROVIDER_DEFAULTS[config.provider];
     if (defaults) config.apiKey = process.env[defaults.envKey] || '';
   }
@@ -139,22 +142,61 @@ export async function resolveConfig(args: Record<string, string | boolean>): Pro
     if (defaults) config.apiKey = process.env[defaults.envKey] || '';
   }
   if (!config.apiKey) {
-    config.apiKey = process.env.CODEBOT_API_KEY || process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY || '';
+    config.apiKey =
+      process.env.CODEBOT_API_KEY ||
+      process.env.OPENAI_API_KEY ||
+      process.env.ANTHROPIC_API_KEY ||
+      '';
   }
+}
 
-  if (!config.baseUrl) {
-    config.baseUrl = await autoDetectProvider();
-  }
-
+/** Validate the resolved baseUrl and warn if missing API key. */
+function validateResolved(config: Config): void {
   if (config.baseUrl && !config.baseUrl.startsWith('http://') && !config.baseUrl.startsWith('https://')) {
-    console.log(c(`  \u26a0 Invalid base URL: "${config.baseUrl}". Must start with http:// or https://`, 'yellow'));
+    console.log(c(`  ⚠ Invalid base URL: "${config.baseUrl}". Must start with http:// or https://`, 'yellow'));
     config.baseUrl = 'http://localhost:11434';
   }
-
   const isLocal = config.baseUrl.includes('localhost') || config.baseUrl.includes('127.0.0.1');
   if (!isLocal && !config.apiKey) {
-    console.log(c(`  \u26a0 No API key found for ${config.provider}. Run: codebot --setup`, 'yellow'));
+    console.log(c(`  ⚠ No API key found for ${config.provider}. Run: codebot --setup`, 'yellow'));
   }
+}
+
+// ── Main resolver ────────────────────────────────────────────────────────────
+
+export async function resolveConfig(args: Record<string, string | boolean>): Promise<Config> {
+  const saved = loadConfig();
+  const model = (args.model as string) || process.env.CODEBOT_MODEL || saved.model || 'qwen2.5-coder:32b';
+  const detected = detectProvider(model);
+  const explicitProvider = args.provider as string | undefined;
+
+  const maxIter = parseInt((args['max-iterations'] as string) || String(saved.maxIterations || 50), 10) || 50;
+  const config: Config = {
+    provider: explicitProvider || process.env.CODEBOT_PROVIDER || saved.provider || detected || 'openai',
+    model,
+    baseUrl: (args['base-url'] as string) || process.env.CODEBOT_BASE_URL || '',
+    apiKey: (args['api-key'] as string) || '',
+    maxIterations: Math.max(1, Math.min(maxIter, 500)),
+    autoApprove:
+      !!args['auto-approve'] ||
+      !!args.autonomous ||
+      !!args.auto ||
+      !!saved.autoApprove ||
+      !!process.env.CODEBOT_AUTO_APPROVE,
+    // Router config from saved settings only (PR 5: no CLI flag yet).
+    // Absent or `enabled: false` → routing OFF, identical to pre-PR-5.
+    router: saved.router,
+    // Budget config from saved settings only (PR 6: no CLI flag yet).
+    // Absent or `perSessionCapUsd: 0` → no user-set cap. The existing
+    // `policy.limits.cost_limit_usd` path still applies independently.
+    budget: saved.budget,
+    disableConstitutional: !!args['no-constitutional'],
+  };
+
+  resolveCapabilities(args, config);
+  await resolveBaseUrl(config, saved, explicitProvider);
+  resolveApiKey(config, saved, explicitProvider);
+  validateResolved(config);
 
   return config;
 }
@@ -172,7 +214,7 @@ export async function autoDetectProvider(): Promise<string> {
         signal: AbortSignal.timeout(2000),
       });
       if (res.ok) {
-        console.log(c(`  \u2713 ${name} detected on ${url}`, 'green'));
+        console.log(c(`  ✓ ${name} detected on ${url}`, 'green'));
         return url;
       }
     } catch {
@@ -180,6 +222,6 @@ export async function autoDetectProvider(): Promise<string> {
     }
   }
 
-  console.log(c('  \u26a0 No local LLM detected. Start Ollama or set --base-url', 'yellow'));
+  console.log(c('  ⚠ No local LLM detected. Start Ollama or set --base-url', 'yellow'));
   return 'http://localhost:11434';
 }
