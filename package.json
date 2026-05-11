@@ -1,6 +1,6 @@
 {
   "name": "codebot-ai",
-  "version": "2.10.1",
+  "version": "2.10.2",
   "description": "Open-source autonomous coding agent with a cryptographic audit trail. Delegate coding work, verify every action. Runs against local (Ollama/LM Studio/vLLM) or cloud LLMs.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
