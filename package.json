@@ -21,7 +21,7 @@
     "postbuild": "node -e \"require('fs').cpSync('src/dashboard/static','dist/dashboard/static',{recursive:true})\"",
     "prepublishOnly": "npm run build",
     "pretest": "npm run build",
-    "postinstall": "patch-package"
+    "postinstall": "node scripts/apply-cord-engine-patch.js"
   },
   "keywords": [
     "autonomous-agent",
@@ -79,6 +79,7 @@
     "dist/dashboard/static/**",
     "!dist/**/*.test.*",
     "bin",
+    "scripts/apply-cord-engine-patch.js",
     "README.md",
     "LICENSE"
   ],
