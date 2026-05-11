@@ -37,6 +37,21 @@ if (fs.existsSync(lockSrc)) {
   fs.copyFileSync(lockSrc, path.join(STAGING_DIR, 'package-lock.json'));
 }
 
+// Copy scripts/ so postinstall hooks (e.g. apply-cord-engine-patch.js) can run
+// in the staging dir. The cord-engine v4.3.0 path-containment security patch
+// must apply to the bundled .app, not just to the dev tree.
+const scriptsSrc = path.join(PARENT_DIR, 'scripts');
+if (fs.existsSync(scriptsSrc)) {
+  const scriptsDst = path.join(STAGING_DIR, 'scripts');
+  fs.mkdirSync(scriptsDst, { recursive: true });
+  for (const f of fs.readdirSync(scriptsSrc)) {
+    const src = path.join(scriptsSrc, f);
+    if (fs.statSync(src).isFile()) {
+      fs.copyFileSync(src, path.join(scriptsDst, f));
+    }
+  }
+}
+
 // Install production-only deps
 console.log('  Installing production dependencies only (--omit=dev)...');
 try {
